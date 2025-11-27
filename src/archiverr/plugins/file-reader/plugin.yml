@@ -1,0 +1,20 @@
+# File Reader Plugin - Alternative input plugin
+name: file-reader
+version: 1.0.0
+category: input
+class_name: FileReaderPlugin
+
+# No dependencies for input plugins
+depends_on: []
+
+# No expects for input plugins
+expects: []
+
+# Supports all categories
+categories: []
+
+# Plugin-specific aliases
+aliases:
+  input: "{{ self.input }}"
+  category: "{{ self.category }}"
+  virtual: "{{ self.virtual }}"

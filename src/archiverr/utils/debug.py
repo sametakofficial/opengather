@@ -26,7 +26,7 @@ import json
 
 class DebugSystem:
     """
-    Professional debug system with live output.
+    Professional debug system with live output and optional MongoDB persistence.
     
     Features:
     - Config-driven (enabled/disabled via options.debug)
@@ -34,11 +34,22 @@ class DebugSystem:
     - Plugin-agnostic (any component can log)
     - Structured context fields
     - ISO8601 timestamps
+    - Optional MongoDB diagnostics logging
     """
     
-    def __init__(self, enabled: bool = False):
+    def __init__(self, enabled: bool = False, diagnostics_logger = None):
         self.enabled = enabled
         self.log_buffer: List[Dict[str, Any]] = []  # Always collect logs, regardless of debug mode
+        self._diagnostics_logger = diagnostics_logger
+        self._execution_id: Optional[str] = None
+    
+    def set_execution_id(self, execution_id: str) -> None:
+        """Set current execution ID for log correlation"""
+        self._execution_id = execution_id
+    
+    def set_diagnostics_logger(self, logger) -> None:
+        """Set MongoDB diagnostics logger"""
+        self._diagnostics_logger = logger
     
     def _timestamp(self) -> str:
         """ISO8601 timestamp with timezone"""
@@ -65,6 +76,19 @@ class DebugSystem:
             "fields": {k: v for k, v in fields.items() if v is not None}
         }
         self.log_buffer.append(log_entry)
+        
+        # Write to MongoDB diagnostics if configured
+        if self._diagnostics_logger is not None:
+            try:
+                self._diagnostics_logger.log(
+                    level, 
+                    component, 
+                    message, 
+                    execution_id=self._execution_id,
+                    **fields
+                )
+            except Exception:
+                pass  # Don't let diagnostics failures break the app
         
         # Only print to stderr if debug mode is enabled
         if not self.enabled:
@@ -128,6 +152,14 @@ class DebugSystem:
     def clear_logs(self) -> None:
         """Clear log buffer"""
         self.log_buffer.clear()
+    
+    def flush_diagnostics(self) -> None:
+        """Flush diagnostics buffer to MongoDB"""
+        if self._diagnostics_logger is not None:
+            try:
+                self._diagnostics_logger.flush()
+            except Exception:
+                pass
 
 
 # Global instance

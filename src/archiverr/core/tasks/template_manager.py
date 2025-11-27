@@ -1,6 +1,6 @@
-"""Template Manager - Jinja2 rendering with $ syntax and template functions"""
+"""Template Manager - Jinja2 rendering with alias support and template functions"""
 from jinja2 import Environment, BaseLoader
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import re
 
 
@@ -8,18 +8,119 @@ class TemplateManager:
     """
     Template manager using Jinja2 for variable resolution.
     
-    Supports template functions:
-    - index:$ - Current match index
-    - count:matches - Total number of matches
-    - count:path.to.data - Count elements in list at path
+    Features:
+    - Alias system: User-defined shortcuts in config.yml and plugin.yml
+    - Template functions: index:, count:matches, count:path.to.data
+    - Plugin data flat access: {{ tmdb.movie.title }}
+    
+    Alias Resolution:
+    1. User aliases from config.yml (highest priority)
+    2. Plugin aliases from plugin.yml (self → plugin output)
+    3. Default aliases (execution, match, globals, index)
+    4. Auto plugin aliases (enabled plugins → match.plugins.X)
     """
     
     # Compile regex patterns once at class level for performance
     _FUNCTION_PATTERN = re.compile(r'\b(index|count):([a-zA-Z0-9_.\[\]]*)')
     _DOLLAR_PATTERN = re.compile(r'\$([a-zA-Z0-9_\.]+)')
     
-    def __init__(self):
+    # Default aliases (always available)
+    DEFAULT_ALIASES = {
+        'e': 'execution',
+        'm': 'match',
+        'g': 'globals',
+    }
+    
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.env = Environment(loader=BaseLoader())
+        
+        # User-defined aliases from config.yml
+        self._user_aliases: Dict[str, str] = {}
+        
+        # Plugin aliases from plugin.yml files
+        self._plugin_aliases: Dict[str, Dict[str, str]] = {}
+        
+        # Loaded plugin names (for auto-aliasing)
+        self._loaded_plugins: set = set()
+        
+        # Load user aliases if config provided
+        if config:
+            self._load_user_aliases(config)
+    
+    def configure(self, config: Dict[str, Any], loaded_plugins: Dict[str, Any] = None):
+        """
+        Configure template manager with aliases.
+        
+        Args:
+            config: Full config.yml content
+            loaded_plugins: Dict of plugin_name -> plugin metadata
+        """
+        self._load_user_aliases(config)
+        
+        if loaded_plugins:
+            for plugin_name, plugin_meta in loaded_plugins.items():
+                self._loaded_plugins.add(plugin_name)
+                
+                # Load plugin-specific aliases
+                plugin_aliases = plugin_meta.get('aliases', {})
+                if plugin_aliases:
+                    self._plugin_aliases[plugin_name] = plugin_aliases
+    
+    def _load_user_aliases(self, config: Dict[str, Any]):
+        """Load user-defined aliases from config.yml"""
+        aliases = config.get('aliases', {})
+        if isinstance(aliases, dict):
+            self._user_aliases = aliases.copy()
+    
+    def _resolve_alias_path(self, path: str, context: Dict[str, Any]) -> Any:
+        """
+        Resolve a dot-notation path in context.
+        
+        Examples:
+            "execution" → context["execution"]
+            "renamer.parsed.movie" → context["renamer"]["parsed"]["movie"]
+            "globals.status.matches" → context["globals"]["status"]["matches"]
+        
+        Args:
+            path: Dot-notation path string
+            context: Template context dict
+            
+        Returns:
+            Resolved value or None if not found
+        """
+        # Clean up path (remove {{ }} if present)
+        path = path.strip('{ }').strip()
+        
+        # Simple path (no dots)
+        if '.' not in path:
+            return context.get(path)
+        
+        # Dot-notation path
+        return self._get_nested_value(context, path)
+    
+    def _get_nested_value(self, data: Dict[str, Any], path: str) -> Any:
+        """
+        Get nested value from dict using dot-notation.
+        
+        Args:
+            data: Source dict
+            path: Dot-notation path (e.g., "parsed.movie.name")
+            
+        Returns:
+            Value at path or None if not found
+        """
+        parts = path.split('.')
+        current = data
+        
+        for part in parts:
+            if isinstance(current, dict):
+                current = current.get(part)
+                if current is None:
+                    return None
+            else:
+                return None
+        
+        return current
     
     def render(self, template: str, context: Dict[str, Any], current_index: int = 0) -> str:
         """
@@ -69,25 +170,70 @@ class TemplateManager:
         
         jinja_context = {
             'apiresponse': context,  # Full API response
-            'globals': match_globals,  # Current match globals
+            
+            # IMPORTANT: globals = API root globals (for {{ globals.status.matches }})
+            # This is what config.yml templates expect
+            'globals': api_globals,
+            
+            # match_globals = current match's globals (for {{ match_globals.input.path }})
+            'match_globals': match_globals,
+            
             'options': global_options,  # From api_response.globals.config.options
             'output': match_output,  # match.globals.output (tasks, validations, paths)
             'index': current_index,
             'total': len(matches),
-            'matches': matches  # For indexed access
+            'matches': matches,  # For indexed access {{ matches[0].plugins.tmdb }}
+            
+            # NEW: Alias support - additional accessors
+            'execution': {
+                'id': api_globals.get('status', {}).get('execution_id'),
+                'started_at': api_globals.get('status', {}).get('started_at'),
+                'success': api_globals.get('status', {}).get('success', True)
+            },
+            'match': {
+                'index': current_index,
+                'input_path': match_globals.get('input_path', ''),
+                'success': match_globals.get('status', {}).get('success', True) if isinstance(match_globals.get('status'), dict) else True,
+                'plugins': match_plugins
+            }
         }
         
-        # Add all plugin data from current match (direct access)
-        # $tmdb.movie → will be routed to match.plugins.tmdb.movie
-        # $tmdb.globals → will be routed to match.plugins.tmdb.globals
+        # Add default aliases (e, m, g)
+        for alias, target in self.DEFAULT_ALIASES.items():
+            if target in jinja_context:
+                jinja_context[alias] = jinja_context[target]
+        
+        # Add all plugin data from current match FIRST (needed for alias resolution)
+        # {{ tmdb.movie }} → match.plugins.tmdb.movie
+        # {{ scanner.category }} → match.plugins.scanner.category
         for plugin_name, plugin_data in match_plugins.items():
             jinja_context[plugin_name] = plugin_data
         
+        # Add user-defined aliases from config.yml
+        # Supports dot-notation: "renamer.parsed.movie" → resolve path in context
+        for alias, target in self._user_aliases.items():
+            resolved = self._resolve_alias_path(target, jinja_context)
+            if resolved is not None:
+                jinja_context[alias] = resolved
+        
+        # Add plugin-specific aliases from plugin.yml files
+        for plugin_name, plugin_aliases in self._plugin_aliases.items():
+            plugin_data = match_plugins.get(plugin_name, {})
+            for alias, target in plugin_aliases.items():
+                # Replace "self" with actual plugin data
+                if 'self' in target:
+                    target_clean = target.replace('{{ self.', '').replace(' }}', '').replace('{{self.', '')
+                    resolved = self._get_nested_value(plugin_data, target_clean)
+                    if resolved is not None:
+                        # Namespace alias: tmdb_movie instead of just movie
+                        namespaced_alias = f"{plugin_name}_{alias}"
+                        jinja_context[namespaced_alias] = resolved
+        
         try:
-            # Process template functions first (index:$, count:)
+            # Process template functions first (index:, count:)
             processed_template = self._process_functions(template, context, current_index)
             
-            # Then convert $ prefix to Jinja2 syntax
+            # Then convert $ prefix to Jinja2 syntax (legacy support)
             processed_template = self._process_dollar_syntax(processed_template)
             
             tmpl = self.env.from_string(processed_template)

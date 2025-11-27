@@ -37,10 +37,18 @@ regex>=2023.10.3
 python-dotenv>=1.0.0,<2.0.0
 
 # ----------------------------------------------------------------------------
+# DATABASE DEPENDENCIES
+# ----------------------------------------------------------------------------
+
+# MongoDB async driver (Motor) for production persistence
+# Install only if using MongoDB backend
+motor>=3.3.0,<4.0.0
+
+# ----------------------------------------------------------------------------
 # FUTURE FEATURES (Planned but not yet implemented)
 # ----------------------------------------------------------------------------
 
-# Database ORM (planned: MongoDB persistence, undo/redo feature)
+# Database ORM (planned: relational DB support)
 sqlalchemy>=2.0.0,<3.0.0
 
 # Web framework (planned: REST API backend)
@@ -51,3 +59,22 @@ uvicorn[standard]>=0.24.0,<1.0.0
 
 # Data validation (planned: API request/response validation)
 pydantic>=2.4.0,<3.0.0
+
+# HTTP client for API testing
+httpx>=0.25.0,<1.0.0
+
+# ----------------------------------------------------------------------------
+# TESTING DEPENDENCIES
+# ----------------------------------------------------------------------------
+
+# Testing framework
+pytest>=7.4.0,<8.0.0
+
+# Async testing support
+pytest-asyncio>=0.21.0,<1.0.0
+
+# Test coverage
+pytest-cov>=4.1.0,<5.0.0
+
+# Mock MongoDB for testing
+mongomock>=4.1.0,<5.0.0

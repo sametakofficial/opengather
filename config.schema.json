@@ -4,6 +4,14 @@
   "description": "JSON Schema for validating config.yml structure",
   "type": "object",
   "properties": {
+    "aliases": {
+      "type": "object",
+      "description": "Template shortcuts for easier variable access",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Path to resolve (e.g., 'renamer.parsed.movie')"
+      }
+    },
     "options": {
       "type": "object",
       "description": "Global system options",

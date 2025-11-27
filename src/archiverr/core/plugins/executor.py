@@ -88,7 +88,17 @@ class PluginExecutor:
         match_data: Dict[str, Any]
     ) -> Dict[str, Dict[str, Any]]:
         """Sync wrapper for execute_group_async"""
-        return asyncio.run(self.execute_group_async(plugins, group, match_data))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - use asyncio.run()
+            return asyncio.run(self.execute_group_async(plugins, group, match_data))
+        
+        # Running in async context - run directly in thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, self.execute_group_async(plugins, group, match_data))
+            return future.result()
     
     def execute_input_plugins(
         self,
@@ -128,7 +138,7 @@ class PluginExecutor:
         
         return all_matches
     
-    def execute_output_pipeline(
+    async def execute_output_pipeline_async(
         self,
         plugins: Dict[str, Any],
         execution_groups: List[List[str]],
@@ -171,7 +181,7 @@ class PluginExecutor:
             if not group:
                 continue
             
-            group_results = self.execute_group(plugins, group, result)
+            group_results = await self.execute_group_async(plugins, group, result)
             
             for plugin_name, plugin_result in group_results.items():
                 result[plugin_name] = plugin_result
@@ -212,6 +222,29 @@ class PluginExecutor:
                           not_supported=len(not_supported_plugins))
         
         return result
+    
+    def execute_output_pipeline(
+        self,
+        plugins: Dict[str, Any],
+        execution_groups: List[List[str]],
+        match_data: Dict[str, Any],
+        resolver: Any = None
+    ) -> Dict[str, Any]:
+        """Sync wrapper for execute_output_pipeline_async"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - use asyncio.run()
+            return asyncio.run(self.execute_output_pipeline_async(plugins, execution_groups, match_data, resolver))
+        
+        # Running in async context - run in thread pool
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                asyncio.run, 
+                self.execute_output_pipeline_async(plugins, execution_groups, match_data, resolver)
+            )
+            return future.result()
     
     def _extract_available_data(self, result: Dict[str, Any]) -> set:
         """

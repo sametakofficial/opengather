@@ -1,0 +1,23 @@
+# Renamer Plugin - Parses media file names
+name: renamer
+version: 1.0.0
+category: output
+class_name: RenamerPlugin
+
+# Depends on input plugin (scanner or file-reader)
+depends_on: []
+
+# No expects - runs on raw input
+expects: []
+
+# Supports all categories
+categories:
+  - movie
+  - show
+
+# Plugin-specific aliases
+aliases:
+  parsed: "{{ self.parsed }}"
+  movie: "{{ self.parsed.movie }}"
+  show: "{{ self.parsed.show }}"
+  category: "{{ self.category }}"

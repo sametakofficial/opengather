@@ -1,0 +1,27 @@
+# TMDb Plugin - The Movie Database metadata provider
+name: tmdb
+version: 1.0.0
+category: output
+class_name: TMDbPlugin
+
+# Depends on renamer for parsed info
+depends_on:
+  - renamer
+
+# Expects renamer.parsed to be available
+expects:
+  - renamer.parsed
+
+# Supports both movies and shows
+categories:
+  - movie
+  - show
+
+# Plugin-specific aliases
+aliases:
+  movie: "{{ self.movie }}"
+  show: "{{ self.show }}"
+  episode: "{{ self.episode }}"
+  season: "{{ self.season }}"
+  credits: "{{ self.credits }}"
+  images: "{{ self.images }}"

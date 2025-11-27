@@ -1,0 +1,21 @@
+# FFprobe Plugin - Media file technical analysis
+name: ffprobe
+version: 1.0.0
+category: output
+class_name: FFProbePlugin
+
+# No dependencies
+depends_on: []
+
+# No expects - works on any media file
+expects: []
+
+# Supports all categories
+categories: []
+
+# Plugin-specific aliases
+aliases:
+  video: "{{ self.video }}"
+  audio: "{{ self.audio }}"
+  container: "{{ self.container }}"
+  subtitles: "{{ self.subtitles }}"

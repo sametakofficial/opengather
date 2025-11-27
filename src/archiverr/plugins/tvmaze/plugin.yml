@@ -1,0 +1,24 @@
+# TVMaze Plugin - TV schedule and episode metadata
+name: tvmaze
+version: 1.0.0
+category: output
+class_name: TVMazePlugin
+
+# Depends on renamer for parsed info
+depends_on:
+  - renamer
+
+# Expects renamer.parsed to be available
+expects:
+  - renamer.parsed
+
+# Only supports shows
+categories:
+  - show
+
+# Plugin-specific aliases
+aliases:
+  show: "{{ self.show }}"
+  episode: "{{ self.episode }}"
+  cast: "{{ self.cast }}"
+  crew: "{{ self.crew }}"

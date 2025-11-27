@@ -1,9 +1,23 @@
-"""Archiverr - Config-Driven Media Organizer"""
+"""Archiverr - Config-Driven Media Organizer
+
+Usage:
+    python -m archiverr           # CLI mode (default)
+    python -m archiverr serve     # API server mode
+    python -m archiverr serve --port 8080 --reload
+"""
 import sys
-import yaml
+import os
 from pathlib import Path
 from datetime import datetime
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv is optional
+
+from archiverr.utils.config_loader import load_config_with_tracking
 from archiverr.core.plugins import (
     PluginDiscovery,
     PluginLoader,
@@ -16,9 +30,47 @@ from archiverr.core.reports import generate_dual_reports
 from archiverr.utils.debug import init_debugger, get_debugger
 from archiverr.core.config_validator import ConfigValidator
 
+# State management
+from archiverr.state import GlobalStateManager, PluginResult
 
-def main():
-    """Main entry point"""
+# Infrastructure layer (database, repositories)
+from archiverr.infrastructure.database import DatabaseConnection, MONGODB_AVAILABLE
+
+# Event bus for loose coupling
+from archiverr.events import EventBus, Events, ProgressHandler, StatisticsHandler
+
+
+def serve_api(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+    """
+    Start FastAPI server.
+    
+    Args:
+        host: Bind address
+        port: Port number
+        reload: Enable auto-reload for development
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        print("ERROR: uvicorn not installed. Run: pip install uvicorn", file=sys.stderr)
+        sys.exit(1)
+    
+    print(f"Starting Archiverr API server on http://{host}:{port}")
+    print(f"Documentation: http://{host}:{port}/docs")
+    print(f"OpenAPI: http://{host}:{port}/openapi.json")
+    print()
+    
+    uvicorn.run(
+        "archiverr.api.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info"
+    )
+
+
+def cli_main():
+    """CLI entry point - original behavior"""
     # Record start time (single timestamp for entire execution)
     start_time = datetime.now()
     
@@ -29,8 +81,8 @@ def main():
         sys.exit(1)
     
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+        # Load config with env var expansion and tracking for snapshots
+        config = load_config_with_tracking(str(config_path))
     except Exception as e:
         # Pre-debug error - use print
         print(f"ERROR: Failed to load config.yml: {e}", file=sys.stderr)
@@ -53,6 +105,36 @@ def main():
         debugger.debug("config", "Schema validation unavailable (jsonschema not installed)")
     
     debugger.info("system", "Archiverr starting", debug=debug, dry_run=dry_run)
+    
+    # NEW: Initialize event bus for loose coupling
+    event_bus = EventBus()
+    event_bus.reset()  # Clean for new execution
+    event_bus.configure(debugger=debugger)
+    
+    # Register event handlers
+    progress_handler = ProgressHandler()
+    stats_handler = StatisticsHandler()
+    event_bus.subscribe(Events.MATCH_COMPLETED, progress_handler)
+    event_bus.subscribe(Events.MATCH_FAILED, progress_handler)
+    event_bus.subscribe("*", stats_handler)  # Collect all stats
+    
+    # NEW: Initialize state management (parallel to existing system)
+    state = GlobalStateManager()
+    state.reset()  # Clean state for new execution
+    
+    # Initialize persistence (MongoDB or Mock based on ARCHIVERR_DB_BACKEND env var)
+    db_connection = DatabaseConnection.from_env()
+    persistence = db_connection.connect()
+    
+    backend_type = os.getenv('ARCHIVERR_DB_BACKEND', 'mock')
+    debugger.info("database", f"Using {backend_type} persistence", 
+                  mongodb_available=MONGODB_AVAILABLE)
+    
+    state.configure(persistence=persistence, debugger=debugger, event_bus=event_bus)
+    
+    # Start execution in state
+    execution_id = state.start_execution(config)
+    debugger.debug("state", "Execution started", id=execution_id)
     
     # Phase 1: Discover plugins
     debugger.debug("system", "Starting plugin discovery")
@@ -97,13 +179,20 @@ def main():
     all_task_results = []
     match_task_results = {}  # Track task results per match {index: [results]}
     
-    template_manager = TemplateManager()
+    # Initialize template manager with aliases from config
+    template_manager = TemplateManager(config)
+    template_manager.configure(config, loaded_plugins=all_plugins)
+    
     task_manager = TaskManager(config, template_manager)
     builder = APIResponseBuilder()
     
     debugger.debug("system", "Starting per-match processing")
     for index, match in enumerate(input_matches):
         debugger.info("executor", f"Processing match {index + 1}/{len(input_matches)}")
+        
+        # NEW: Register match in state
+        input_path = match.get('input', {}).get('path', '') if isinstance(match.get('input'), dict) else str(match.get('input', ''))
+        state_match = state.register_match(index, input_path)
         
         # Execute output plugins with expectations checking
         result = executor.execute_output_pipeline(
@@ -122,6 +211,33 @@ def main():
         not_supported_plugins = status.get('not_supported_plugins', [])
         total_plugins_run = len(success_plugins) + len(failed_plugins) + len(not_supported_plugins)
         
+        # NEW: Track plugin results in state
+        for plugin_name in success_plugins:
+            plugin_data = result.get(plugin_name, {})
+            plugin_result = PluginResult(
+                plugin_name=plugin_name,
+                success=True,
+                started_at=datetime.now(),  # Approximate
+                finished_at=datetime.now(),
+                data=plugin_data if isinstance(plugin_data, dict) else {}
+            )
+            state.update_plugin_result(index, plugin_name, plugin_result)
+        
+        for plugin_name in failed_plugins:
+            plugin_data = result.get(plugin_name, {})
+            plugin_result = PluginResult(
+                plugin_name=plugin_name,
+                success=False,
+                started_at=datetime.now(),
+                finished_at=datetime.now(),
+                data=plugin_data if isinstance(plugin_data, dict) else {},
+                error="Plugin failed"
+            )
+            state.update_plugin_result(index, plugin_name, plugin_result)
+        
+        for plugin_name in not_supported_plugins:
+            state.mark_plugin_not_supported(index, plugin_name)
+        
         debugger.debug("executor", f"Match {index} complete", 
                       success=len(success_plugins),
                       failed=len(failed_plugins),
@@ -129,13 +245,9 @@ def main():
         
         # If all enabled output plugins finished, execute tasks for this match
         if total_plugins_run == len(output_plugins):
-            # Build incremental API response for task execution
-            temp_api_response = builder.build(
-                processed_matches,
-                config=config,
-                start_time=start_time,
-                loaded_plugins=all_plugins
-            )
+            # NEW: Use state-based template context (fast, no rebuild)
+            # This replaces expensive builder.build() call every iteration
+            temp_api_response = state.build_api_response_for_templates()
             
             # Execute tasks for this match
             debugger.debug("tasks", f"Executing tasks for match {index}")
@@ -146,6 +258,14 @@ def main():
             )
             all_task_results.extend(task_results)
             match_task_results[index] = task_results
+            
+            # NEW: Track task results in state
+            for task_result in task_results:
+                state.add_task_result(index, task_result)
+            
+            # NEW: Complete match in state
+            state.complete_match(index)
+            
             debugger.debug("tasks", f"Tasks complete for match {index}", executed=len(task_results))
     
     # Phase 6: Build final API response
@@ -202,6 +322,52 @@ def main():
                  matches=len(processed_matches),
                  tasks=len(all_task_results),
                  errors=api_response['globals']['status']['errors'])
+    
+    # NEW: Complete execution in state and disconnect persistence
+    state.complete_execution()
+    db_connection.disconnect()
+    
+    debugger.debug("state", f"State persisted ({backend_type} backend)")
+
+
+def main():
+    """
+    Main entry point - handles both CLI and API modes.
+    
+    Usage:
+        python -m archiverr           # CLI mode
+        python -m archiverr serve     # API mode (default port 8000)
+        python -m archiverr serve --port 8080 --reload
+    """
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Archiverr - Config-Driven Media Organizer",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python -m archiverr                    # Run CLI (process config.yml)
+  python -m archiverr serve              # Start API server
+  python -m archiverr serve --port 8080  # Custom port
+  python -m archiverr serve --reload     # Development mode
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # Serve command
+    serve_parser = subparsers.add_parser("serve", help="Start API server")
+    serve_parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port number (default: 8000)")
+    serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    
+    args = parser.parse_args()
+    
+    if args.command == "serve":
+        serve_api(host=args.host, port=args.port, reload=args.reload)
+    else:
+        # Default: CLI mode
+        cli_main()
 
 
 if __name__ == "__main__":

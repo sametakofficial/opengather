@@ -1,3 +1,23 @@
+# ============================================================
+# Archiverr Configuration
+# ============================================================
+
+# Aliases - Define shortcuts for template access
+# These can be used in task templates: {{ m.index }}, {{ g.status.matches }}
+aliases:
+  # Default shortcuts
+  e: "execution"           # {{ e.id }}, {{ e.success }}
+  m: "match"               # {{ m.index }}, {{ m.input_path }}
+  g: "globals"             # {{ g.status.matches }}, {{ g.summary }}
+  
+  # Plugin shortcuts (current match context)
+  movie: "renamer.parsed.movie"     # {{ movie.name }}, {{ movie.year }}
+  show: "renamer.parsed.show"       # {{ show.name }}, {{ show.season }}
+  
+  # API shortcuts
+  tmdb_movie: "tmdb.movie"          # {{ tmdb_movie.title }}
+  tmdb_show: "tmdb.show"            # {{ tmdb_show.name }}
+
 options:
   debug: true
   dry_run: true
@@ -8,13 +28,13 @@ plugins:
     timeout: 15
   file-reader:
     allow_virtual_paths: true
-    enabled: true
+    enabled: false
     targets:
     - /media/shows/Breaking Bad S01E01.mkv
   mock-test:
     enabled: false
   omdb:
-    api_key: 3aed01a3
+    api_key: ${OMDB_API_KEY}
     enabled: true
     include-raw: true
   renamer:
@@ -26,7 +46,7 @@ plugins:
     targets:
     - /home/samet/torrents/Mr. & Mrs. Smith (2005) BluRay 1080p DDP5.1 H.265 TSRG.mkv
   tmdb:
-    api_key: ac7d9e25e603a7167f183ed446b58e8f
+    api_key: ${TMDB_API_KEY}
     enabled: true
     extras:
       movie_credits: true
@@ -43,7 +63,7 @@ plugins:
     include-raw: true
     language: tr-TR
   tvdb:
-    api_key: ac27b346-7bec-4667-a4c9-51c82525c461
+    api_key: ${TVDB_API_KEY}
     enabled: true
     extras:
       episodes_extended: true
@@ -73,6 +93,20 @@ tasks:
 
     '
   type: print
+
+# NEW: Alias test task
+- name: alias_test
+  type: print
+  template: |
+    --- Alias Test ---
+    {{ m.index }}: {{ m.input_path | truncate(50) }}
+    {% if movie %}Movie: {{ movie.name }} ({{ movie.year }}){% endif %}
+    {% if show %}Show: {{ show.name }} S{{ '%02d' | format(show.season) }}E{{ '%02d' | format(show.episode) }}{% endif %}
+    {% if tmdb_movie %}TMDb: {{ tmdb_movie.title.primary }}{% endif %}
+    {% if tmdb_show %}TMDb Show: {{ tmdb_show.title.primary }}{% endif %}
+    Globals: {{ g.status.matches }} matches
+    --- End Alias ---
+
 - name: print_input
   template: '{% if match_globals and match_globals.input %}Input: {{ match_globals.input.path
     }}{% if match_globals.input.virtual %} (virtual){% endif %} [{{ match_globals.input.category|upper
