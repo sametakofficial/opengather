@@ -1,8 +1,18 @@
 """
-MongoDB Persistence
+MongoDB Persistence (DEPRECATED)
 
-Production-ready MongoDB persistence using Motor async driver.
-Implements PersistenceInterface with async operations wrapped for sync compatibility.
+.. deprecated:: 2.2.0
+    This module uses Motor with run_until_complete() which can cause event loop
+    issues. Use PyMongoPersistence instead, which uses pure synchronous PyMongo.
+
+    Migration:
+        # OLD (deprecated)
+        from archiverr.infrastructure.database import MongoDBPersistence
+        
+        # NEW (recommended)
+        from archiverr.infrastructure.database import PyMongoPersistence
+
+This module is kept for backward compatibility only.
 
 Requirements:
     pip install motor
@@ -17,11 +27,21 @@ Collections:
     - commits: Immutable snapshots linked to branches
 """
 
+import warnings
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import asyncio
 import atexit
 import logging
+
+# Emit deprecation warning on import
+warnings.warn(
+    "MongoDBPersistence is deprecated. Use PyMongoPersistence instead. "
+    "MongoDBPersistence uses Motor + run_until_complete() which can cause "
+    "event loop issues in async contexts.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 try:
     from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase

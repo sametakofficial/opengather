@@ -16,7 +16,7 @@ import os
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from archiverr.api.dependencies import get_persistence, get_db
+from archiverr.api.deps import get_persistence, get_database
 
 
 router = APIRouter()
@@ -156,7 +156,7 @@ async def get_diagnostics(
     limit: int = Query(default=100, le=1000, description="Max entries to return"),
     level: Optional[str] = Query(default=None, description="Filter by log level"),
     component: Optional[str] = Query(default=None, description="Filter by component"),
-    db = Depends(get_db)
+    db = Depends(get_database)
 ):
     """
     Get recent diagnostics logs.

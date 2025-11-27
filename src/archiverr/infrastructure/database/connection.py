@@ -104,16 +104,17 @@ class DatabaseConnection:
             self._persistence = MockPersistence(base_path=self.config.mock_path)
         
         elif self.config.backend == "mongodb":
+            # Use new PyMongoPersistence (pure sync, no event loop issues)
             try:
-                from .mongodb import MongoDBPersistence
-                self._persistence = MongoDBPersistence(
+                from .pymongo_persistence import PyMongoPersistence
+                self._persistence = PyMongoPersistence(
                     uri=self.config.mongodb_uri,
                     database=self.config.mongodb_database
                 )
             except ImportError as e:
                 raise ImportError(
-                    "MongoDB backend requires 'motor' package. "
-                    "Install with: pip install motor"
+                    "MongoDB backend requires 'pymongo' package. "
+                    "Install with: pip install pymongo"
                 ) from e
         
         else:

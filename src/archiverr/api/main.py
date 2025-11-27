@@ -28,7 +28,7 @@ except ImportError:
 
 from .v1.router import router as v1_router
 from .middleware import RateLimitMiddleware, RateLimiter
-from .database import mongodb_lifespan
+from archiverr.infrastructure.database import mongodb_lifespan
 
 logger = logging.getLogger(__name__)
 

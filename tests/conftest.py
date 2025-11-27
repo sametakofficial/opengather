@@ -81,6 +81,121 @@ def anyio_backend():
     return "asyncio"
 
 
+# ==================== PLUGIN-AGNOSTIC FIXTURES ====================
+
+@pytest.fixture
+def mock_input_plugin():
+    """
+    Generic input plugin for testing - NO REAL PLUGIN DEPENDENCY.
+    
+    Use this instead of referencing specific plugins like 'scanner'.
+    """
+    return {
+        "name": "mock_input",
+        "category": "input",
+        "version": "1.0.0",
+        "enabled": True,
+        "class_name": "MockInputPlugin",
+        "depends_on": [],
+        "expects": [],
+        "execute_result": {
+            "status": {"success": True, "duration_ms": 10},
+            "matches": ["/path/file1.mkv", "/path/file2.mkv"]
+        }
+    }
+
+
+@pytest.fixture
+def mock_output_plugin():
+    """
+    Generic output plugin for testing - NO REAL PLUGIN DEPENDENCY.
+    
+    Use this instead of referencing specific plugins like 'renamer', 'tmdb'.
+    """
+    return {
+        "name": "mock_output",
+        "category": "output",
+        "version": "1.0.0",
+        "enabled": True,
+        "class_name": "MockOutputPlugin",
+        "depends_on": ["mock_input"],
+        "expects": ["mock_input.matches"],
+        "execute_result": {
+            "status": {"success": True, "duration_ms": 50},
+            "processed": True,
+            "data": {"title": "Test Title", "year": 2025}
+        }
+    }
+
+
+@pytest.fixture
+def mock_plugin_config(mock_input_plugin, mock_output_plugin):
+    """
+    Config with mock plugins only - NO REAL PLUGINS.
+    
+    Use this for unit tests that should not depend on real plugins.
+    """
+    return {
+        "options": {"debug": False, "dry_run": True},
+        "plugins": {
+            mock_input_plugin["name"]: {"enabled": True},
+            mock_output_plugin["name"]: {"enabled": True},
+        },
+        "tasks": []
+    }
+
+
+@pytest.fixture
+def mock_plugin_metadata():
+    """
+    Mock plugin.json metadata for testing discovery/loading.
+    """
+    return {
+        "input": {
+            "name": "mock_input",
+            "version": "1.0.0",
+            "category": "input",
+            "class_name": "MockInputPlugin",
+            "depends_on": [],
+            "expects": []
+        },
+        "output": {
+            "name": "mock_output",
+            "version": "1.0.0",
+            "category": "output",
+            "class_name": "MockOutputPlugin",
+            "depends_on": ["mock_input"],
+            "expects": ["mock_input.matches"]
+        }
+    }
+
+
+@pytest.fixture
+def mock_match_data():
+    """
+    Mock match data structure - plugin-agnostic.
+    
+    Contains generic plugin output format without specific plugin names.
+    """
+    return {
+        "index": 0,
+        "input_path": "/path/to/test_file.mkv",
+        "status": "completed",
+        "success": True,
+        "plugins": {
+            "mock_input": {
+                "status": {"success": True},
+                "input": "/path/to/test_file.mkv",
+                "category": "movie"
+            },
+            "mock_output": {
+                "status": {"success": True},
+                "data": {"title": "Test Movie", "year": 2025}
+            }
+        }
+    }
+
+
 # ==================== MOCK FIXTURES ====================
 
 @pytest.fixture

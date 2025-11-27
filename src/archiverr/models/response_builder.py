@@ -185,14 +185,19 @@ class APIResponseBuilder:
         - total_size_bytes
         - total_duration_seconds
         """
-        # Detect input plugin
+        # Detect input/output plugins by category from loaded_plugins
+        # Plugin-agnostic: use category from manifest, not hardcoded names
         input_plugin_used = None
         output_plugins_used = set()
         
         for match in processed_matches:
             plugins = match.get('plugins', {})
             for plugin_name in plugins.keys():
-                if plugin_name in ['scanner', 'file-reader']:
+                # Get category from loaded_plugins manifest
+                manifest = self.loaded_plugins.get(plugin_name, {})
+                category = manifest.get('category', 'output')  # default to output
+                
+                if category == 'input':
                     input_plugin_used = plugin_name
                 else:
                     output_plugins_used.add(plugin_name)

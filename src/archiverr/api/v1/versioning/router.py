@@ -12,8 +12,10 @@ Endpoints:
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+
+from archiverr.api.deps import get_database
 
 
 router = APIRouter()
@@ -32,14 +34,6 @@ class BranchResponse(BaseModel):
     created_at: str
 
 
-def _get_db(request: Request):
-    """Get database from app state."""
-    db = request.app.state.db
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-    return db
-
-
 def _to_iso_string(val) -> str:
     """Convert datetime or any value to ISO string."""
     if val is None:
@@ -50,11 +44,10 @@ def _to_iso_string(val) -> str:
 
 
 @router.get("/branches")
-async def list_branches(request: Request):
+async def list_branches(db = Depends(get_database)):
     """
     List all branches.
     """
-    db = _get_db(request)
     
     try:
         cursor = db["branches"].find()
@@ -81,11 +74,10 @@ async def list_branches(request: Request):
 
 
 @router.post("/branches")
-async def create_branch(request: Request, branch: BranchCreate):
+async def create_branch(branch: BranchCreate, db = Depends(get_database)):
     """
     Create a new branch.
     """
-    db = _get_db(request)
     
     # Validate name
     if not branch.name or not branch.name.strip():
@@ -129,11 +121,10 @@ async def create_branch(request: Request, branch: BranchCreate):
 
 
 @router.get("/branches/{branch_name}")
-async def get_branch(request: Request, branch_name: str):
+async def get_branch(branch_name: str, db = Depends(get_database)):
     """
     Get branch details.
     """
-    db = _get_db(request)
     
     try:
         doc = await db["branches"].find_one({"name": branch_name})

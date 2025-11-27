@@ -1,7 +1,7 @@
 """
 Matches Router - Match Data Access
 
-Industry Best Practice: Async endpoints with Motor via app.state.
+Industry Best Practice: Async endpoints with Motor via Depends().
 
 Endpoints:
 - GET / - List all matches
@@ -11,23 +11,17 @@ Endpoints:
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Depends
+
+from archiverr.api.deps import get_database
 
 
 router = APIRouter()
 
 
-def _get_db(request: Request):
-    """Get database from app state."""
-    db = request.app.state.db
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-    return db
-
-
 @router.get("/")
 async def list_matches(
-    request: Request,
+    db = Depends(get_database),
     execution_id: Optional[str] = Query(default=None, description="Filter by execution"),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0)
@@ -35,7 +29,6 @@ async def list_matches(
     """
     List matches, optionally filtered by execution.
     """
-    db = _get_db(request)
     
     try:
         query = {}
@@ -60,11 +53,10 @@ async def list_matches(
 
 
 @router.get("/{match_id}")
-async def get_match(request: Request, match_id: str):
+async def get_match(match_id: str, db = Depends(get_database)):
     """
     Get match details by ID.
     """
-    db = _get_db(request)
     
     try:
         doc = await db["matches"].find_one({"_id": match_id})
@@ -80,11 +72,10 @@ async def get_match(request: Request, match_id: str):
 
 
 @router.get("/{match_id}/plugins")
-async def get_match_plugins(request: Request, match_id: str):
+async def get_match_plugins(match_id: str, db = Depends(get_database)):
     """
     Get plugin results for a match.
     """
-    db = _get_db(request)
     
     try:
         # Get match first
