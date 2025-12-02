@@ -187,5 +187,5 @@ def run_archiverr_process(
         if temp_config_path:
             try:
                 os.unlink(temp_config_path)
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors

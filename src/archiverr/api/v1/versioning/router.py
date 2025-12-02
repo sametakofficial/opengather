@@ -12,10 +12,10 @@ Endpoints:
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from archiverr.api.deps import get_database
+from archiverr.api.deps import DatabaseDep
 
 
 router = APIRouter()
@@ -44,7 +44,7 @@ def _to_iso_string(val) -> str:
 
 
 @router.get("/branches")
-async def list_branches(db = Depends(get_database)):
+async def list_branches(db: DatabaseDep):
     """
     List all branches.
     """
@@ -74,7 +74,7 @@ async def list_branches(db = Depends(get_database)):
 
 
 @router.post("/branches")
-async def create_branch(branch: BranchCreate, db = Depends(get_database)):
+async def create_branch(branch: BranchCreate, db: DatabaseDep):
     """
     Create a new branch.
     """
@@ -121,7 +121,7 @@ async def create_branch(branch: BranchCreate, db = Depends(get_database)):
 
 
 @router.get("/branches/{branch_name}")
-async def get_branch(branch_name: str, db = Depends(get_database)):
+async def get_branch(branch_name: str, db: DatabaseDep):
     """
     Get branch details.
     """

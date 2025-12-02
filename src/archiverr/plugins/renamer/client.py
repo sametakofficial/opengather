@@ -4,18 +4,16 @@ from datetime import datetime
 from pathlib import Path
 import re
 from .parser import sanitize_string, parse_show_name, parse_movie_name
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import OutputPlugin
 
 
-class RenamerPlugin:
+class RenamerPlugin(OutputPlugin):
     """Output plugin that parses filenames to extract show/movie metadata"""
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.name = "renamer"
-        self.category = "output"
         self.media_type = config.get('media_type', 'auto')
-        self.debugger = get_debugger()
     
     def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -38,7 +36,7 @@ class RenamerPlugin:
         
         filename = Path(input_path).stem
         
-        self.debugger.debug("renamer", "Parsing filename", filename=filename, mode=self.media_type)
+        self.debug("Parsing filename", filename=filename, mode=self.media_type)
         
         # Parse based on media_type config
         show_match = None
@@ -63,13 +61,13 @@ class RenamerPlugin:
         category = 'unknown'
         if movie_match and movie_match.get('name'):
             category = 'movie'
-            self.debugger.info("renamer", "Detected movie", name=movie_match['name'], year=movie_match.get('year'))
+            self.info("Detected movie", name=movie_match['name'], year=movie_match.get('year'))
         elif show_match and show_match.get('name'):
             category = 'show'
-            self.debugger.info("renamer", "Detected show", name=show_match['name'], 
+            self.info("Detected show", name=show_match['name'], 
                              season=show_match.get('season'), episode=show_match.get('episode'))
         else:
-            self.debugger.warn("renamer", "Could not detect category", filename=filename)
+            self.warn("Could not detect category", filename=filename)
         
         # Calculate duration
         end_time = datetime.now()

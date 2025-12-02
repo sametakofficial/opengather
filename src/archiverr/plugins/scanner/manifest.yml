@@ -1,0 +1,33 @@
+# Scanner Plugin - File discovery input plugin
+# Clean manifest with validation rules
+
+name: scanner
+version: 1.0.0
+description: Scans directories and files for media content
+category: input
+class_name: ScannerPlugin
+
+# Input plugins have no dependencies
+depends_on: []
+expects: []
+
+# Supports all media types (empty = all)
+categories: []
+
+# Configuration schema with validation rules
+config_schema:
+  targets:
+    type: list
+    required: true
+    min_length: 1
+    description: List of files or directories to scan
+  
+  recursive:
+    type: boolean
+    default: false
+    description: Scan directories recursively
+  
+  allow_virtual_paths:
+    type: boolean
+    default: false
+    description: Allow non-existent paths (for testing)

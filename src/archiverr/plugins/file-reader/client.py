@@ -2,17 +2,15 @@
 from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import InputPlugin
 
 
-class FileReaderPlugin:
+class FileReaderPlugin(InputPlugin):
     """Input plugin that reads file paths from a text file"""
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.name = "file_reader"
-        self.category = "input"
-        self.debugger = get_debugger()
     
     def execute(self) -> List[Dict[str, Any]]:
         """
@@ -23,7 +21,7 @@ class FileReaderPlugin:
         targets = self.config.get('targets', [])
         allow_virtual = self.config.get('allow_virtual_paths', False)
         
-        self.debugger.debug("file_reader", "Reading targets", targets=len(targets), allow_virtual=allow_virtual)
+        self.debug("Reading targets", targets=len(targets), allow_virtual=allow_virtual)
         
         results = []
         for target in targets:
@@ -34,7 +32,7 @@ class FileReaderPlugin:
                 if not target_path.exists():
                     continue
                 
-                self.debugger.debug("file_reader", "Reading file", path=str(target_path))
+                self.debug("Reading file", path=str(target_path))
                 
                 with open(target_path, 'r', encoding='utf-8') as f:
                     for line in f:
@@ -71,7 +69,7 @@ class FileReaderPlugin:
                 if not allow_virtual and is_virtual:
                     continue
                 
-                self.debugger.debug("file_reader", "Direct path", path=target, virtual=is_virtual)
+                self.debug("Direct path", path=target, virtual=is_virtual)
                 
                 item_start = datetime.now()
                 item_end = datetime.now()
@@ -88,5 +86,5 @@ class FileReaderPlugin:
                     }
                 })
         
-        self.debugger.info("file_reader", "Reading complete", found=len(results))
+        self.info("Reading complete", found=len(results))
         return results

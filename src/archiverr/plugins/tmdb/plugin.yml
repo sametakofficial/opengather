@@ -17,6 +17,53 @@ categories:
   - movie
   - show
 
+# NEW: Capability system (what this plugin can do)
+capabilities:
+  - metadata.movie
+  - metadata.show
+  - metadata.episode
+  - validation.duration
+
+# NEW: Data fields this plugin produces
+provides:
+  - movie
+  - show
+  - episode
+  - season
+  - extras
+  - normalized
+  - validation
+
+# NEW: Events this plugin emits
+hooks:
+  - metadata.found
+  - movie.matched
+  - show.matched
+
+# NEW: Configuration schema
+config_schema:
+  api_key:
+    type: string
+    required: true
+    secret: true
+    description: TMDb API key (v3)
+  language:
+    type: string
+    default: en-US
+    pattern: "^[a-z]{2}-[A-Z]{2}$"
+  region:
+    type: string
+    default: TR
+  extras:
+    type: object
+    properties:
+      movie_credits:
+        type: boolean
+        default: false
+      movie_images:
+        type: boolean
+        default: false
+
 # Plugin-specific aliases
 aliases:
   movie: "{{ self.movie }}"

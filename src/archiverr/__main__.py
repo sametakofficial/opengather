@@ -106,10 +106,8 @@ def cli_main():
     
     debugger.info("system", "Archiverr starting", debug=debug, dry_run=dry_run)
     
-    # NEW: Initialize event bus for loose coupling
-    event_bus = EventBus()
-    event_bus.reset()  # Clean for new execution
-    event_bus.configure(debugger=debugger)
+    # Initialize event bus for loose coupling (DI pattern)
+    event_bus = EventBus(debugger=debugger)
     
     # Register event handlers
     progress_handler = ProgressHandler()
@@ -166,6 +164,16 @@ def cli_main():
     # Phase 4: Execute input plugins
     debugger.debug("system", "Executing input plugins")
     executor = PluginExecutor()
+    
+    # Configure executor with runtime dependencies (for ExecutionContext)
+    executor.configure(
+        event_bus=event_bus,
+        execution_id=execution_id,
+        config=config,
+        dry_run=dry_run,
+        debug=debug
+    )
+    
     input_matches = executor.execute_input_plugins(input_plugins)
     
     if not input_matches:
@@ -186,6 +194,9 @@ def cli_main():
     task_manager = TaskManager(config, template_manager)
     builder = APIResponseBuilder()
     
+    # Inject task_manager into executor for per-plugin task emission
+    executor.task_manager = task_manager
+    
     debugger.debug("system", "Starting per-match processing")
     for index, match in enumerate(input_matches):
         debugger.info("executor", f"Processing match {index + 1}/{len(input_matches)}")
@@ -194,12 +205,18 @@ def cli_main():
         input_path = match.get('input', {}).get('path', '') if isinstance(match.get('input'), dict) else str(match.get('input', ''))
         state_match = state.register_match(index, input_path)
         
+        # Build partial API response for ExecutionContext (for per-plugin task emission)
+        temp_api_response = state.build_api_response_for_templates()
+        
         # Execute output plugins with expectations checking
         result = executor.execute_output_pipeline(
             output_plugins,
             execution_groups,
             match,
-            resolver  # Pass resolver for expectations validation
+            resolver,  # Pass resolver for expectations validation
+            match_index=index,
+            total_matches=len(input_matches),
+            api_response=temp_api_response
         )
         
         processed_matches.append(result)

@@ -4,18 +4,16 @@ import json
 from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import OutputPlugin
 from .utils.parsers import parse_fps, parse_duration, parse_bitrate, parse_int_safe
 
 
-class FFProbePlugin:
+class FFProbePlugin(OutputPlugin):
     """Output plugin that extracts media metadata using ffprobe"""
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.name = "ffprobe"
-        self.category = "output"
-        self.debugger = get_debugger()
     
     def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -36,7 +34,7 @@ class FFProbePlugin:
         
         # Skip virtual paths - ffprobe cannot analyze non-existent files
         if is_virtual:
-            self.debugger.debug("ffprobe", "Skipping virtual path", path=input_path)
+            self.debug("Skipping virtual path", path=input_path)
             return self._not_supported_result()
         
         if not input_path or not Path(input_path).exists():
@@ -60,7 +58,7 @@ class FFProbePlugin:
             
             data = json.loads(result.stdout)
             
-            self.debugger.debug("ffprobe", "Analysis complete", streams=len(data.get('streams', [])))
+            self.debug("Analysis complete", streams=len(data.get('streams', [])))
             
             # Parse streams
             video_stream = None
@@ -115,11 +113,11 @@ class FFProbePlugin:
             
             # Log extracted info
             if video:
-                self.debugger.info("ffprobe", "Video stream found", 
-                                 codec=video.get('codec'), 
-                                 resolution=f"{video.get('width')}x{video.get('height')}")
-            self.debugger.debug("ffprobe", "Audio streams", count=len(audio))
-            self.debugger.debug("ffprobe", "Container format", format=container.get('format'))
+                self.info("Video stream found", 
+                         codec=video.get('codec'), 
+                         resolution=f"{video.get('width')}x{video.get('height')}")
+            self.debug("Audio streams", count=len(audio))
+            self.debug("Container format", format=container.get('format'))
             
             end_time = datetime.now()
             return {

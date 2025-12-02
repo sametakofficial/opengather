@@ -2,10 +2,15 @@
 import asyncio
 import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import ExecutionContext, PluginResult
+
+if TYPE_CHECKING:
+    from archiverr.events import EventBus
+    from archiverr.core.tasks import TaskManager
 
 
 class PluginExecutor:
@@ -14,12 +19,50 @@ class PluginExecutor:
     def __init__(self, max_workers: int = 4):
         self.max_workers = max_workers
         self.debugger = get_debugger()
+        
+        # Injected dependencies for ExecutionContext (optional)
+        self.event_bus: Optional['EventBus'] = None
+        self.task_manager: Optional['TaskManager'] = None
+        self.execution_id: str = ""
+        self.config: Dict[str, Any] = {}
+        self.dry_run: bool = True
+        self.debug: bool = False
+    
+    def configure(
+        self,
+        event_bus: Optional['EventBus'] = None,
+        task_manager: Optional['TaskManager'] = None,
+        execution_id: str = "",
+        config: Dict[str, Any] = None,
+        dry_run: bool = True,
+        debug: bool = False
+    ):
+        """
+        Configure executor with runtime dependencies.
+        
+        Args:
+            event_bus: EventBus for plugin events
+            task_manager: TaskManager for per-plugin task emission
+            execution_id: Current execution ID
+            config: Config dict
+            dry_run: Dry run mode
+            debug: Debug mode
+        """
+        self.event_bus = event_bus
+        self.task_manager = task_manager
+        self.execution_id = execution_id
+        self.config = config or {}
+        self.dry_run = dry_run
+        self.debug = debug
     
     async def execute_group_async(
         self,
         plugins: Dict[str, Any],
         group: List[str],
-        match_data: Dict[str, Any]
+        match_data: Dict[str, Any],
+        match_index: int = 0,
+        total_matches: int = 1,
+        api_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Dict[str, Any]]:
         """
         Execute a group of plugins in parallel (no dependencies between them).
@@ -28,6 +71,9 @@ class PluginExecutor:
             plugins: Dict of loaded plugin instances
             group: List of plugin names to execute
             match_data: Current match data
+            match_index: Current match index
+            total_matches: Total number of matches
+            api_response: Current API response for task emission
             
         Returns:
             Dict of plugin results {plugin_name: result}
@@ -42,13 +88,34 @@ class PluginExecutor:
                 self.debugger.debug("executor", f"Executing plugin", plugin=plugin_name)
                 started_at = time.time()
                 
+                # Create and set ExecutionContext for plugin (if supported)
+                if hasattr(plugin, 'set_context'):
+                    context = ExecutionContext(
+                        execution_id=self.execution_id,
+                        match_index=match_index,
+                        total_matches=total_matches,
+                        config=self.config,
+                        dry_run=self.dry_run,
+                        debug=self.debug,
+                        debugger=self.debugger,
+                        event_bus=self.event_bus,
+                        task_manager=self.task_manager,
+                        api_response=api_response,
+                        previous_results=match_data
+                    )
+                    plugin.set_context(context)
+                
                 # Execute plugin
                 result = await asyncio.to_thread(plugin.execute, match_data)
                 
                 finished_at = time.time()
                 duration_ms = int((finished_at - started_at) * 1000)
                 
-                # Add status
+                # Handle PluginResult objects (new standardized format)
+                if isinstance(result, PluginResult):
+                    result = result.to_response_dict()
+                
+                # Add status if missing (backwards compat for dict results)
                 if not isinstance(result, dict):
                     result = {}
                 
@@ -143,7 +210,10 @@ class PluginExecutor:
         plugins: Dict[str, Any],
         execution_groups: List[List[str]],
         match_data: Dict[str, Any],
-        resolver: Any = None
+        resolver: Any = None,
+        match_index: int = 0,
+        total_matches: int = 1,
+        api_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Execute output plugins with dynamic execution based on expectations.
@@ -153,6 +223,9 @@ class PluginExecutor:
             execution_groups: List of groups (from DependencyResolver)
             match_data: Initial match data from input plugins
             resolver: DependencyResolver instance for checking expectations
+            match_index: Current match index (for ExecutionContext)
+            total_matches: Total number of matches (for ExecutionContext)
+            api_response: Current API response (for task emission in plugins)
             
         Returns:
             Complete match data with all plugin results
@@ -181,7 +254,12 @@ class PluginExecutor:
             if not group:
                 continue
             
-            group_results = await self.execute_group_async(plugins, group, result)
+            group_results = await self.execute_group_async(
+                plugins, group, result,
+                match_index=match_index,
+                total_matches=total_matches,
+                api_response=api_response
+            )
             
             for plugin_name, plugin_result in group_results.items():
                 result[plugin_name] = plugin_result
@@ -228,21 +306,30 @@ class PluginExecutor:
         plugins: Dict[str, Any],
         execution_groups: List[List[str]],
         match_data: Dict[str, Any],
-        resolver: Any = None
+        resolver: Any = None,
+        match_index: int = 0,
+        total_matches: int = 1,
+        api_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Sync wrapper for execute_output_pipeline_async"""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             # No running loop - use asyncio.run()
-            return asyncio.run(self.execute_output_pipeline_async(plugins, execution_groups, match_data, resolver))
+            return asyncio.run(self.execute_output_pipeline_async(
+                plugins, execution_groups, match_data, resolver,
+                match_index, total_matches, api_response
+            ))
         
         # Running in async context - run in thread pool
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 asyncio.run, 
-                self.execute_output_pipeline_async(plugins, execution_groups, match_data, resolver)
+                self.execute_output_pipeline_async(
+                    plugins, execution_groups, match_data, resolver,
+                    match_index, total_matches, api_response
+                )
             )
             return future.result()
     
@@ -277,6 +364,40 @@ class PluginExecutor:
                         available.add(f"{key}.{subkey}")
         
         return available
+    
+    async def setup_plugins(self, plugins: Dict[str, Any]) -> None:
+        """
+        Call setup() on all plugins that support it.
+        
+        Should be called after plugins are loaded and before execution.
+        
+        Args:
+            plugins: Dict of loaded plugin instances
+        """
+        for name, plugin in plugins.items():
+            if hasattr(plugin, 'setup'):
+                try:
+                    self.debugger.debug("executor", f"Setting up plugin", plugin=name)
+                    await plugin.setup()
+                except Exception as e:
+                    self.debugger.error("executor", f"Plugin setup failed", plugin=name, error=str(e))
+    
+    async def teardown_plugins(self, plugins: Dict[str, Any]) -> None:
+        """
+        Call teardown() on all plugins that support it.
+        
+        Should be called after execution is complete.
+        
+        Args:
+            plugins: Dict of loaded plugin instances
+        """
+        for name, plugin in plugins.items():
+            if hasattr(plugin, 'teardown'):
+                try:
+                    self.debugger.debug("executor", f"Tearing down plugin", plugin=name)
+                    await plugin.teardown()
+                except Exception as e:
+                    self.debugger.error("executor", f"Plugin teardown failed", plugin=name, error=str(e))
     
     def _error_result(self) -> Dict[str, Any]:
         """Create error result structure"""

@@ -2,7 +2,12 @@
 Database Dependencies
 
 Provides database connection dependencies for FastAPI.
-Supports both async (Motor) and sync (PyMongo) connections.
+Supports both async (PyMongo AsyncMongoClient) and sync (PyMongo MongoClient) connections.
+
+MIGRATION NOTICE (2025-11):
+    Motor was deprecated in May 2025 and replaced with PyMongo's native AsyncMongoClient.
+    This module now uses PyMongo 4.10+ for all async operations.
+    Performance improvement: 20-140% faster than Motor.
 
 Usage:
     from archiverr.api.deps import get_async_db, get_sync_db
@@ -22,28 +27,31 @@ logger = logging.getLogger(__name__)
 # Connection state
 _pymongo_client = None
 _pymongo_db = None
-_motor_client = None
-_motor_db = None
+_async_client = None
+_async_db = None
 
 
 # ============================================================================
-# ASYNC DATABASE (Motor)
+# ASYNC DATABASE (PyMongo AsyncMongoClient)
 # ============================================================================
 
 async def get_async_db():
     """
-    Get async MongoDB connection using Motor.
+    Get async MongoDB connection using PyMongo's AsyncMongoClient.
     
     Creates connection on first call, reuses afterwards.
     Best for async endpoints.
     
-    Returns:
-        AsyncIOMotorDatabase or None if connection fails
-    """
-    global _motor_client, _motor_db
+    Note: Replaces Motor (deprecated May 2025) with PyMongo Async.
+    Performance: 20-140% faster than Motor.
     
-    if _motor_db is not None:
-        return _motor_db
+    Returns:
+        AsyncDatabase or None if connection fails
+    """
+    global _async_client, _async_db
+    
+    if _async_db is not None:
+        return _async_db
     
     backend = os.getenv("ARCHIVERR_DB_BACKEND", "mongodb")
     
@@ -51,28 +59,28 @@ async def get_async_db():
         return None
     
     try:
-        from motor.motor_asyncio import AsyncIOMotorClient
+        from pymongo import AsyncMongoClient
         
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
         
-        _motor_client = AsyncIOMotorClient(
+        _async_client = AsyncMongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=5000,
             maxPoolSize=50,
             minPoolSize=5,
         )
-        _motor_db = _motor_client[database]
+        _async_db = _async_client[database]
         
         # Verify connection
-        await _motor_db.command('ping')
-        logger.info(f"Motor async connection established: {database}")
+        await _async_db.command('ping')
+        logger.info(f"PyMongo async connection established: {database}")
         
-        return _motor_db
+        return _async_db
         
     except Exception as e:
-        logger.error(f"Motor connection failed: {e}")
+        logger.error(f"PyMongo async connection failed: {e}")
         return None
 
 
@@ -155,25 +163,25 @@ def get_sync_db():
 
 async def close_connections():
     """Close all database connections."""
-    global _motor_client, _motor_db, _pymongo_client, _pymongo_db
+    global _async_client, _async_db, _pymongo_client, _pymongo_db
     
-    if _motor_client is not None:
-        _motor_client.close()
-        _motor_client = None
-        _motor_db = None
-        logger.info("Motor connection closed")
+    if _async_client is not None:
+        _async_client.close()
+        _async_client = None
+        _async_db = None
+        logger.info("PyMongo async connection closed")
     
     if _pymongo_client is not None:
         _pymongo_client.close()
         _pymongo_client = None
         _pymongo_db = None
-        logger.info("PyMongo connection closed")
+        logger.info("PyMongo sync connection closed")
 
 
 def reset_connections():
     """Reset connection state (for testing)."""
-    global _motor_client, _motor_db, _pymongo_client, _pymongo_db
-    _motor_client = None
-    _motor_db = None
+    global _async_client, _async_db, _pymongo_client, _pymongo_db
+    _async_client = None
+    _async_db = None
     _pymongo_client = None
     _pymongo_db = None

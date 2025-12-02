@@ -35,7 +35,7 @@ plugins:
     enabled: false
   omdb:
     api_key: ${OMDB_API_KEY}
-    enabled: true
+    enabled: false
     include-raw: true
   renamer:
     enabled: true
@@ -64,7 +64,7 @@ plugins:
     language: tr-TR
   tvdb:
     api_key: ${TVDB_API_KEY}
-    enabled: true
+    enabled: false
     extras:
       episodes_extended: true
       movies_extended: true
@@ -74,7 +74,7 @@ plugins:
       tags_options: true
     include-raw: true
   tvmaze:
-    enabled: true
+    enabled: false
     extras:
       episodes_guestcast: true
       episodes_guestcrew: true

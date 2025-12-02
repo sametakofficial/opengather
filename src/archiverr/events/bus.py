@@ -110,39 +110,35 @@ class EventBus:
     - Currently synchronous for compatibility with existing code
     - Can be converted to async by changing emit() to async
     - Handlers are called in order of subscription
+    - Uses dependency injection (no singleton pattern)
     """
     
-    # Singleton instance
-    _instance: Optional['EventBus'] = None
-    
-    def __new__(cls):
-        """Singleton pattern - one event bus per application"""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-    
-    def __init__(self):
-        if self._initialized:
-            return
+    def __init__(self, debugger=None, max_history: int = 1000):
+        """
+        Initialize event bus with dependencies.
         
-        self._initialized = True
+        Args:
+            debugger: Debug logger instance for event logging
+            max_history: Maximum events to keep in history (default: 1000)
+        """
         self._handlers: Dict[str, List[EventHandler]] = {}
         self._history: List[Event] = []
-        self._max_history: int = 1000
+        self._max_history = max_history
         self._lock = Lock()
-        self._debugger = None
+        self._debugger = debugger
     
-    def configure(self, debugger=None, max_history: int = 1000):
+    def configure(self, debugger=None, max_history: int = None):
         """
-        Configure event bus.
+        Reconfigure event bus (backward compatibility).
         
         Args:
             debugger: Debug logger instance
             max_history: Maximum events to keep in history
         """
-        self._debugger = debugger
-        self._max_history = max_history
+        if debugger is not None:
+            self._debugger = debugger
+        if max_history is not None:
+            self._max_history = max_history
     
     def reset(self):
         """Reset event bus state (for testing)"""
@@ -287,9 +283,3 @@ class EventBus:
             if event_name:
                 return {event_name: len(self._handlers.get(event_name, []))}
             return {name: len(handlers) for name, handlers in self._handlers.items()}
-
-
-# Global event bus instance
-def get_event_bus() -> EventBus:
-    """Get the global event bus instance"""
-    return EventBus()

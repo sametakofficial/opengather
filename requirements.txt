@@ -40,13 +40,23 @@ python-dotenv>=1.0.0,<2.0.0
 # DATABASE DEPENDENCIES
 # ----------------------------------------------------------------------------
 
-# MongoDB async driver (Motor) for production persistence
-# Install only if using MongoDB backend
-motor>=3.3.0,<4.0.0
+# PyMongo MongoDB driver (sync + async support)
+# PyMongo 4.10+ includes AsyncMongoClient which replaces Motor
+# Motor was deprecated in May 2025, support ends May 2027
+pymongo>=4.10.0,<5.0.0
+
+# DEPRECATED: Motor async driver
+# Motor was deprecated by MongoDB in May 2025
+# Use PyMongo's AsyncMongoClient instead (20-140% faster)
+# motor>=3.3.0,<4.0.0  # DEPRECATED - do not use
 
 # ----------------------------------------------------------------------------
 # FUTURE FEATURES (Planned but not yet implemented)
 # ----------------------------------------------------------------------------
+
+# Task queue for async background execution (replaces subprocess)
+taskiq>=0.11.0,<1.0.0
+taskiq-mongodb>=1.0.0,<2.0.0
 
 # Database ORM (planned: relational DB support)
 sqlalchemy>=2.0.0,<3.0.0

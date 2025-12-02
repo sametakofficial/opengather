@@ -2,17 +2,15 @@
 from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import InputPlugin
 
 
-class ScannerPlugin:
+class ScannerPlugin(InputPlugin):
     """Input plugin that discovers media files from configured targets"""
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.name = "scanner"
-        self.category = "input"
-        self.debugger = get_debugger()
     
     def execute(self, match_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
@@ -23,7 +21,7 @@ class ScannerPlugin:
         recursive = self.config.get('recursive', True)
         allow_virtual = self.config.get('allow_virtual_paths', False)
         
-        self.debugger.debug("scanner", "Starting scan", targets=len(targets), recursive=recursive)
+        self.debug("Starting scan", targets=len(targets), recursive=recursive)
         
         results = []
         
@@ -73,7 +71,7 @@ class ScannerPlugin:
             
             # Virtual path support
             elif allow_virtual and not target_path.exists():
-                self.debugger.debug("scanner", "Virtual path detected", path=target)
+                self.debug("Virtual path detected", path=target)
                 start_time = datetime.now()
                 end_time = datetime.now()
                 results.append({
@@ -89,5 +87,5 @@ class ScannerPlugin:
                     }
                 })
         
-        self.debugger.info("scanner", "Scan complete", found=len(results))
+        self.info("Scan complete", found=len(results))
         return results

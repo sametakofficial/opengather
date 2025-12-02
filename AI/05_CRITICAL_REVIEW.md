@@ -1,402 +1,309 @@
-# 🚨 KRİTİK İNCELEME RAPORU - ŞEYTANIN AVUKATLIĞI
+# CRITICAL REVIEW
 
-> **Tarih**: 2025-11-27  
-> **Amaç**: Mevcut mimari kararlarının eleştirel analizi  
-> **Kaynak**: MongoDB resmi dokümantasyonu, FastAPI best practices, endüstri araştırması
+```yaml
+session: 10
+last_update: 2025-11-28
+reviewer: AI Strategy Agent
+```
 
 ---
 
-## ⚠️ EN KRİTİK SORUN: MOTOR DEPRECATED!
+## SESSION 7-8-9 COMPREHENSIVE REVIEW
 
-### MongoDB Resmi Duyurusu
+### Session 7 Analysis (~50% Complete)
 
-```
-🔴 MOTOR DEPRECATED TIMELINE:
-- Mayıs 2025: Motor deprecated ilan edildi
-- Mayıs 2026: Aktif geliştirme sonu, sadece bug fix
-- Mayıs 2027: TAM DESTEK SONU
-```
+| Claim | Reality | Evidence |
+|-------|---------|----------|
+| "EventBus DI Refactor" | ⚠️ Partial | Singleton removed but not fully tested |
+| "SDK Structure Created" | ✅ Done | `plugins/sdk/` files exist |
+| "Workers Skeleton" | ✅ Done | `core/workers/` exists but unused |
 
-**Kaynak**: https://github.com/mongodb/motor, https://www.mongodb.com/docs/languages/python/pymongo-driver/current/reference/migration/
+### Session 8 Analysis (~60% Complete)
 
-### Mevcut Mimari (SORUNLU)
+| Claim | Reality | Evidence |
+|-------|---------|----------|
+| "SDK moved to core/plugin_sdk/" | ❌ WRONG | Actually at `core/plugins/sdk/` |
+| "Pydantic validation" | ✅ Done | discovery.py uses PluginManifest |
+| "Plugins migrated" | ⚠️ Partial | Only imports changed, not actual usage |
+| "ExecutionContext wired" | ⚠️ Partial | Passed to plugins but often ignored |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  MEVCUT MİMARİ (AI/README.md'de açıklanan)                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  API (FastAPI)           CLI                                │
-│  ┌─────────────┐        ┌─────────────┐                    │
-│  │   Motor     │        │   PyMongo   │                    │
-│  │  (ASYNC)    │        │   (SYNC)    │                    │
-│  │             │        │             │                    │
-│  │ ⚠️ DEPRECATED│        │ ✅ OK       │                    │
-│  │ 2027'de     │        │             │                    │
-│  │ destek biter│        │             │                    │
-│  └──────┬──────┘        └──────┬──────┘                    │
-│         │                      │                            │
-│         └──────────┬───────────┘                            │
-│                    ▼                                        │
-│  ┌───────────────────────────────────────────────┐         │
-│  │              MongoDB                           │         │
-│  └───────────────────────────────────────────────┘         │
-│                                                             │
-│  ❌ SORUN: İki farklı driver = İki farklı davranış riski   │
-│  ❌ SORUN: Motor 2027'de destek dışı kalacak               │
-│  ❌ SORUN: Maintenance burden - iki driver bilmek gerekiyor │
-└─────────────────────────────────────────────────────────────┘
-```
+### Session 9 Analysis (~70% Complete)
 
-### MongoDB'nin Resmi Önerisi: PyMongo Async API
+| Claim | Reality | Evidence |
+|-------|---------|----------|
+| "Context-based logging" | ✅ Done | Active plugins use self.debug(), self.info() |
+| "TMDb returns PluginResult" | ❌ FALSE | Still returns Dict[str, Any] |
+| "emit_task() works" | ❌ Not used | Zero plugins call it |
+| "Lifecycle hooks" | ✅ Done | setup/teardown exist, TMDb uses setup() |
+| "PLUGIN_SDK.md" | ✅ Done | 334 lines of documentation |
+| "SDK unit tests" | ❌ Not done | No tests written |
+
+### Code Evidence - What Changed (Session 9)
 
 ```python
-# ❌ ESKİ - Motor (DEPRECATED)
-from motor.motor_asyncio import AsyncIOMotorClient
-client = AsyncIOMotorClient("mongodb://localhost:27017")
+# ACTIVE PLUGINS NOW USE CONTEXT (CORRECT):
+# scanner/client.py
+self.debug("Starting scan", targets=len(targets))  # ✅ Uses context
 
-# ✅ YENİ - PyMongo Async API
-from pymongo import AsyncMongoClient
-client = AsyncMongoClient("mongodb://localhost:27017")
+# tmdb/client.py
+self.info("TMDb plugin initialized", api_key_set=bool(self.api_key))  # ✅ Uses context
 ```
 
-**Performans Karşılaştırması (MongoDB resmi benchmark):**
-
-| Test | Motor | PyMongo Async | Kazanç |
-|------|-------|---------------|--------|
-| FindManyAndEmptyCursor | 74 MB/s | 112 MB/s | **+51%** |
-| 80 Concurrent Tasks | 37 MB/s | 89 MB/s | **+140%** |
-| LargeDocInsert | 85 MB/s | 102 MB/s | **+20%** |
-
----
-
-## 🔴 ELEŞTİRİ #1: Yanlış Driver Seçimi
-
-### Mevcut Karar
-> "PyMongoPersistence (sync) + Motor (async) = OK"
-
-### Eleştiri
-**Bu karar geleceğe yönelik değil.** Motor deprecated olacak. Proje 2027'de çalışmayacak.
-
-### Doğru Yaklaşım
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ENDÜSTRİ STANDARDI MİMARİ (ÖNERİLEN)                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  API (FastAPI)           CLI                                │
-│  ┌─────────────┐        ┌─────────────┐                    │
-│  │  PyMongo    │        │   PyMongo   │                    │
-│  │AsyncMongo   │        │ MongoClient │                    │
-│  │  Client     │        │             │                    │
-│  │  (ASYNC)    │        │   (SYNC)    │                    │
-│  │ ✅ DESTEKLI │        │ ✅ DESTEKLI │                    │
-│  └──────┬──────┘        └──────┬──────┘                    │
-│         │                      │                            │
-│         └──────────┬───────────┘                            │
-│                    ▼                                        │
-│  ┌───────────────────────────────────────────────┐         │
-│  │              MongoDB                           │         │
-│  └───────────────────────────────────────────────┘         │
-│                                                             │
-│  ✅ Tek kütüphane, iki mode (sync/async)                   │
-│  ✅ Aynı API, aynı davranış garantisi                      │
-│  ✅ MongoDB resmi desteği devam edecek                     │
-│  ✅ Daha iyi performans (Motor'dan %20-140 daha hızlı)     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Kod Değişikliği Gereksinimleri
+### Code Evidence - What's Still Wrong
 
 ```python
-# infrastructure/database/motor.py → async_client.py
+# DISABLED PLUGINS STILL USE get_debugger():
+# omdb/client.py, tvdb/client.py, tvmaze/client.py
+self.debugger = get_debugger()  # ❌ Still wrong
 
-# ❌ ESKİ
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+# TMDb DOES NOT RETURN PluginResult:
+# tmdb/client.py line 73
+def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:  # ❌ Should be PluginResult
+    return {
+        'status': {...},
+        'movie': {...}
+    }  # ❌ Returns dict, not PluginResult
 
-# ✅ YENİ (PyMongo 4.10+)
-from pymongo import AsyncMongoClient
-from pymongo.asynchronous.database import AsyncDatabase
+# emit_task() NEVER CALLED:
+# grep -r "self.emit_task" src/archiverr/plugins/ → 0 results
 
-class MongoDB:
-    client: Optional[AsyncMongoClient] = None  # Motor yerine PyMongo
-    db: Optional[AsyncDatabase] = None
-    
-    @classmethod
-    async def connect(cls) -> AsyncDatabase:
-        cls.client = AsyncMongoClient(
-            uri,
-            serverSelectionTimeoutMS=5000,
-            maxPoolSize=50,
-        )
-        cls.db = cls.client[database]
-        await cls.db.command("ping")
-        return cls.db
+# Core components still use get_debugger():
+# discovery.py line 35, loader.py line 14, executor.py line 21
+self.debugger = get_debugger()  # ❌ Should use DI
 ```
 
 ---
 
-## 🔴 ELEŞTİRİ #2: Kullanıcının Önerisi Kısmen Doğru
+## CRITICAL ISSUES
 
-### Kullanıcının Söylediği
-> "İkisinin de async Motor kullanması daha mantıklı olabilirdi"
+### 1. Plugin-Context Disconnect (SEVERITY: CRITICAL)
 
-### Gerçek Durum
-Kullanıcının sezgisi doğru yönde ama çözüm farklı:
+**Problem:** ExecutionContext geçiriliyor ama pluginler ignore ediyor.
 
-| Yaklaşım | Değerlendirme |
-|----------|---------------|
-| İkisi de Motor (async) | ❌ Motor deprecated |
-| CLI sync + API Motor (mevcut) | ❌ Motor deprecated |
-| İkisi de PyMongo (sync + async) | ✅ **DOĞRU ÇÖZÜM** |
-
-### Neden CLI Sync Kalmalı?
-
-MongoDB resmi dokümantasyonundan:
-
-> "Synchronous PyMongo is preferable if:
-> - Your application is simple in execution
-> - Your application relies on serial workloads
-> - You prefer the simplicity of synchronous logic when debugging"
-
-CLI aracı için sync uygun çünkü:
-1. Seri işlem akışı (match → process → next match)
-2. Debug kolaylığı
-3. Async overhead gereksiz
-
----
-
-## 🟠 ELEŞTİRİ #3: State Management Endüstri Standardında Değil
-
-### Mevcut Durum
-
+**Executor (does this):**
 ```python
-# state/manager.py
-class GlobalStateManager:
-    _instance: Optional['GlobalStateManager'] = None  # Singleton
-    
-    def save_execution(self, ...):
-        if self._persistence:
-            self._persistence.save_execution(...)  # Sync call
+context = ExecutionContext(...)
+plugin.set_context(context)  # ✅ Sets context
 ```
 
-### Sorunlar
-
-1. **Singleton anti-pattern**: Test edilebilirliği zorlaştırır
-2. **Tight coupling**: Persistence doğrudan state'e bağlı
-3. **Sync I/O in State Manager**: Blocking potential
-
-### Endüstri Standardı: Event-Driven State
-
+**Plugin (ignores it):**
 ```python
-# ÖNERİLEN: CQRS + Event Sourcing Pattern
+def __init__(self, config):
+    self.debugger = get_debugger()  # ❌ Ignores context
 
-class StateManager:
-    """Stateless, event-driven state manager"""
-    
-    def __init__(self, event_store: EventStore, read_model: ReadModel):
-        self._event_store = event_store
-        self._read_model = read_model
-    
-    async def start_execution(self, config: dict) -> str:
-        execution_id = generate_id()
-        
-        # Event publish (async, non-blocking)
-        await self._event_store.publish(ExecutionStartedEvent(
-            execution_id=execution_id,
-            config=config,
-            timestamp=datetime.utcnow()
-        ))
-        
-        return execution_id
-    
-    async def get_execution(self, execution_id: str) -> ExecutionState:
-        # Read from materialized view
-        return await self._read_model.get_execution(execution_id)
+def execute(self, match_data):
+    self.debugger.info(...)  # ❌ Uses standalone debugger
+    # Never touches self.context
 ```
 
-**Netflix, Uber, Airbnb gibi şirketler bu pattern'i kullanıyor.**
+**Impact:**
+- emit_task() broken
+- emit_progress() broken
+- Per-plugin events broken
+- Centralized logging broken
 
----
+### 2. No PluginResult Usage (SEVERITY: HIGH)
 
-## 🟠 ELEŞTİRİ #4: Long-Running Jobs İçin Mimari Eksik
-
-### Mevcut Durum
-API'den execution başlatılıyor ve subprocess ile CLI çalıştırılıyor.
-
-### Sorunlar
-1. **Subprocess güvenilmez**: Crash recovery yok
-2. **Progress tracking zor**: Real-time update yok
-3. **Scaling imkansız**: Tek sunucu, tek process
-
-### Endüstri Standardı: Task Queue
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  PRODUCTION-READY MİMARİ                                    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐                │
-│  │ FastAPI │───>│  Redis  │<───│ Worker  │                │
-│  │   API   │    │  Queue  │    │ (ARQ/   │                │
-│  │         │    │         │    │ Celery) │                │
-│  └────┬────┘    └─────────┘    └────┬────┘                │
-│       │                              │                      │
-│       │         ┌─────────┐          │                      │
-│       └────────>│ MongoDB │<─────────┘                      │
-│                 │         │                                 │
-│                 └─────────┘                                 │
-│                                                             │
-│  ✅ Crash recovery (worker restart)                        │
-│  ✅ Horizontal scaling (multiple workers)                  │
-│  ✅ Real-time progress (WebSocket/SSE)                     │
-│  ✅ Job retry, timeout, rate limiting                      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Minimal Implementasyon (ARQ)
-
+**Current State:**
 ```python
-# workers/execution_worker.py
-from arq import create_pool
-from arq.connections import RedisSettings
-
-async def execute_scan(ctx, config: dict) -> dict:
-    """Background execution task"""
-    redis = ctx['redis']
-    execution_id = generate_id()
-    
-    # Progress callback
-    async def on_progress(match_index: int, total: int):
-        await redis.publish(f"exec:{execution_id}:progress", {
-            "match": match_index,
-            "total": total,
-            "percent": match_index / total * 100
-        })
-    
-    # Run execution
-    result = await run_execution(config, on_progress)
-    return result
-
-class WorkerSettings:
-    functions = [execute_scan]
-    redis_settings = RedisSettings(host='localhost')
+# TMDb returns raw dict
+return {
+    'status': {...},
+    'movie': {...}
+}
 ```
 
----
-
-## 🟡 ELEŞTİRİ #5: "9/10 Skor" Gerçekçi Değil
-
-### README.md'deki İddia
-
-```
-GENEL SKOR: 9/10 - Sistem stabil
-```
-
-### Gerçekçi Değerlendirme
-
-| Kategori | Mevcut | Gerçek | Açıklama |
-|----------|--------|--------|----------|
-| Database Driver | Motor | **5/10** | Deprecated driver kullanılıyor |
-| State Management | Singleton | **6/10** | Anti-pattern, test zorluğu |
-| Long-running Jobs | Subprocess | **4/10** | Production-ready değil |
-| Error Recovery | Minimal | **5/10** | Crash recovery yok |
-| Scalability | None | **3/10** | Horizontal scaling imkansız |
-| Real-time Updates | None | **4/10** | WebSocket/SSE yok |
-| Testing | Good | **7/10** | Plugin-agnostic iyi ama coverage düşük |
-| Code Quality | Good | **7/10** | Type hints eksik |
-| **GERÇEK SKOR** | - | **5.5/10** | Production-ready değil |
-
----
-
-## 🟡 ELEŞTİRİ #6: Plugin-Agnostic İhlalleri Hala Var
-
-### state/manager.py (Line 559-570)
-
+**Should Return:**
 ```python
-def _get_match_category(self, match: MatchState) -> str:
-    """Get category from input plugin result"""
-    # ❌ Hardcoded plugin names in CORE
-    if "scanner" in match.plugins:
-        return match.plugins["scanner"].get("category", "unknown")
-    if "file_reader" in match.plugins:
-        return match.plugins["file_reader"].get("category", "unknown")
-    if "file-reader" in match.plugins:
-        return match.plugins["file-reader"].get("category", "unknown")
-    return "unknown"
+return PluginResult(
+    success=True,
+    data={'movie': {...}},
+    started_at=start,
+    finished_at=datetime.now()
+)
 ```
 
-### Düzeltme
+**Impact:**
+- No standardized error handling
+- No timing metrics standardization
+- Response format inconsistent
 
+### 3. Missing Lifecycle Hooks (SEVERITY: MEDIUM)
+
+**Current:** Only `execute()` method
+
+**Missing:**
+- `setup()` - Initialize resources (API clients, caches)
+- `teardown()` - Cleanup resources
+- `on_config()` - Config validation/modification
+- `on_before_execute()` - Pre-processing
+- `on_after_execute()` - Post-processing
+
+**Impact:**
+- No resource initialization point
+- No cleanup mechanism
+- Memory leaks possible
+
+### 4. No Capability Declaration (SEVERITY: MEDIUM)
+
+**Current plugin.yml:**
+```yaml
+name: tmdb
+category: output
+depends_on: [renamer]
+expects: [renamer.parsed]
+```
+
+**Missing:**
+```yaml
+capabilities:
+  - metadata.movie
+  - metadata.show
+  - validation.duration
+
+provides:
+  - movie
+  - show
+  - episode
+  - normalized
+```
+
+**Impact:**
+- Core can't know what plugin provides
+- No capability-based routing
+- No validation of plugin outputs
+
+### 5. Config Validation Missing (SEVERITY: MEDIUM)
+
+**Current:** Plugin config passed as raw dict
+
+**Missing:** Schema validation per-plugin
+
+```yaml
+config_schema:
+  api_key:
+    type: string
+    required: true
+    secret: true
+```
+
+**Impact:**
+- Invalid config causes runtime errors
+- No type checking
+- Secrets not marked
+
+---
+
+## ARCHITECTURE VIOLATIONS
+
+### 1. Hardcoded Debugger Pattern
+
+**Pattern Found:**
 ```python
-def _get_match_category(self, match: MatchState) -> str:
-    """Get category from any input plugin result"""
-    # ✅ Generic: herhangi bir plugin'den category al
-    for plugin_name, plugin_data in match.plugins.items():
-        if isinstance(plugin_data, dict) and "category" in plugin_data:
-            return plugin_data["category"]
-    return "unknown"
+from archiverr.utils.debug import get_debugger
+
+class Plugin:
+    def __init__(self):
+        self.debugger = get_debugger()  # ❌ GLOBAL STATE
 ```
 
----
-
-## ✅ OLUMLU YÖNLER (Adil Olmak İçin)
-
-### Doğru Yapılan Şeyler
-
-1. **Plugin-Agnostic Felsefe**: Temel prensip doğru
-2. **Execution Flow**: İyi tasarlanmış
-3. **Test Yapısı**: unit/integration/e2e ayrımı iyi
-4. **Config Snapshot**: Reproducibility için iyi
-5. **Git-like Versioning**: Branches/commits konsepti iyi
-6. **Event Bus**: Loose coupling için doğru adım
-
----
-
-## 📋 ACİL EYLEM PLANI
-
-### Öncelik 1: Motor Migration (1-2 gün)
-
-```bash
-# 1. PyMongo 4.10+ yükle (AsyncMongoClient içerir)
-pip install 'pymongo>=4.10'
-
-# 2. Motor'u requirements.txt'ten kaldır
-# motor>=3.3.0  # ❌ KALDIR
-
-# 3. infrastructure/database/motor.py'yi güncelle
-# AsyncIOMotorClient → AsyncMongoClient
+**Correct Pattern:**
+```python
+class Plugin(BasePlugin):
+    def execute(self, match_data):
+        self.log("info", "message")  # ✅ Uses context
 ```
 
-### Öncelik 2: State Manager Refactor (2-3 gün)
+### 2. Duplicate Base Classes (Resolved in Session 8)
 
-1. Singleton pattern kaldır
-2. Dependency injection kullan
-3. Async metodlar ekle
+~~`plugins/base.py` and `plugins/sdk/base.py` were duplicates~~
 
-### Öncelik 3: Long-running Jobs (3-5 gün)
+✅ Fixed: Now only `core/plugin_sdk/base.py` exists
 
-1. ARQ veya Celery entegrasyonu
-2. Redis bağımlılığı ekle
-3. Progress WebSocket endpoint
+### 3. Sync vs Async Inconsistency
 
----
+**Current:** All plugins are sync
 
-## 🎯 SONUÇ
+**Executor:** Uses `asyncio.to_thread(plugin.execute, ...)`
 
-### Mevcut Durum
-Proje **local development** için çalışıyor ama **production-ready değil**.
+**Problem:** Wrapping sync in async, not true async
 
-### Kritik Eksiklikler
-1. ❌ Motor deprecated - 2027'de çalışmayacak
-2. ❌ State management scalable değil
-3. ❌ Long-running job altyapısı yok
-4. ❌ Real-time progress yok
-
-### Tavsiye
-Motor → PyMongo Async migration'ı **HEMEN** yapılmalı. Diğerleri sonra gelebilir.
+**Solution:** Make plugins async-native
 
 ---
 
-*Bu rapor, MongoDB resmi dokümantasyonu ve endüstri best practices araştırmasına dayanmaktadır.*
+## SECURITY ISSUES
+
+### 1. API Keys in Config (Already Fixed)
+
+✅ Moved to .env file
+
+### 2. No Secret Marking in Config Schema
+
+**Problem:** Can't distinguish secrets from regular config
+
+**Solution:** Add `secret: true` in config_schema
+
+---
+
+## TECHNICAL DEBT
+
+### 1. No Unit Tests for SDK
+
+**Missing Tests:**
+- PluginManifest validation
+- PluginResult serialization
+- ExecutionContext methods
+- BasePlugin lifecycle
+
+### 2. Response Format Inconsistency
+
+**Current:**
+- `items` vs `matches`
+- `matchGlobals` vs `match_globals`
+- Snake_case vs camelCase mixed
+
+### 3. Async/Sync Mixed
+
+**CLI:** Sync with asyncio.run()
+**API:** Async with FastAPI
+
+**Problem:** Two execution paths with different behaviors
+
+---
+
+## RECOMMENDATIONS
+
+### Immediate (Session 9)
+
+1. **Remove all `get_debugger()` calls from plugins**
+2. **Make plugins use `self.context` for logging**
+3. **Convert TMDb to return PluginResult**
+4. **Add setup/teardown lifecycle hooks**
+5. **Create PLUGIN_SDK.md documentation**
+
+### Short-term (Session 10-11)
+
+1. Make plugins async-native
+2. Add capability system
+3. Add config schema validation
+4. Update omdb/tvmaze/tvdb plugins
+
+### Long-term (Session 12+)
+
+1. Plugin event system (hooks)
+2. Plugin marketplace architecture
+3. Hot reload support
+4. Remote plugin support (HTTP)
+
+---
+
+## METRICS
+
+| Metric | Session 7 | Session 8 | Target |
+|--------|-----------|-----------|--------|
+| Plugins using context | 0 | 0 | 4 |
+| Plugins returning PluginResult | 0 | 0 | 4 |
+| Lifecycle hooks | 0 | 0 | 2 |
+| Unit test coverage | ~20% | ~20% | 60% |
+| Documentation pages | 0 | 0 | 1 |

@@ -22,11 +22,11 @@ from typing import Dict, Any, List, Optional
 import asyncio
 
 try:
-    from motor.motor_asyncio import AsyncIOMotorDatabase
-    MOTOR_AVAILABLE = True
+    from pymongo.asynchronous.database import AsyncDatabase
+    ASYNC_PYMONGO_AVAILABLE = True
 except ImportError:
-    MOTOR_AVAILABLE = False
-    AsyncIOMotorDatabase = None
+    ASYNC_PYMONGO_AVAILABLE = False
+    AsyncDatabase = None
 
 
 class DiagnosticsLogger:
@@ -45,7 +45,7 @@ class DiagnosticsLogger:
     
     def __init__(
         self, 
-        db: AsyncIOMotorDatabase,
+        db: AsyncDatabase,
         ttl_days: int = DEFAULT_TTL_DAYS,
         batch_size: int = 100,
         flush_interval_seconds: float = 5.0
@@ -54,7 +54,7 @@ class DiagnosticsLogger:
         Initialize diagnostics logger.
         
         Args:
-            db: Motor database instance
+            db: PyMongo AsyncDatabase instance
             ttl_days: Days to keep logs (default 7)
             batch_size: Batch size for writes
             flush_interval_seconds: Auto-flush interval

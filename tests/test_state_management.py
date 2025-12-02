@@ -96,13 +96,21 @@ def configured_state(mock_persistence, mock_debugger, mock_event_bus):
 class TestGlobalStateManagerInit:
     """Tests for GlobalStateManager initialization."""
     
-    def test_singleton_pattern(self):
-        """Test GlobalStateManager is singleton."""
-        state1 = GlobalStateManager()
-        state2 = GlobalStateManager()
+    def test_di_pattern_creates_separate_instances(self):
+        """Test StateManager uses DI pattern (no singleton)."""
+        from archiverr.state import StateManager
         
-        # Should be same instance
-        assert state1 is state2
+        state1 = StateManager()
+        state2 = StateManager()
+        
+        # Should be different instances (DI pattern)
+        assert state1 is not state2
+    
+    def test_backward_compatible_alias(self):
+        """Test GlobalStateManager is alias for StateManager."""
+        from archiverr.state import StateManager, GlobalStateManager
+        
+        assert GlobalStateManager is StateManager
     
     def test_reset_clears_state(self):
         """Test reset clears all state."""

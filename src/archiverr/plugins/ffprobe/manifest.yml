@@ -1,0 +1,29 @@
+# FFprobe Plugin - Media file technical analysis
+# Clean manifest with validation rules
+
+name: ffprobe
+version: 1.0.0
+description: Extracts technical metadata (video, audio, container) from media files
+category: output
+class_name: FFProbePlugin
+
+# No dependencies - can run in parallel with renamer
+depends_on: []
+expects: []
+
+# Supports all media types
+categories: []
+
+# Configuration schema with validation rules
+config_schema:
+  timeout:
+    type: integer
+    min: 1
+    max: 300
+    default: 30
+    description: FFprobe command timeout in seconds
+  
+  ffprobe_path:
+    type: string
+    default: ffprobe
+    description: Path to ffprobe binary

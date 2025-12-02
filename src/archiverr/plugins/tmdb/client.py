@@ -1,12 +1,11 @@
 """TMDb Plugin - Clean orchestration layer"""
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 from .extras import TMDbExtras
 from .normalize.normalizer import TMDbNormalizer
 from .utils.api import TMDbAPI
 from .utils.fetchers import TMDbMovieFetcher, TMDbShowFetcher
-from archiverr.utils.debug import get_debugger
-from archiverr.plugins.base import OutputPlugin
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 
 class TMDbPlugin(OutputPlugin):
@@ -22,31 +21,56 @@ class TMDbPlugin(OutputPlugin):
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        self.name = "tmdb"
         self.api_key = config.get('api_key', '')
         self.lang = config.get('language', config.get('lang', 'en-US'))
         self.region = config.get('region', 'TR')
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
-        self.debugger = get_debugger()
         
-        # Initialize components
+        # Components initialized in setup() - None until then
+        self.api: Optional[TMDbAPI] = None
+        self.extras_client: Optional[TMDbExtras] = None
+        self.normalizer: Optional[TMDbNormalizer] = None
+        self.movie_fetcher: Optional[TMDbMovieFetcher] = None
+        self.show_fetcher: Optional[TMDbShowFetcher] = None
+        
+        # Get extras configuration
+        self.extras_config = config.get('extras', {})
+    
+    async def setup(self) -> None:
+        """Initialize API clients and fetchers (called once on load)"""
         self.api = TMDbAPI(self.api_key, self.lang, self.region)
         self.extras_client = TMDbExtras(self.api_key, self.lang)
         self.normalizer = TMDbNormalizer()
         
-        # Get extras configuration
-        self.extras_config = config.get('extras', {})
-        
-        # Initialize fetchers
+        # Initialize fetchers - pass None for debugger, they should use self.log too
         self.movie_fetcher = TMDbMovieFetcher(
             self.api, self.extras_client, self.normalizer,
-            self.extras_config, self.include_raw, self.debugger
+            self.extras_config, self.include_raw, None
         )
         self.show_fetcher = TMDbShowFetcher(
             self.api, self.extras_client, self.normalizer,
-            self.extras_config, self.include_raw, self.debugger
+            self.extras_config, self.include_raw, None
         )
+        self._initialized = True
+        self.info("TMDb plugin initialized", api_key_set=bool(self.api_key))
     
-    def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _sync_setup(self) -> None:
+        """Synchronous setup for backwards compatibility"""
+        self.api = TMDbAPI(self.api_key, self.lang, self.region)
+        self.extras_client = TMDbExtras(self.api_key, self.lang)
+        self.normalizer = TMDbNormalizer()
+        self.movie_fetcher = TMDbMovieFetcher(
+            self.api, self.extras_client, self.normalizer,
+            self.extras_config, self.include_raw, None
+        )
+        self.show_fetcher = TMDbShowFetcher(
+            self.api, self.extras_client, self.normalizer,
+            self.extras_config, self.include_raw, None
+        )
+        self._initialized = True
+    
+    def execute(self, match_data: Dict[str, Any]) -> PluginResult:
         """
         Fetch metadata from TMDb
         
@@ -54,14 +78,19 @@ class TMDbPlugin(OutputPlugin):
             match_data: Must contain 'renamer.parsed' with show or movie info
             
         Returns:
-            {status, episode, season, show, movie, extras, normalized}
+            PluginResult with movie/show/episode/season/extras/normalized data
         """
+        started_at = datetime.now()
+        # Ensure components are initialized (backwards compat if setup() not called)
+        if not self._initialized:
+            self._sync_setup()
+        
         # Get parsed data
         renamer_data = match_data.get('renamer', {})
         parsed_data = renamer_data.get('parsed', {})
         
         if not parsed_data:
-            return self._error_result()
+            return PluginResult.error_result("No parsed data available", started_at=started_at)
         
         # Route to appropriate fetcher
         movie_data = parsed_data.get('movie')
@@ -81,17 +110,52 @@ class TMDbPlugin(OutputPlugin):
                     show_data.get('episode')
                 )
             else:
-                return self._error_result()
+                return PluginResult.error_result("No movie or show data", started_at=started_at)
             
             # Add validation if result successful
             if result and result.get('status', {}).get('success'):
                 result['validation'] = self._perform_validation(match_data, result)
+                
+                # Emit task example - notify about found metadata
+                if result.get('movie'):
+                    movie = result['movie']
+                    # Handle both dict titles (normalized) and string titles (raw)
+                    title = movie.get('title', {})
+                    if isinstance(title, dict):
+                        movie_title = title.get('primary') or title.get('original') or 'Unknown'
+                    else:
+                        movie_title = title or 'Unknown'
+                    # Year can be in release.year (normalized) or release_date (raw)
+                    release = movie.get('release', {})
+                    if isinstance(release, dict):
+                        movie_year = release.get('year', '')
+                    else:
+                        movie_year = str(movie.get('release_date', ''))[:4]
+                    self.emit_task({
+                        "type": "print",
+                        "template": f"  ✓ TMDb: {movie_title} ({movie_year})"
+                    })
+                elif result.get('show'):
+                    show = result['show']
+                    # Handle both dict names (normalized) and string names (raw)
+                    name = show.get('name', {})
+                    if isinstance(name, dict):
+                        show_name = name.get('primary') or name.get('original') or 'Unknown'
+                    else:
+                        show_name = name or 'Unknown'
+                    self.emit_task({
+                        "type": "print",
+                        "template": f"  ✓ TMDb: {show_name}"
+                    })
             
-            return result
+            # Convert dict result to PluginResult
+            # Remove status from data (PluginResult handles it)
+            data = {k: v for k, v in result.items() if k != 'status'}
+            return PluginResult.success_result(data=data, started_at=started_at)
                 
         except Exception as e:
-            self.debugger.error("tmdb", "Execution failed", error=str(e))
-            return self._error_result()
+            self.error("Execution failed", error=str(e))
+            return PluginResult.error_result(str(e), started_at=started_at)
     
     def _perform_validation(self, match_data: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -135,20 +199,4 @@ class TMDbPlugin(OutputPlugin):
             'details': tests
         }
     
-    def _error_result(self) -> Dict[str, Any]:
-        """Return error result"""
-        now = datetime.now().isoformat()
-        return {
-            'status': {
-                'success': False,
-                'started_at': now,
-                'finished_at': now,
-                'duration_ms': 0
-            },
-            'movie': None,
-            'episode': None,
-            'season': None,
-            'show': None,
-            'extras': {},
-            'normalized': {}
-        }
+    # _error_result() removed - using PluginResult.error_result() instead

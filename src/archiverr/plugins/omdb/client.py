@@ -3,8 +3,8 @@ from typing import Dict, Any
 import requests
 from datetime import datetime
 from .normalize.normalizer import OMDbNormalizer
+from archiverr.core.plugins.sdk import OutputPlugin
 from archiverr.utils.debug import get_debugger
-from archiverr.plugins.base import OutputPlugin
 
 
 class OMDbPlugin(OutputPlugin):

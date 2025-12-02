@@ -1,146 +1,160 @@
-# Archiverr - Mevcut Durum Özeti
+# CURRENT STATUS
 
-> **Son Güncelleme**: 2025-11-27 17:30 UTC+3  
-> **Session**: Endüstri Standartları Analizi  
-> **Durum**: ⚠️ KRİTİK: Motor Deprecated - Migration Gerekli
-
----
-
-## 🚨 KRİTİK BULGU: Motor Deprecated!
-
-### MongoDB Resmi Duyurusu
-- **Motor deprecated**: Mayıs 2025'te ilan edildi
-- **Destek sonu**: Mayıs 2027
-- **Çözüm**: PyMongo `AsyncMongoClient` kullanın
-
-**Kaynak**: https://www.mongodb.com/docs/languages/python/pymongo-driver/current/reference/migration/
-
-### Performans Karşılaştırması (MongoDB Resmi Benchmark)
-| Test | Motor | PyMongo Async | Fark |
-|------|-------|---------------|------|
-| FindMany | 74 MB/s | 112 MB/s | **+51%** |
-| 80 Tasks | 37 MB/s | 89 MB/s | **+140%** |
-
----
-
-## 🎯 Bu Session'da Yapılanlar
-
-### Özet
-Endüstri standartları araştırması yapıldı. Motor deprecated olduğu tespit edildi. Kritik inceleme raporu oluşturuldu.
-
-### Bu Session'da Yapılanlar
-1. ⚠️ **Motor deprecated tespiti** - MongoDB resmi dokümantasyonundan doğrulandı
-2. 📄 **05_CRITICAL_REVIEW.md** - Şeytanın avukatlığı raporu oluşturuldu
-3. 📊 **Skorlar güncellendi** - 9/10 → 5.5/10 (gerçekçi değerlendirme)
-4. 📋 **TODO güncellendi** - Motor migration kritik görev olarak eklendi
-
-### Yeni Dosyalar
-- `AI/05_CRITICAL_REVIEW.md` - Kritik inceleme ve eleştiri raporu
-
-### Önceki Session'da Yapılanlar (Referans)
-- `infrastructure/database/pymongo_persistence.py` - Pure sync MongoDB (PyMongo)
-- `tests/unit/infrastructure/test_pymongo_persistence.py` - 16 test
-- `tests/unit/core/test_plugin_agnostic.py` - 12 test
-
-### 🚨 KRİTİK SİSTEM SORUNLARI - GÜNCELLENDİ
-
-| # | Sorun | Durum | Çözüm |
-|---|-------|-------|-------|
-| 1 | **Motor deprecated** | 🔴 KRİTİK | Motor → PyMongo `AsyncMongoClient` |
-| 2 | State Manager singleton | ⚠️ Anti-pattern | DI refactor gerekli |
-| 3 | Long-running jobs | ❌ Subprocess | Task queue (ARQ/Celery) |
-| 4 | Plugin-agnostic ihlali | ⚠️ Kısmi | `_get_match_category()` düzelt |
-
-**GENEL SKOR: 5.5/10** - Production-ready değil
-
-**Detaylı analiz**: `05_CRITICAL_REVIEW.md`
-
----
-
-## 📁 Yeni Dosya Yapısı
-
-```
-src/archiverr/
-├── api/
-│   ├── deps/                    # 🆕 YENİ - Dependency Injection
-│   │   ├── __init__.py         
-│   │   ├── database.py          # Motor + PyMongo bağlantıları
-│   │   └── common.py            # AsyncPersistenceWrapper
-│   ├── database.py              # ⚠️ DEPRECATED - re-export
-│   ├── dependencies.py          # ⚠️ DEPRECATED - re-export
-│   ├── main.py                  # ✅ Güncellendi
-│   └── v1/
-│       ├── executions/
-│       │   ├── router.py        # ✅ Depends(get_database)
-│       │   └── schemas.py
-│       ├── matches/
-│       │   ├── router.py        # ✅ Depends(get_database)
-│       │   └── schemas.py       # 🆕 YENİ
-│       ├── run/
-│       │   ├── router.py
-│       │   └── schemas.py       # 🆕 YENİ
-│       ├── system/
-│       │   ├── router.py        # ✅ Güncellendi
-│       │   └── schemas.py       # 🆕 YENİ
-│       └── versioning/
-│           ├── router.py        # ✅ Depends(get_database)
-│           └── schemas.py
-│
-├── infrastructure/
-│   └── database/
-│       ├── __init__.py          # ✅ Motor export'ları eklendi
-│       ├── motor.py             # 🆕 api/database.py'den taşındı
-│       ├── mongodb.py           # Sync PyMongo (CLI için)
-│       └── ...
-│
-tests/
-├── unit/                        # 🆕 YENİ YAPI
-│   ├── core/
-│   │   └── test_plugin_discovery.py  # 10 test
-│   ├── state/
-│   │   └── test_state_manager.py     # 17 test
-│   └── api/
-│       └── test_endpoints.py         # 18 test
-├── integration/                 # 🆕 Hazır (boş)
-└── e2e/                         # 🆕 Hazır (boş)
+```yaml
+session: 11
+date: 2025-12-02
+phase: Strategy FINAL
+next_action: Execution (Phase 1: State Models)
 ```
 
----
+**UPDATE 2025-12-02 (FINAL v2):**
+`session_11_strategy/plugin-system-brainstorm/` klasoru tamamlandi (9 dosya).
 
-## 🗑️ Silinen/Deprecated Dosyalar
+Kritik Kararlar:
+- requires = UNIFIED (tek alan, uc source: job.* | provides.* | events.*)
+- after, waits_for, depends_on, triggers_on REDDEDILDI
+- provides = ISLEM BAZLI (http.response, fs.write)
+- 4 stage: input, extract, enrich, output (parse/metadata isimleri degisti)
+- DEFAULT ALIAS: job, jobs, run, provides, events, config (sistem inject)
+- HARDCODED YASAK: requires: [renamer] DEGIL, requires: [provides.data.parsed]
+- PluginServices = TEK INTERFACE (get_debugger() KALDIRILACAK)
+- FlexGet style config (no plugins: wrapper)
 
-| Dosya | Durum | Açıklama |
-|-------|-------|----------|
-| `src/archiverr/backend/` | SİLİNDİ | Boş klasördü |
-| `src/archiverr/persistence/` | SİLİNDİ | Boş klasördü |
-| `api/database.py` | DEPRECATED | Re-export, uyarı veriyor |
-| `api/dependencies.py` | DEPRECATED | Re-export, uyarı veriyor |
-
----
-
-## ⚠️ Bilinen Sorunlar (ÇÖZÜLECEK)
-
-1. **İki Farklı MongoDB Bağlantısı**: API için Motor (async), CLI için PyMongo (sync)
-2. **State Manager Sync**: GlobalStateManager hala sync PyMongo kullanıyor
-3. **Response Format Tutarsızlığı**: `items` vs `matches` naming
-4. **Eski Testler Plugin'lere Bağımlı**: `test_full_pipeline.py`, `test_integration.py`
+Endustri Referanslari:
+- FlexGet, Home Assistant, pluggy/pytest
+- OSGi capabilities, Docker Compose depends_on
 
 ---
 
-## 📚 İlgili Dokümanlar
+## Session 11 Focus
 
-- `AI/02_TODO.md` - 🆕 **ÖNCELİKLİ - Yapılacaklar listesi**
-- `AI/03_ARCHITECTURE.md` - Mimari referans
-- `AI/04_INDUSTRY_STANDARDS_ANALYSIS.md` - Endüstri araştırması (referans)
-- `AI/01_CHANGELOG.md` - Detaylı değişiklik günlüğü
+**Deep Analysis + Hallucination Detection + Job ID System**
 
-> **Not**: Eski dokümanlar `do-not-raead/` klasöründe. Gerekirse bakılabilir ama AI klasörü yeterli.
+v4 stratejisinde tespit edilen halüsinasyonların düzeltilmesi ve mevcut sistemin kapsamlı analizi.
 
-## 🎯 Sonraki Adımlar (Öncelik Sırasıyla)
+### Kritik Bulgular
 
-1. **Repository Pattern** - MongoDB bağlantılarını birleştir (3-5 gün)
-2. **GlobalStateManager Async** - Blocking I/O'yu kaldır (1-2 gün)
-3. **Test Refactor** - Plugin bağımlılığını kaldır (2-3 gün)
-4. **eval() Düzelt** - Güvenlik açığı (1 saat)
+1. **EventBus ZATEN VAR** - `events/bus.py` (286 satır, tam işlevsel)
+2. **StateManager Event Emit Ediyor** - `state/manager.py` line 95-98
+3. **SDK Mevcut ve Çalışıyor** - `core/plugins/sdk/`
+4. **Motor + PyMongo Ayrı** - CLI sync, API async
 
-Detaylar için: `AI/02_TODO.md`
+### v5 Önerileri
+
+1. Hybrid Job ID: `index` (local) + `job_id` (global unique)
+2. Template aliases: `job`, `jobs`, `run` (backward compat)
+3. Mevcut yapıları koruma (tmdb.movie.title çalışmaya devam edecek)
+
+---
+
+## Session 10 Summary (Previous)
+
+**Critical Analysis & Industrial Plugin System Research**
+
+Önceki 3 session'ın (7, 8, 9) detaylı analizi ve endüstri standartı plugin sistem araştırması.
+
+---
+
+## Session 7-8-9 Analiz Özeti
+
+| Session | İddia | Gerçek | Oran |
+|---------|-------|--------|------|
+| 7 | SDK + EventBus + Workers | Dosyalar var, entegrasyon yok | ~50% |
+| 8 | SDK Relocation + Migration | Taşındı ama yanlış yere, import'lar değişti | ~60% |
+| 9 | Context + PluginResult + Lifecycle | Context çalışıyor, PluginResult kullanılmıyor | ~70% |
+
+**Toplam Gerçek İlerleme: ~60%**
+
+---
+
+## Current State Analysis
+
+### What Works ✅
+- SDK files exist at `core/plugins/sdk/` (NOT core/plugin_sdk/)
+- Pydantic manifest validation in discovery
+- Context-based logging in active plugins (scanner, renamer, ffprobe, tmdb)
+- Lifecycle hooks (setup/teardown) defined and TMDb uses setup()
+- PLUGIN_SDK.md documentation exists (334 lines)
+- ExecutionContext injection works
+
+### What's Broken/Incomplete ❌
+- **PluginResult NOT used** - TMDb returns Dict[str, Any]
+- **emit_task() never called** - Feature exists but no plugin uses it
+- **Capability system dead code** - capabilities, provides, hooks in plugin.yml but never read
+- **Config schema validation missing** - config_schema defined but not validated
+- **SDK unit tests missing** - No tests for PluginResult, PluginManifest, etc.
+- **Core still uses get_debugger()** - discovery.py, loader.py, executor.py
+
+### Disabled Plugins (Technical Debt)
+- omdb, tvdb, tvmaze still use `get_debugger()`
+- Need refactoring when enabled
+
+---
+
+## Session 10 Tasks
+
+| Part | Focus | Status |
+|------|-------|--------|
+| 1 | Lokal analiz - Session 7-8-9 review | ✅ COMPLETE |
+| 2 | Online araştırma (Stremio, HA, Pluggy) | ✅ COMPLETE |
+| 3 | Executable plan oluşturma | ✅ COMPLETE |
+| 4 | **EXECUTION** | 🔄 READY |
+
+---
+
+## Critical Findings
+
+### Halüsinasyonlar Tespit Edildi:
+1. **SDK Location Wrong**: Session 8 "core/plugin_sdk/" dedi, gerçekte "core/plugins/sdk/"
+2. **TMDb PluginResult**: Session 9 "TMDb returns PluginResult" dedi, gerçekte Dict döndürüyor
+3. **Test Claims**: "74 tests passed" ama SDK için hiç test yazılmadı
+
+### Çalışan Kısımlar:
+1. Context-based logging (self.debug, self.info, etc.)
+2. Lifecycle hooks (setup/teardown)
+3. ExecutionContext injection
+4. Pydantic manifest validation
+
+---
+
+## Session 10 Execution Tasks (READY)
+
+| # | Task | File | Est. Time |
+|---|------|------|-----------|
+| 1 | manifest.yml migration (TMDb) | `plugins/tmdb/manifest.yml` | 15 min |
+| 2 | TMDb execute() → PluginResult | `plugins/tmdb/client.py` | 30 min |
+| 3 | emit_task() örneği | `plugins/tmdb/client.py` | 10 min |
+| 4 | SDK Unit Tests | `tests/unit/core/test_plugin_sdk.py` | 45 min |
+| 5 | manifest.yml migration (Scanner) | `plugins/scanner/manifest.yml` | 10 min |
+| 6 | discovery.py manifest.yml desteği | `core/plugins/discovery.py` | 15 min |
+
+**Total: ~2 hours**
+
+---
+
+## Scope Restrictions
+
+**SADECE TMDb üzerinde çalış:**
+- ❌ omdb, tvdb, tvmaze dokunma
+- ❌ Event/hook system ekleme
+- ❌ Capability system ekleme
+- ❌ expects Jinja2 dönüşümü yapma
+
+**Kaldırılacak overengineering:**
+- `aliases` (anlamsız self referans)
+- `capabilities` (kullanılmıyor)
+- `hooks` (kullanılmıyor)
+
+**UPDATED:** `provides` is NOW USED with generic capabilities (data.input, data.parsed, etc.)
+
+---
+
+## Success Criteria
+
+1. ✅ `plugins/tmdb/manifest.yml` oluşturuldu (temiz)
+2. ✅ `plugins/scanner/manifest.yml` oluşturuldu
+3. ✅ TMDb `PluginResult` döndürüyor
+4. ✅ `emit_task()` çalışan örneği var
+5. ✅ SDK unit testleri yazıldı
+6. ✅ `discovery.py` manifest.yml destekliyor
+7. ✅ `python -m archiverr` hatasız çalışıyor

@@ -280,23 +280,22 @@ class TestCLIAPIParity:
     """Tests verifying CLI and API produce identical results."""
     
     @pytest.mark.asyncio
-    async def test_both_use_same_state_manager(self, test_config, temp_workspace, monkeypatch):
-        """Test CLI and API use same GlobalStateManager."""
+    async def test_execution_service_uses_state_manager(self, test_config, temp_workspace, monkeypatch):
+        """Test ExecutionService properly uses StateManager with DI pattern."""
         monkeypatch.setenv("ARCHIVERR_DB_BACKEND", "mock")
         monkeypatch.setenv("ARCHIVERR_MOCK_PATH", temp_workspace["db_dir"])
         
-        from archiverr.state import GlobalStateManager
         from archiverr.core.services import ExecutionService
         
         # Run through API path
         service = ExecutionService()
-        await service.run_execution_async(test_config)
+        result = await service.run_execution_async(test_config)
         
-        # GlobalStateManager should have been used
-        state = GlobalStateManager()
-        
-        # State should have execution info
-        assert state._execution is not None
+        # Execution should complete (state managed internally)
+        # With DI pattern, each execution creates its own StateManager
+        assert result is not None
+        assert hasattr(result, 'execution_id')
+        assert result.execution_id is not None
     
     @pytest.mark.asyncio
     async def test_both_use_same_persistence_layer(self, test_config, temp_workspace, monkeypatch):

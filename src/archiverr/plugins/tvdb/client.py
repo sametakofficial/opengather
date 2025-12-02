@@ -4,15 +4,15 @@ from datetime import datetime
 from .extras import TVDbExtras
 from .normalize.normalizer import TVDbNormalizer
 from .utils.api import TVDbAPI
+from archiverr.core.plugins.sdk import OutputPlugin
 from archiverr.utils.debug import get_debugger
-from archiverr.plugins.base import OutputPlugin
 
 
 class TVDbPlugin(OutputPlugin):
     """TVDb metadata plugin"""
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.api_key = config.get('api_key', '')
         self.timeout = 10
         self.include_raw = config.get('include-raw', False)  # Default: no raw data

@@ -13,10 +13,10 @@ from typing import Optional
 import platform
 import os
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from archiverr.api.deps import get_persistence, get_database
+from archiverr.api.deps import DatabaseDep, PersistenceDep
 
 
 router = APIRouter()
@@ -87,7 +87,7 @@ async def health_check():
 
 
 @router.get("/status", response_model=SystemStatus)
-async def system_status(persistence = Depends(get_persistence)):
+async def system_status(persistence: PersistenceDep):
     """
     Detailed system status.
     
@@ -153,10 +153,10 @@ async def version_info():
 
 @router.get("/diagnostics", response_model=DiagnosticsResponse)
 async def get_diagnostics(
+    db: DatabaseDep,
     limit: int = Query(default=100, le=1000, description="Max entries to return"),
     level: Optional[str] = Query(default=None, description="Filter by log level"),
-    component: Optional[str] = Query(default=None, description="Filter by component"),
-    db = Depends(get_database)
+    component: Optional[str] = Query(default=None, description="Filter by component")
 ):
     """
     Get recent diagnostics logs.

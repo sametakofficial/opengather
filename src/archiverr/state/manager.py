@@ -1,7 +1,7 @@
 """
-Global State Manager
+State Manager
 
-Singleton pattern for centralized state management.
+Dependency-injected state management.
 Write-through to persistence layer.
 """
 
@@ -16,18 +16,23 @@ if TYPE_CHECKING:
     from archiverr.events import EventBus
 
 
-class GlobalStateManager:
+class StateManager:
     """
-    Singleton state manager with persistence support.
+    State manager with dependency injection.
     
     Design Principles:
     - Plugin-agnostic: Core doesn't know plugin names or structures
     - Flat structure: No nested globals wrappers
     - Write-through: Every change persisted immediately (when persistence configured)
+    - Dependency Injection: All dependencies passed via constructor
     
     Usage:
-        state = GlobalStateManager()
-        state.configure(persistence=mock_persistence)
+        # DI pattern (recommended)
+        state = StateManager(
+            persistence=persistence,
+            debugger=debugger,
+            event_bus=event_bus
+        )
         
         exec_id = state.start_execution(config)
         match = state.register_match(0, "/path/to/file.mkv")
@@ -36,32 +41,28 @@ class GlobalStateManager:
         state.complete_execution()
     """
     
-    _instance: Optional['GlobalStateManager'] = None
-    _initialized: bool = False
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        if GlobalStateManager._initialized:
-            return
+    def __init__(
+        self,
+        persistence=None,
+        debugger=None,
+        event_bus: Optional['EventBus'] = None
+    ):
+        """
+        Initialize state manager with dependencies.
         
-        GlobalStateManager._initialized = True
+        Args:
+            persistence: Persistence layer (MockPersistence, PyMongoPersistence, etc.)
+            debugger: Debug logger instance
+            event_bus: EventBus for emitting state change events
+        """
+        # Dependencies
+        self._persistence = persistence
+        self._debugger = debugger
+        self._event_bus = event_bus
         
         # State storage
         self._execution: Optional[ExecutionState] = None
         self._matches: Dict[int, MatchState] = {}
-        
-        # Persistence layer (optional)
-        self._persistence = None
-        
-        # Debugger reference (optional)
-        self._debugger = None
-        
-        # Event bus (optional - for loose coupling)
-        self._event_bus: Optional['EventBus'] = None
     
     def configure(
         self, 
@@ -70,16 +71,21 @@ class GlobalStateManager:
         event_bus: Optional['EventBus'] = None
     ):
         """
-        Configure state manager with dependencies.
+        Reconfigure state manager with new dependencies.
+        
+        Provided for backward compatibility. Prefer constructor injection.
         
         Args:
             persistence: Persistence layer (MockPersistence or MongoDBPersistence)
             debugger: Debug logger instance
             event_bus: EventBus for emitting state change events
         """
-        self._persistence = persistence
-        self._debugger = debugger
-        self._event_bus = event_bus
+        if persistence is not None:
+            self._persistence = persistence
+        if debugger is not None:
+            self._debugger = debugger
+        if event_bus is not None:
+            self._event_bus = event_bus
     
     def reset(self):
         """Reset state for new execution (useful for testing)"""
@@ -557,16 +563,22 @@ class GlobalStateManager:
         return create_config_snapshot(config, original_config)
     
     def _get_match_category(self, match: MatchState) -> str:
-        """Get category from input plugin result"""
-        # Try scanner
-        if "scanner" in match.plugins:
-            return match.plugins["scanner"].get("category", "unknown")
-        # Try file_reader
-        if "file_reader" in match.plugins:
-            return match.plugins["file_reader"].get("category", "unknown")
-        # Try file-reader (hyphenated)
-        if "file-reader" in match.plugins:
-            return match.plugins["file-reader"].get("category", "unknown")
+        """
+        Get category from any input plugin result.
+        
+        Plugin-agnostic: Searches all plugin results for a 'category' field
+        instead of hardcoding specific plugin names.
+        
+        Args:
+            match: MatchState with plugin results
+            
+        Returns:
+            Category string or "unknown" if not found
+        """
+        # Generic: find category from any plugin that provides it
+        for plugin_name, plugin_data in match.plugins.items():
+            if isinstance(plugin_data, dict) and "category" in plugin_data:
+                return plugin_data.get("category", "unknown")
         return "unknown"
     
     def _log(self, level: str, component: str, message: str, **kwargs):
@@ -574,3 +586,8 @@ class GlobalStateManager:
         if self._debugger:
             log_func = getattr(self._debugger, level, self._debugger.debug)
             log_func(component, message, **kwargs)
+
+
+# Backward compatibility alias
+# DEPRECATED: Use StateManager with DI instead
+GlobalStateManager = StateManager

@@ -1,23 +1,28 @@
 """TMDb data fetchers - High-level fetch operations"""
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 from .api import TMDbAPI
 from ..extras import TMDbExtras
 from ..normalize.normalizer import TMDbNormalizer
-from archiverr.utils.debug import get_debugger
 
 
 class TMDbMovieFetcher:
     """Fetch and process movie metadata"""
     
     def __init__(self, api: TMDbAPI, extras_client: TMDbExtras, normalizer: TMDbNormalizer, 
-                 extras_config: Dict[str, Any], include_raw: bool, debugger):
+                 extras_config: Dict[str, Any], include_raw: bool, debugger=None):
         self.api = api
         self.extras_client = extras_client
         self.normalizer = normalizer
         self.extras_config = extras_config
         self.include_raw = include_raw
         self.debugger = debugger
+    
+    def _log(self, level: str, message: str, **kwargs):
+        """Log if debugger available"""
+        if self.debugger:
+            log_func = getattr(self.debugger, level, self.debugger.info)
+            log_func("tmdb", message, **kwargs)
     
     def fetch(self, movie_name: str, movie_year: int = None) -> Dict[str, Any]:
         """Fetch complete movie metadata with extras and normalization"""
@@ -31,7 +36,7 @@ class TMDbMovieFetcher:
         
         # Get first result
         movie_id = search_results['results'][0]['id']
-        self.debugger.info("tmdb", "Movie found", tmdb_id=movie_id, title=movie_name)
+        self._log("info", "Movie found", tmdb_id=movie_id, title=movie_name)
         
         # Get movie details
         raw_movie_details = self.api.get_movie(movie_id, timeout=10)
@@ -73,12 +78,12 @@ class TMDbMovieFetcher:
                 'extras': raw_extras
             }
         
-        self.debugger.debug("tmdb", "Movie normalized",
-                           tmdb_id=movie_id,
-                           title=normalized_movie['title']['primary'],
-                           cast_count=len(normalized_movie.get('people', {}).get('cast', [])),
-                           crew_count=len(normalized_movie.get('people', {}).get('crew', [])),
-                           include_raw=self.include_raw)
+        self._log("debug", "Movie normalized",
+                 tmdb_id=movie_id,
+                 title=normalized_movie['title']['primary'],
+                 cast_count=len(normalized_movie.get('people', {}).get('cast', [])),
+                 crew_count=len(normalized_movie.get('people', {}).get('crew', [])),
+                 include_raw=self.include_raw)
         
         return result
     
@@ -91,38 +96,38 @@ class TMDbMovieFetcher:
             data = self.extras_client.movie_credits(movie_id)
             if data:
                 extras['movie_credits'] = data
-                self.debugger.debug("tmdb", "Fetched movie_credits",
-                                   endpoint="/movie/{id}/credits",
-                                   cast=len(data.get('cast', [])),
-                                   crew=len(data.get('crew', [])))
+                self._log("debug", "Fetched movie_credits",
+                         endpoint="/movie/{id}/credits",
+                         cast=len(data.get('cast', [])),
+                         crew=len(data.get('crew', [])))
         
         # Movie Images
         if self.extras_config.get('movie_images'):
             data = self.extras_client.movie_images(movie_id)
             if data:
                 extras['movie_images'] = data
-                self.debugger.debug("tmdb", "Fetched movie_images",
-                                   endpoint="/movie/{id}/images",
-                                   posters=len(data.get('posters', [])),
-                                   backdrops=len(data.get('backdrops', [])))
+                self._log("debug", "Fetched movie_images",
+                         endpoint="/movie/{id}/images",
+                         posters=len(data.get('posters', [])),
+                         backdrops=len(data.get('backdrops', [])))
         
         # Movie Videos
         if self.extras_config.get('movie_videos'):
             data = self.extras_client.movie_videos(movie_id)
             if data:
                 extras['movie_videos'] = data
-                self.debugger.debug("tmdb", "Fetched movie_videos",
-                                   endpoint="/movie/{id}/videos",
-                                   count=len(data.get('results', [])))
+                self._log("debug", "Fetched movie_videos",
+                         endpoint="/movie/{id}/videos",
+                         count=len(data.get('results', [])))
         
         # Movie Keywords
         if self.extras_config.get('movie_keywords'):
             data = self.extras_client.movie_keywords(movie_id)
             if data:
                 extras['movie_keywords'] = data
-                self.debugger.debug("tmdb", "Fetched movie_keywords",
-                                   endpoint="/movie/{id}/keywords",
-                                   count=len(data.get('keywords', [])))
+                self._log("debug", "Fetched movie_keywords",
+                         endpoint="/movie/{id}/keywords",
+                         count=len(data.get('keywords', [])))
         
         return extras
     
@@ -148,13 +153,19 @@ class TMDbShowFetcher:
     """Fetch and process TV show metadata"""
     
     def __init__(self, api: TMDbAPI, extras_client: TMDbExtras, normalizer: TMDbNormalizer,
-                 extras_config: Dict[str, Any], include_raw: bool, debugger):
+                 extras_config: Dict[str, Any], include_raw: bool, debugger=None):
         self.api = api
         self.extras_client = extras_client
         self.normalizer = normalizer
         self.extras_config = extras_config
         self.include_raw = include_raw
         self.debugger = debugger
+    
+    def _log(self, level: str, message: str, **kwargs):
+        """Log if debugger available"""
+        if self.debugger:
+            log_func = getattr(self.debugger, level, self.debugger.info)
+            log_func("tmdb", message, **kwargs)
     
     def fetch(self, show_name: str, season_num: int, episode_num: int) -> Dict[str, Any]:
         """Fetch complete TV show metadata with extras and normalization"""
@@ -168,7 +179,7 @@ class TMDbShowFetcher:
         
         # Get first result
         show_id = search_results['results'][0]['id']
-        self.debugger.info("tmdb", "TV show found", tmdb_id=show_id, title=show_name)
+        self._log("info", "TV show found", tmdb_id=show_id, title=show_name)
         
         # Get details
         raw_show_details = self.api.get_tv(show_id, timeout=10)
@@ -231,13 +242,13 @@ class TMDbShowFetcher:
                 'extras': raw_extras
             }
         
-        self.debugger.debug("tmdb", "TV show normalized",
-                           tmdb_id=show_id,
-                           title=normalized_show['title']['primary'],
-                           seasons=normalized_show['seasons']['total'],
-                           episodes=normalized_show['episodes']['total'],
-                           cast_count=len(normalized_show.get('people', {}).get('cast', [])),
-                           include_raw=self.include_raw)
+        self._log("debug", "TV show normalized",
+                 tmdb_id=show_id,
+                 title=normalized_show['title']['primary'],
+                 seasons=normalized_show['seasons']['total'],
+                 episodes=normalized_show['episodes']['total'],
+                 cast_count=len(normalized_show.get('people', {}).get('cast', [])),
+                 include_raw=self.include_raw)
         
         return result
     
@@ -250,66 +261,66 @@ class TMDbShowFetcher:
             data = self.extras_client.tv_credits(show_id)
             if data:
                 extras['tv_credits'] = data
-                self.debugger.debug("tmdb", "Fetched tv_credits",
-                                   endpoint="/tv/{id}/credits",
-                                   cast=len(data.get('cast', [])),
-                                   crew=len(data.get('crew', [])))
+                self._log("debug", "Fetched tv_credits",
+                         endpoint="/tv/{id}/credits",
+                         cast=len(data.get('cast', [])),
+                         crew=len(data.get('crew', [])))
         
         # TV Images
         if self.extras_config.get('tv_images'):
             data = self.extras_client.tv_images(show_id)
             if data:
                 extras['tv_images'] = data
-                self.debugger.debug("tmdb", "Fetched tv_images",
-                                   endpoint="/tv/{id}/images",
-                                   posters=len(data.get('posters', [])),
-                                   backdrops=len(data.get('backdrops', [])))
+                self._log("debug", "Fetched tv_images",
+                         endpoint="/tv/{id}/images",
+                         posters=len(data.get('posters', [])),
+                         backdrops=len(data.get('backdrops', [])))
         
         # TV Videos
         if self.extras_config.get('tv_videos'):
             data = self.extras_client.tv_videos(show_id)
             if data:
                 extras['tv_videos'] = data
-                self.debugger.debug("tmdb", "Fetched tv_videos",
-                                   endpoint="/tv/{id}/videos",
-                                   count=len(data.get('results', [])))
+                self._log("debug", "Fetched tv_videos",
+                         endpoint="/tv/{id}/videos",
+                         count=len(data.get('results', [])))
         
         # TV Keywords
         if self.extras_config.get('tv_keywords'):
             data = self.extras_client.tv_keywords(show_id)
             if data:
                 extras['tv_keywords'] = data
-                self.debugger.debug("tmdb", "Fetched tv_keywords",
-                                   endpoint="/tv/{id}/keywords",
-                                   count=len(data.get('results', [])))
+                self._log("debug", "Fetched tv_keywords",
+                         endpoint="/tv/{id}/keywords",
+                         count=len(data.get('results', [])))
         
         # TV Season Images
         if self.extras_config.get('tv_season_images'):
             data = self.extras_client.tv_season_images(show_id, season_num)
             if data:
                 extras['tv_season_images'] = data
-                self.debugger.debug("tmdb", "Fetched tv_season_images",
-                                   endpoint="/tv/{id}/season/{n}/images",
-                                   posters=len(data.get('posters', [])))
+                self._log("debug", "Fetched tv_season_images",
+                         endpoint="/tv/{id}/season/{n}/images",
+                         posters=len(data.get('posters', [])))
         
         # TV Episode Credits
         if self.extras_config.get('tv_episode_credits'):
             data = self.extras_client.tv_episode_credits(show_id, season_num, episode_num)
             if data:
                 extras['tv_episode_credits'] = data
-                self.debugger.debug("tmdb", "Fetched tv_episode_credits",
-                                   endpoint="/tv/{id}/season/{s}/episode/{e}/credits",
-                                   cast=len(data.get('cast', [])),
-                                   guest_stars=len(data.get('guest_stars', [])))
+                self._log("debug", "Fetched tv_episode_credits",
+                         endpoint="/tv/{id}/season/{s}/episode/{e}/credits",
+                         cast=len(data.get('cast', [])),
+                         guest_stars=len(data.get('guest_stars', [])))
         
         # TV Episode Images
         if self.extras_config.get('tv_episode_images'):
             data = self.extras_client.tv_episode_images(show_id, season_num, episode_num)
             if data:
                 extras['tv_episode_images'] = data
-                self.debugger.debug("tmdb", "Fetched tv_episode_images",
-                                   endpoint="/tv/{id}/season/{s}/episode/{e}/images",
-                                   stills=len(data.get('stills', [])))
+                self._log("debug", "Fetched tv_episode_images",
+                         endpoint="/tv/{id}/season/{s}/episode/{e}/images",
+                         stills=len(data.get('stills', [])))
         
         return extras
     

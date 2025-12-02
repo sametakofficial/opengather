@@ -11,9 +11,9 @@ Endpoints:
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query
 
-from archiverr.api.deps import get_database
+from archiverr.api.deps import DatabaseDep
 
 
 router = APIRouter()
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/")
 async def list_matches(
-    db = Depends(get_database),
+    db: DatabaseDep,
     execution_id: Optional[str] = Query(default=None, description="Filter by execution"),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0)
@@ -53,7 +53,7 @@ async def list_matches(
 
 
 @router.get("/{match_id}")
-async def get_match(match_id: str, db = Depends(get_database)):
+async def get_match(match_id: str, db: DatabaseDep):
     """
     Get match details by ID.
     """
@@ -72,7 +72,7 @@ async def get_match(match_id: str, db = Depends(get_database)):
 
 
 @router.get("/{match_id}/plugins")
-async def get_match_plugins(match_id: str, db = Depends(get_database)):
+async def get_match_plugins(match_id: str, db: DatabaseDep):
     """
     Get plugin results for a match.
     """

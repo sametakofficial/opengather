@@ -1,0 +1,241 @@
+# ============================================================================
+# Archiverr - Modern Python Package Configuration (PEP 621)
+# ============================================================================
+# This file replaces setup.py and provides standardized project metadata.
+# Reference: https://peps.python.org/pep-0621/
+# ============================================================================
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ============================================================================
+# PROJECT METADATA
+# ============================================================================
+
+[project]
+name = "archiverr"
+version = "2.1.0"
+description = "A plugin-based media archiving and metadata enrichment system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Samet", email = "samet@example.com"}
+]
+keywords = [
+    "media",
+    "archiving", 
+    "metadata",
+    "tmdb",
+    "tvdb",
+    "renamer",
+    "plugin-system"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: System :: Archiving",
+    "Typing :: Typed",
+]
+
+# ----------------------------------------------------------------------------
+# CORE DEPENDENCIES
+# ----------------------------------------------------------------------------
+dependencies = [
+    "pyyaml>=6.0.1,<7.0.0",
+    "jinja2>=3.1.2",
+    "requests>=2.31.0,<3.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+]
+
+# ----------------------------------------------------------------------------
+# OPTIONAL DEPENDENCIES
+# ----------------------------------------------------------------------------
+[project.optional-dependencies]
+# Database support
+mongodb = [
+    "pymongo>=4.10.0,<5.0.0",
+]
+
+# API server
+api = [
+    "fastapi>=0.104.0,<1.0.0",
+    "uvicorn[standard]>=0.24.0,<1.0.0",
+    "pydantic>=2.4.0,<3.0.0",
+    "httpx>=0.25.0,<1.0.0",
+]
+
+# Development tools
+dev = [
+    "pytest>=7.4.0,<8.0.0",
+    "pytest-asyncio>=0.21.0,<1.0.0",
+    "pytest-cov>=4.1.0,<5.0.0",
+    "mongomock>=4.1.0,<5.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "black>=23.0.0",
+]
+
+# All optional dependencies
+all = [
+    "archiverr[mongodb,api,dev]",
+]
+
+# ----------------------------------------------------------------------------
+# ENTRY POINTS
+# ----------------------------------------------------------------------------
+[project.scripts]
+archiverr = "archiverr.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/sametakofficial/archiverr"
+Repository = "https://github.com/sametakofficial/archiverr"
+Documentation = "https://github.com/sametakofficial/archiverr#readme"
+Issues = "https://github.com/sametakofficial/archiverr/issues"
+
+# ============================================================================
+# SETUPTOOLS CONFIGURATION
+# ============================================================================
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["archiverr*"]
+
+[tool.setuptools.package-data]
+"archiverr.plugins" = ["*/plugin.json"]
+
+# ============================================================================
+# DEVELOPMENT TOOLS CONFIGURATION
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# PYTEST
+# ----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+addopts = [
+    "-v",
+    "--tb=short",
+    "-ra",
+]
+
+# ----------------------------------------------------------------------------
+# RUFF (Linter - Replaces flake8, isort, etc.)
+# ----------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "*.egg-info",
+    "do-not-raead",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by black)
+    "B008",   # do not perform function calls in argument defaults (needed for FastAPI Depends)
+    "B905",   # zip without explicit strict= parameter
+    "ARG001", # unused function argument (common in abstract methods)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG", "S101"]  # Allow assert statements in tests
+"__init__.py" = ["F401"]     # Allow unused imports in __init__.py
+
+[tool.ruff.lint.isort]
+known-first-party = ["archiverr"]
+
+# ----------------------------------------------------------------------------
+# MYPY (Type Checking)
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = false  # Gradually enable
+ignore_missing_imports = true
+exclude = [
+    "do-not-raead",
+    "tests",
+    "build",
+]
+
+[[tool.mypy.overrides]]
+module = "archiverr.plugins.*"
+ignore_errors = true
+
+# ----------------------------------------------------------------------------
+# BLACK (Code Formatter)
+# ----------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | __pycache__
+    | \.venv
+    | venv
+    | build
+    | dist
+    | do-not-raead
+)/
+'''
+
+# ----------------------------------------------------------------------------
+# COVERAGE
+# ----------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/archiverr"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/plugins/*",  # Plugin coverage separate
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

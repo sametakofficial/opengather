@@ -172,10 +172,8 @@ class ExecutionService:
         ))
         
         try:
-            # Initialize event bus for loose coupling
-            event_bus = EventBus()
-            event_bus.reset()
-            event_bus.configure(debugger=debugger)
+            # Initialize event bus for loose coupling (DI pattern)
+            event_bus = EventBus(debugger=debugger)
             
             # Register event handlers
             progress_handler = ProgressHandler()
@@ -414,8 +412,8 @@ class ExecutionService:
             try:
                 if 'db_connection' in dir() and db_connection is not None:
                     db_connection.disconnect()
-            except:
-                pass
+            except Exception:
+                pass  # Ignore cleanup errors
             
             await self._emit_progress_async(ExecutionProgress(
                 execution_id=execution_id,

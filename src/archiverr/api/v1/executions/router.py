@@ -13,9 +13,9 @@ Endpoints:
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query
 
-from archiverr.api.deps import get_database
+from archiverr.api.deps import DatabaseDep
 from .schemas import (
     ExecutionResponse,
     ExecutionListResponse,
@@ -62,7 +62,7 @@ def _doc_to_response(doc: dict) -> ExecutionResponse:
 
 @router.get("/", response_model=ExecutionListResponse)
 async def list_executions(
-    db = Depends(get_database),
+    db: DatabaseDep,
     limit: int = Query(default=20, le=100, description="Max executions to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
     status: Optional[str] = Query(default=None, description="Filter by status")
@@ -100,7 +100,7 @@ async def list_executions(
 
 
 @router.get("/{execution_id}", response_model=ExecutionResponse)
-async def get_execution(execution_id: str, db = Depends(get_database)):
+async def get_execution(execution_id: str, db: DatabaseDep):
     """
     Get execution details by ID.
     """
@@ -123,7 +123,7 @@ async def get_execution(execution_id: str, db = Depends(get_database)):
 
 
 @router.get("/{execution_id}/status")
-async def get_execution_status(execution_id: str, db = Depends(get_database)):
+async def get_execution_status(execution_id: str, db: DatabaseDep):
     """
     Get execution status (for polling).
     """
@@ -153,7 +153,7 @@ async def get_execution_status(execution_id: str, db = Depends(get_database)):
 @router.get("/{execution_id}/matches")
 async def get_execution_matches(
     execution_id: str,
-    db = Depends(get_database),
+    db: DatabaseDep,
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0)
 ):

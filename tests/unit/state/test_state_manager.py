@@ -43,14 +43,34 @@ class TestGlobalStateManagerLifecycle:
             }
         }
     
-    def test_singleton_returns_same_instance(self, state_manager):
-        """Test singleton pattern works."""
-        from archiverr.state import GlobalStateManager
+    def test_di_creates_separate_instances(self, state_manager):
+        """Test DI pattern creates separate instances (no singleton)."""
+        from archiverr.state import StateManager
         
-        manager1 = GlobalStateManager()
-        manager2 = GlobalStateManager()
+        manager1 = StateManager()
+        manager2 = StateManager()
         
-        assert manager1 is manager2
+        # Each call creates a new instance (DI pattern)
+        assert manager1 is not manager2
+    
+    def test_constructor_injection(self):
+        """Test dependencies can be injected via constructor."""
+        from archiverr.state import StateManager
+        from unittest.mock import MagicMock
+        
+        mock_persistence = MagicMock()
+        mock_debugger = MagicMock()
+        mock_event_bus = MagicMock()
+        
+        manager = StateManager(
+            persistence=mock_persistence,
+            debugger=mock_debugger,
+            event_bus=mock_event_bus
+        )
+        
+        assert manager._persistence is mock_persistence
+        assert manager._debugger is mock_debugger
+        assert manager._event_bus is mock_event_bus
     
     def test_reset_clears_state(self, state_manager, sample_config):
         """Test reset clears all state."""

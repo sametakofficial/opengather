@@ -1,0 +1,17 @@
+# Renamer Plugin - Parses media file names
+# Clean manifest without overengineering
+
+name: renamer
+version: 1.0.0
+description: Parses media file names to extract movie/show metadata
+category: output
+class_name: RenamerPlugin
+
+# No dependencies - runs first after input
+depends_on: []
+expects: []
+
+# Supports both movies and shows
+categories:
+  - movie
+  - show

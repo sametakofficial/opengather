@@ -1,0 +1,271 @@
+"""
+Base Plugin Classes - Abstract base classes for plugins
+
+Provides:
+- BasePlugin: Common plugin interface
+- InputPlugin: For input plugins (scanner, file_reader)
+- OutputPlugin: For output plugins (tmdb, renamer, ffprobe)
+"""
+
+from typing import Dict, Any, List, Optional
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+from .context import ExecutionContext
+
+
+@dataclass
+class ValidationResult:
+    """Result of a validation test"""
+    passed: bool
+    details: Dict[str, Any]
+
+
+class BasePlugin(ABC):
+    """
+    Base class for all plugins.
+    
+    Plugins should:
+    1. Inherit from InputPlugin or OutputPlugin
+    2. Implement execute() method
+    3. Use context for logging, events, and task emission
+    
+    Example:
+        class MyPlugin(OutputPlugin):
+            async def execute(self, match_data: Dict) -> PluginResult:
+                self.log("info", "Processing...")  # Uses context internally
+                return PluginResult(success=True, data={...})
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize plugin with configuration.
+        
+        Args:
+            config: Plugin-specific configuration from config.yml
+        """
+        self.config = config
+        self.name: Optional[str] = None
+        self.category: Optional[str] = None
+        self._metadata: Dict[str, Any] = {}
+        self._context: Optional[ExecutionContext] = None
+        self._initialized: bool = False
+    
+    def set_context(self, context: ExecutionContext):
+        """
+        Set execution context (called by executor before execute()).
+        
+        Args:
+            context: ExecutionContext with runtime dependencies
+        """
+        self._context = context
+    
+    @property
+    def context(self) -> Optional[ExecutionContext]:
+        """Get current execution context"""
+        return self._context
+    
+    # =========================================================================
+    # Convenience Logging Methods (use context internally)
+    # =========================================================================
+    
+    def log(self, level: str, message: str, **kwargs):
+        """
+        Log message through context debugger.
+        
+        Args:
+            level: Log level (debug, info, warn, error)
+            message: Log message
+            **kwargs: Additional key-value pairs to log
+        """
+        if self._context and self._context.debugger:
+            log_func = getattr(self._context.debugger, level, self._context.debugger.info)
+            log_func(self.name or self.__class__.__name__, message, **kwargs)
+    
+    def debug(self, message: str, **kwargs):
+        """Log debug message"""
+        self.log("debug", message, **kwargs)
+    
+    def info(self, message: str, **kwargs):
+        """Log info message"""
+        self.log("info", message, **kwargs)
+    
+    def warn(self, message: str, **kwargs):
+        """Log warning message"""
+        self.log("warn", message, **kwargs)
+    
+    def error(self, message: str, **kwargs):
+        """Log error message"""
+        self.log("error", message, **kwargs)
+    
+    # =========================================================================
+    # Data Access Methods
+    # =========================================================================
+    
+    def get_previous_result(self, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get result from a previous plugin.
+        
+        Args:
+            plugin_name: Name of the plugin to get result from
+            
+        Returns:
+            Plugin result dict or None if not available
+        """
+        if self._context:
+            return self._context.get_plugin_result(plugin_name)
+        return None
+    
+    # =========================================================================
+    # Task & Progress Emission
+    # =========================================================================
+    
+    def emit_task(self, task_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Convenience method for task emission.
+        
+        Allows plugins to emit tasks during execution.
+        
+        Args:
+            task_config: Task configuration dict
+            
+        Returns:
+            Task result or None if context not available
+        """
+        if self._context:
+            return self._context.emit_task(task_config)
+        return None
+    
+    def emit_progress(self, percent: float, message: str = ""):
+        """
+        Convenience method for progress emission.
+        
+        Args:
+            percent: Progress percentage (0-100)
+            message: Optional progress message
+        """
+        if self._context:
+            self._context.emit_progress(percent, message)
+    
+    # =========================================================================
+    # Lifecycle Hooks
+    # =========================================================================
+    
+    async def setup(self) -> None:
+        """
+        Called once when plugin is loaded.
+        Override to initialize resources (API clients, caches, etc.)
+        """
+        self._initialized = True
+    
+    async def teardown(self) -> None:
+        """
+        Called when plugin is unloaded.
+        Override to cleanup resources.
+        """
+        pass
+    
+    @abstractmethod
+    def execute(self, *args, **kwargs):
+        """Execute plugin logic - must be implemented by subclasses"""
+        pass
+    
+    def _validate_duration(
+        self,
+        ffprobe_duration: float,
+        api_runtime_minutes: Optional[int],
+        tolerance_seconds: int = 600
+    ) -> ValidationResult:
+        """
+        Validate video duration against API runtime.
+        
+        Args:
+            ffprobe_duration: Duration from ffprobe in seconds
+            api_runtime_minutes: Runtime from API in minutes (None if not available)
+            tolerance_seconds: Allowed difference in seconds (default: 600 = 10 min)
+            
+        Returns:
+            ValidationResult with passed status and details
+        """
+        if api_runtime_minutes is None or api_runtime_minutes == 0:
+            return ValidationResult(
+                passed=False,
+                details={
+                    'ffprobe_duration': ffprobe_duration,
+                    'api_runtime': None,
+                    'diff_seconds': None,
+                    'tolerance': tolerance_seconds,
+                    'reason': 'API runtime not available'
+                }
+            )
+        
+        api_duration_seconds = api_runtime_minutes * 60
+        diff_seconds = abs(ffprobe_duration - api_duration_seconds)
+        passed = diff_seconds <= tolerance_seconds
+        
+        return ValidationResult(
+            passed=passed,
+            details={
+                'ffprobe_duration': ffprobe_duration,
+                'api_runtime': api_runtime_minutes,
+                'diff_seconds': diff_seconds,
+                'tolerance': tolerance_seconds
+            }
+        )
+
+
+class InputPlugin(BasePlugin):
+    """
+    Base class for input plugins.
+    
+    Input plugins collect targets to process (files, URLs, etc.)
+    
+    Example:
+        class ScannerPlugin(InputPlugin):
+            def execute(self) -> List[Dict[str, Any]]:
+                return [{"status": {...}, "input": {"path": "/path/to/file.mkv"}}]
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.category = "input"
+    
+    @abstractmethod
+    def execute(self) -> List[Dict[str, Any]]:
+        """
+        Execute input plugin.
+        
+        Returns:
+            List of matches: [{status: {...}, input: {...}, ...}]
+        """
+        pass
+
+
+class OutputPlugin(BasePlugin):
+    """
+    Base class for output plugins.
+    
+    Output plugins process individual matches and add data.
+    
+    Example:
+        class TMDbPlugin(OutputPlugin):
+            def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+                return {"status": {...}, "movie": {...}}
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.category = "output"
+    
+    @abstractmethod
+    def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute output plugin.
+        
+        Args:
+            match_data: Current match data with results from previous plugins
+            
+        Returns:
+            Plugin result: {status: {...}, ...data}
+        """
+        pass

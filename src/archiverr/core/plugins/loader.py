@@ -1,16 +1,18 @@
-"""Plugin Loader - Load and instantiate plugins"""
+"""Plugin Loader - Load and instantiate plugins with config validation"""
 import importlib
 from typing import Dict, Any, Optional
 from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk.validators import validate_plugin_config
 
 
 class PluginLoader:
-    """Loads plugin classes from discovered metadata"""
+    """Loads plugin classes from discovered metadata with config validation"""
     
     def __init__(self, plugin_metadata: Dict[str, Dict[str, Any]], config: Dict[str, Any]):
         self.plugin_metadata = plugin_metadata
         self.config = config
         self.loaded_plugins = {}
+        self.validation_errors: Dict[str, list] = {}  # Track validation errors per plugin
         self.debugger = get_debugger()
     
     def load_plugin(self, plugin_name: str) -> Optional[Any]:
@@ -37,6 +39,26 @@ class PluginLoader:
             self.debugger.debug("loader", f"Plugin disabled", plugin=plugin_name)
             return None
         
+        # Validate plugin config against schema (if defined)
+        config_schema = metadata.get('config_schema')
+        if config_schema:
+            validation_result = validate_plugin_config(plugin_config, config_schema, plugin_name)
+            
+            if not validation_result.valid:
+                # Log validation errors
+                self.validation_errors[plugin_name] = validation_result.error_messages()
+                for error in validation_result.errors:
+                    self.debugger.error("loader", "Config validation failed", 
+                                       plugin=plugin_name, error=str(error))
+                
+                # Don't load plugin with invalid config
+                self.debugger.warn("loader", "Plugin skipped due to config errors", plugin=plugin_name)
+                return None
+            else:
+                # Use validated config with defaults applied
+                plugin_config = validation_result.config
+                self.debugger.debug("loader", "Config validation passed", plugin=plugin_name)
+        
         try:
             self.debugger.debug("loader", f"Loading plugin", plugin=plugin_name)
             
@@ -60,7 +82,16 @@ class PluginLoader:
             
             # Instantiate
             instance = plugin_class(plugin_config)
+            
+            # Set metadata from validated manifest
             instance._metadata = metadata
+            instance.name = metadata.get('name', plugin_name)
+            instance.category = metadata.get('category', 'unknown')
+            
+            # Log validation status
+            is_validated = metadata.get('_validated', False)
+            self.debugger.debug("loader", "Plugin metadata set", 
+                              plugin=plugin_name, validated=is_validated)
             
             self.loaded_plugins[plugin_name] = instance
             self.debugger.info("loader", f"Plugin loaded successfully", plugin=plugin_name)
