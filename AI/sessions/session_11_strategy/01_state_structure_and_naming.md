@@ -1,194 +1,162 @@
-# STATE STRUCTURE & NAMING
+# STATE MODEL
 
 ```yaml
-date: 2025-11-30
-sources: v1, v2, v3, v5, v5-part2
-status: final
+tarih: 2025-12-02
+durum: final
+kaynak: plugin-system-brainstorm/06_STATE_MODEL.md
+v2_override: plugin-brainstorm-v2
 ```
 
 ---
 
-## 1. TERMİNOLOJİ KARARLARI
+## V2 OVERRIDE OZET
 
-| Eski | Yeni | Kod Değişikliği |
-|------|------|-----------------|
-| `ExecutionState` | `RunState` | Class rename |
-| `MatchState` | `JobState` | Class rename |
-| `matches` | `jobs` | Field rename |
-| `execution` | `run` | Context key |
-| `match` | `job` | Context key |
-| `not_supported` | `skipped` | Enum value |
+```
+v1 -> v2 DEGISIKLIKLER:
 
-**Not:** Eski terimler tamamen kaldırılıyor. Henüz published
-olmadığımız için backward compatibility gereksiz.
+- input.path -> input.value (virtual file destegi)
+- input.data eklendi (size_bytes, source, etc.)
+- output.paths -> output.values
+- output.data eklendi (task results)
+- jobs:{} run icinden ayrildi, ayri collection
+- plugins ayri collection (memory management)
+```
 
 ---
 
-## 2. NESTED STATE YAPISI
+## 1. TERMINOLOJI
 
-### 2.1 RunState (eski: ExecutionState)
+```
++----------------------------------------------------------+
+|              TERMINOLOJI KARARLARI                        |
++----------------------------------------------------------+
+|                                                           |
+|  ESKI              YENI              GEREKCE              |
+|  ----              ----              -------              |
+|  ExecutionState    RunState          "Run" daha net       |
+|  MatchState        JobState          Endustri standardi   |
+|  execution         run               Airflow, Jenkins     |
+|  match             job               GitLab CI pattern    |
+|  execution_id      run_id            Tutarlilik           |
+|  not_supported     skipped           Daha aciklayici      |
+|                                                           |
++----------------------------------------------------------+
+```
+
+---
+
+## 2. STATE HIERARCHY
 
 ```
 RunState
-├── id: str                          # "run_abc123"
-├── status: RunStatus
-│   ├── success: bool
-│   ├── total_jobs: int
-│   ├── completed: int
-│   ├── failed: int
-│   ├── started_at: datetime
-│   ├── finished_at: datetime
-│   └── duration_ms: int
-└── config: Dict                     # Frozen config snapshot
-```
-
-### 2.2 JobState (eski: MatchState)
-
-```
-JobState
-├── index: int                       # 0-based, in-memory
-├── job_id: str                      # "job_{run_id}_{index}"
-├── run_id: str                      # Parent reference
-├── input: JobInput
-│   ├── path: str
-│   ├── category: str                # movie/show/unknown
-│   └── virtual: bool
-├── status: JobStatus
-│   ├── success: bool
-│   ├── executed_plugins: List[str]
-│   ├── failed_plugins: List[str]
-│   ├── skipped_plugins: List[str]   # eski: not_supported
-│   ├── started_at: datetime
-│   ├── finished_at: datetime
-│   └── duration_ms: int
-├── output: JobOutput
-│   └── tasks: List[TaskResult]
-└── plugins: Dict[str, PluginData]   # plugin_name -> data
-```
-
----
-
-## 3. HYBRID ID SİSTEMİ
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    JOB IDENTIFICATION                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  index: int                                                  │
-│  ├── Scope: Single run                                       │
-│  ├── Range: 0 to N-1                                         │
-│  ├── Use: In-memory access, iteration                        │
-│  └── Example: 0, 1, 2, ...                                   │
-│                                                              │
-│  job_id: str                                                 │
-│  ├── Scope: Global unique                                    │
-│  ├── Format: "job_{run_id}_{index}"                          │
-│  ├── Use: MongoDB, cross-reference, logging                  │
-│  └── Example: "job_run_abc123_0"                             │
-│                                                              │
-│  MongoDB _id: ObjectId                                       │
-│  ├── Scope: Database internal                                │
-│  ├── Generated: By MongoDB                                   │
-│  └── Use: Never exposed to application                       │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+|
++-- id: str                    "run_abc123"
++-- status: RunStatus
+|     +-- state: enum          pending|running|completed|failed
+|     +-- success: bool
+|     +-- total_jobs: int
+|     +-- completed: int
+|     +-- failed: int
+|     +-- started_at: datetime
+|     +-- finished_at: datetime
+|     +-- duration_ms: int
++-- config: Dict               Frozen snapshot
+|
++-- jobs: Dict[int, JobState]
+      |
+      +-- [0]: JobState
+      |     +-- id: str        "job_abc123_0"
+      |     +-- index: int     0
+      |     +-- run_id: str    "run_abc123"
+      |     +-- input: InputData
+      |     |     +-- path: str
+      |     |     +-- category: str
+      |     +-- plugins: Dict[str, Any]
+      |     |     +-- scanner: {...}
+                        _state
+                        movie
+                            title
+                            year
+                        cast
+                        crew
+                        etc.
+      |     |     +-- renamer: {...}
+      |     |     +-- tmdb: {...}
+      |     +-- status: JobStatus
+      |           +-- state: enum
+      |           +-- success: bool
+      |           +-- executed: List[str]
+      |           +-- failed: List[str]
+      |           +-- skipped: List[str]
+      |
+      +-- [1]: JobState
+      +-- [2]: JobState
+      ...
 ```
 
 ---
 
-## 4. TEMPLATE CONTEXT
+## 3. PLUGINS STRUCTURE
 
-### 4.1 Context Structure
-
-```python
-context = {
-    # State access
-    'run': RunState.to_dict(),
-    'job': current_job.to_dict(),
-    'jobs': [j.to_dict() for j in all_jobs],
-    
-    # Config access
-    'options': config.get('options', {}),
-    
-    # Short aliases
-    'r': context['run'],
-    'j': context['job'],
-    'o': context['options'],
-}
 ```
-
-### 4.2 Template Erişim Örnekleri
-
-```jinja2
-{# Run bilgisi #}
-{{ run.id }}
-{{ run.status.total_jobs }}
-
-{# Current job #}
-{{ job.index }}
-{{ job.input.path }}
-{{ job.plugins.tmdb.movie.title }}
-
-{# Short alias kullanımı #}
-{{ j.plugins.renamer.parsed.movie.name }}
-
-{# Custom alias (Jinja2 set) #}
-{% set m = job.plugins.tmdb.movie %}
-{{ m.title }} ({{ m.release_date[:4] }})
-
-{# All jobs (summary) #}
-{% for j in jobs %}
-  {{ j.index }}: {{ j.plugins.tmdb.movie.title }}
-{% endfor %}
++----------------------------------------------------------+
+|              PLUGINS STRUCTURE (FLAT)                     |
++----------------------------------------------------------+
+|                                                           |
+|  REDDEDILEN (Nested by stage):                           |
+|  plugins:                                                 |
+|    input:                                                |
+|      scanner: {...}                                      |
+|    parse:                                                |
+|      renamer: {...}                                      |
+|                                                           |
+|  KABUL EDILEN (Flat):                                    |
+|  plugins:                                                 |
+|    scanner: {...}                                        |
+|    renamer: {...}                                        |
+|    tmdb: {...}                                           |
+|                                                           |
+|  GEREKCE:                                                |
+|  - Template erisimi kolay: job.plugins.tmdb.movie        |
+|  - Stage bilgisi manifest'te, state'te gereksiz          |
+|                                                           |
++----------------------------------------------------------+
 ```
 
 ---
 
-## 5. STATE MANAGER API
+## 4. HYBRID ID SISTEMI
 
-```python
-class StateManager:
-    _current_run: Optional[RunState]
-    _jobs: Dict[int, JobState]       # index -> JobState
-    _job_id_map: Dict[str, int]      # job_id -> index
-    
-    # Run lifecycle
-    def start_run(self, config: Dict) -> str:
-        """Create new run, return run_id"""
-    
-    def complete_run(self) -> None:
-        """Mark run as completed"""
-    
-    # Job lifecycle
-    def register_job(self, index: int, input_path: str) -> JobState:
-        """Create new job, emit event, return state"""
-    
-    def complete_job(self, index: int) -> None:
-        """Mark job completed, emit event"""
-    
-    # Job access
-    def get_job(self, index: int) -> JobState:
-        """Get by index (fast, in-memory)"""
-    
-    def get_job_by_id(self, job_id: str) -> JobState:
-        """Get by job_id (lookup)"""
-    
-    def get_all_jobs(self) -> List[JobState]:
-        """Get all jobs (sorted by index)"""
-    
-    # Plugin results
-    def update_plugin(self, index: int, name: str, result: PluginResult):
-        """Update plugin result for job"""
-    
-    # Context
-    def get_context(self, job_index: Optional[int] = None) -> Dict:
-        """Build template context"""
+```
++----------------------------------------------------------+
+|              JOB IDENTIFICATION                           |
++----------------------------------------------------------+
+|                                                           |
+|  index: int                                               |
+|  - Scope: Single run                                     |
+|  - Range: 0 to N-1                                       |
+|  - Use: In-memory access, iteration                      |
+|  - Fast: O(1) dict lookup                                |
+|                                                           |
+|  job_id: str                                              |
+|  - Scope: Global unique                                  |
+|  - Format: "job_{run_id}_{index}"                        |
+|  - Use: MongoDB, logging, cross-reference                |
+|  - Traceable: Her job benzersiz ID'ye sahip              |
+|                                                           |
++----------------------------------------------------------+
+
+KULLANIM:
+  # In-memory (fast)
+  job = state.get_job(index=0)
+
+  # Cross-reference (traceable)
+  job = state.get_job_by_id("job_abc123_0")
 ```
 
 ---
 
-## 6. DATACLASS IMPLEMENTATION
+## 5. DATACLASS IMPLEMENTATION
 
 ```python
 from dataclasses import dataclass, field
@@ -196,175 +164,271 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-class JobStatusEnum(Enum):
+class StateEnum(Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
 
 @dataclass
-class JobInput:
-    path: str
-    category: str = "unknown"
-    virtual: bool = False
+class InputData:
+    # v2: path -> value (virtual file destegi)
+    value: str                    # /path veya "The Matrix 1999" veya "tmdb://movie/603"
+    data: Dict[str, Any] = field(default_factory=dict)  # v2: eklendi
+    # data icerigi:
+    #   filename: str
+    #   extension: str
+    #   size_bytes: int
+    #   modified_at: datetime
+    #   source: str (filesystem|api|manual)
 
 @dataclass
 class JobStatus:
-    state: JobStatusEnum = JobStatusEnum.PENDING
+    state: StateEnum = StateEnum.PENDING
     success: bool = True
-    executed_plugins: List[str] = field(default_factory=list)
-    failed_plugins: List[str] = field(default_factory=list)
-    skipped_plugins: List[str] = field(default_factory=list)
+    executed: List[str] = field(default_factory=list)
+    failed: List[str] = field(default_factory=list)
+    skipped: List[str] = field(default_factory=list)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     duration_ms: int = 0
 
 @dataclass
-class TaskResult:
-    name: str
-    type: str                        # print, save
-    success: bool
-    rendered: Optional[str] = None
-    destination: Optional[str] = None
-    error: Optional[str] = None
-
-@dataclass
-class JobOutput:
-    tasks: List[TaskResult] = field(default_factory=list)
+class OutputData:
+    # v2: output yapisi eklendi
+    values: List[str] = field(default_factory=list)  # output paths
+    data: Dict[str, Any] = field(default_factory=dict)  # task results
 
 @dataclass
 class JobState:
     index: int
     run_id: str
-    job_id: str = ""
-    input: JobInput = field(default_factory=lambda: JobInput(""))
+    id: str = ""
+    input: InputData = field(default_factory=lambda: InputData(""))
+    output: OutputData = field(default_factory=OutputData)  # v2: eklendi
     status: JobStatus = field(default_factory=JobStatus)
-    output: JobOutput = field(default_factory=JobOutput)
-    plugins: Dict[str, Any] = field(default_factory=dict)
-    
+    # v2: plugins ayri collection'da (memory management)
+
     def __post_init__(self):
-        if not self.job_id:
-            self.job_id = f"job_{self.run_id}_{self.index}"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'index': self.index,
-            'job_id': self.job_id,
-            'input': {
-                'path': self.input.path,
-                'category': self.input.category,
-                'virtual': self.input.virtual
-            },
-            'status': {
-                'state': self.status.state.value,
-                'success': self.status.success,
-                'executed_plugins': self.status.executed_plugins,
-                'failed_plugins': self.status.failed_plugins,
-                'skipped_plugins': self.status.skipped_plugins,
-                'started_at': self.status.started_at.isoformat() if self.status.started_at else None,
-                'finished_at': self.status.finished_at.isoformat() if self.status.finished_at else None,
-                'duration_ms': self.status.duration_ms
-            },
-            'output': {
-                'tasks': [
-                    {
-                        'name': t.name,
-                        'type': t.type,
-                        'success': t.success,
-                        'rendered': t.rendered,
-                        'destination': t.destination,
-                        'error': t.error
-                    }
-                    for t in self.output.tasks
-                ]
-            },
-            'plugins': self.plugins
-        }
-```
+        if not self.id:
+            self.id = f"job_{self.run_id}_{self.index}"
 
----
-
-## 7. EVENTBUS INTEGRATION
-
-```
-State Change           Event Emitted              Payload
-────────────────────────────────────────────────────────────
-start_run()         → run.started              {run_id, config}
-complete_run()      → run.completed            {run_id, stats}
-register_job()      → job.started              {run_id, index, job_id, path}
-complete_job()      → job.completed/failed     {run_id, index, job_id, success}
-update_plugin()     → plugin.completed/failed  {run_id, index, plugin_name}
-```
-
----
-
-## 8. MEVCUT KOD vs YENİ KOD
-
-### Mevcut (state/models.py)
-
-```python
 @dataclass
-class MatchState:
-    index: int
-    input_path: str
-    execution_id: str
+class RunStatus:
+    state: StateEnum = StateEnum.PENDING
     success: bool = True
-    status: ExecutionStatus = ExecutionStatus.PENDING
-    # ... flat fields
-```
+    total_jobs: int = 0
+    completed: int = 0
+    failed: int = 0
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: int = 0
 
-### Yeni
-
-```python
 @dataclass
-class JobState:
-    index: int
-    run_id: str
-    job_id: str = ""
-    input: JobInput = field(default_factory=...)
-    status: JobStatus = field(default_factory=...)
-    output: JobOutput = field(default_factory=...)
-    plugins: Dict[str, Any] = field(default_factory=dict)
+class RunState:
+    id: str
+    status: RunStatus = field(default_factory=RunStatus)
+    config: Dict[str, Any] = field(default_factory=dict)
+    # v2: jobs:{} kaldirildi, ayri collection
+    # v2: plugins ayri collection (memory management)
 ```
 
-**Değişiklik Özeti:**
-- `input_path: str` → `input: JobInput`
-- `success: bool` → `status.success: bool`
-- `execution_id` → `run_id`
-- `+job_id` field eklendi
-- Nested dataclasses
+**Uyari:** Ornek kod, direkt kopyalanmaz. Mevcut codebase ile uyumlu sekilde yeniden yazilmalidir.
 
 ---
 
-## 9. TEST CASES
+## 6. TEMPLATE CONTEXT
+
+```
++----------------------------------------------------------+
+|              TEMPLATE CONTEXT BUILD                       |
++----------------------------------------------------------+
+|                                                           |
+|  context = {                                             |
+|      # State access                                      |
+|      'run': run_state.to_dict(),                         |
+|      'job': current_job.to_dict(),                       |
+|      'jobs': [j.to_dict() for j in all_jobs],            |
+|                                                           |
+|      # Config access                                     |
+|      'options': config.get('options', {}),               |
+|                                                           |
+|      # Short aliases (sistem tarafindan)                 |
+|      'r': run_state.to_dict(),                           |
+|      'j': current_job.to_dict(),                         |
+|  }                                                       |
+|                                                           |
++----------------------------------------------------------+
+```
+
+### Template Erisim Ornekleri
+
+```jinja2
+{# Run bilgisi #}
+{{ run.id }}
+{{ run.status.total_jobs }}
+
+{# Job bilgisi #}
+{{ job.index }}
+{{ job.input.path }}
+{{ job.input.category }}
+
+{# Plugin data (flat) #}
+{{ job.plugins.tmdb.movie.title }}
+{{ job.plugins.renamer.parsed.movie.name }}
+
+{# Kisa alias #}
+{{ j.plugins.tmdb.movie.title }}
+
+{# Custom alias (Jinja2 set) #}
+{% set m = job.plugins.tmdb.movie %}
+{{ m.title }} ({{ m.release_date[:4] }})
+
+{# Tum job'lar #}
+{% for j in jobs %}
+  {{ j.index }}: {{ j.plugins.tmdb.movie.title }}
+{% endfor %}
+```
+
+---
+
+## 7. STATE MANAGER API
 
 ```python
-def test_job_id_generation():
-    job = JobState(index=5, run_id="run_abc")
-    assert job.job_id == "job_run_abc_5"
+class StateManager:
+    def __init__(self, event_bus, persistence):
+        self._event_bus = event_bus
+        self._persistence = persistence
+        self._run: Optional[RunState] = None
+        self._jobs: Dict[int, JobState] = {}
 
-def test_to_dict_nested():
-    job = JobState(
-        index=0,
-        run_id="run_123",
-        input=JobInput(path="/file.mkv", category="movie")
-    )
-    d = job.to_dict()
-    assert d['input']['path'] == "/file.mkv"
-    assert d['input']['category'] == "movie"
+    # Run lifecycle
+    def start_run(self, config: Dict) -> str:
+        """Yeni run baslat, run_id dondur"""
 
-def test_state_manager_dual_access():
-    sm = StateManager()
-    sm.start_run({})
-    job = sm.register_job(0, "/file.mkv")
-    
-    # By index
-    assert sm.get_job(0) is job
-    
-    # By job_id
-    assert sm.get_job_by_id(job.job_id) is job
+    def complete_run(self) -> RunState:
+        """Run'i tamamla"""
+
+    # Job lifecycle
+    def create_job(self, path: str, category: str = "unknown") -> JobState:
+        """Yeni job olustur"""
+
+    def get_job(self, index: int) -> Optional[JobState]:
+        """Index ile job getir"""
+
+    def get_job_by_id(self, job_id: str) -> Optional[JobState]:
+        """ID ile job getir"""
+
+    def get_all_jobs(self) -> List[JobState]:
+        """Tum job'lari getir"""
+
+    def complete_job(self, index: int) -> None:
+        """Job'u tamamla"""
+
+    # Plugin results
+    def update_plugin(self, index: int, plugin: str, data: Dict) -> None:
+        """Plugin sonucunu kaydet"""
+
+    # Template context
+    def build_context(self, index: int) -> Dict:
+        """Template context olustur"""
+```
+
+**Uyari:** API referansi, execution session'da mevcut codebase'e gore uyarlanmalidir.
+
+---
+
+## 8. EVENT EMISSION
+
+```
++----------------------------------------------------------+
+|  STATE CHANGE              EVENT                          |
++----------------------------------------------------------+
+|                                                           |
+|  start_run()           --> run.started                   |
+|                            {run_id, config_keys}         |
+|                                                           |
+|  complete_run()        --> run.completed                 |
+|                            {run_id, stats}               |
+|                                                           |
+|  create_job()          --> job.created                   |
+|                            {run_id, job_id, index, path} |
+|                                                           |
+|  complete_job()        --> job.completed                 |
+|                            {run_id, job_id, success}     |
+|                                                           |
+|  update_plugin()       --> plugin.completed              |
+|                            {job_id, plugin, success}     |
+|                                                           |
++----------------------------------------------------------+
 ```
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+## 9. MONGODB MAPPING
+
+```
+              MONGODB COLLECTIONS
+
+runs
+|-- _id: ObjectId
+|-- run_id: "run_abc123"
+|-- status: {...}
+|-- config: {...}
+|-- created_at: ISODate
+|-- updated_at: ISODate
+
+jobs
+|-- _id: ObjectId
+|-- job_id: "job_abc123_0"
+|-- run_id: "run_abc123"
+|-- index: 0
+|-- input: {path, category}
+|-- status: {...}
+|-- created_at: ISODate
+|-- updated_at: ISODate
+
+plugin_results
+|-- _id: ObjectId
+|-- job_id: "job_abc123_0"
+|-- plugin: "tmdb"
+|-- data: {...}
+|-- success: true
+|-- duration_ms: 1234
+|-- created_at: ISODate
+```
+
+---
+
+## 10. MEVCUT vs YENI
+
+```
+MEVCUT (state/models.py):
+  @dataclass
+  class MatchState:
+      index: int
+      input_path: str
+      execution_id: str
+      plugins: Dict[str, PluginResult]
+
+YENI:
+  @dataclass
+  class JobState:
+      index: int
+      run_id: str
+      id: str                    # job_run123_0
+      input: InputData           # nested
+      plugins: Dict[str, Any]    # flat
+      status: JobStatus          # nested
+
+DEGISIKLIKLER:
+  - MatchState -> JobState
+  - execution_id -> run_id
+  - input_path -> input.path (nested)
+  - +job_id (unique identifier)
+  - Flat plugins structure
+```
+
+---
+
+**Son Guncelleme:** 2025-12-02

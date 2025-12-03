@@ -4,6 +4,21 @@
 tarih: 2025-12-02
 durum: final
 amac: Teknik etki bazli provides ve requires sistemi
+v2_override: plugin-brainstorm-v2
+```
+
+---
+
+## V2 OVERRIDE OZET
+
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- input.value, input.data, output.values, output.data provides eklendi
+- lockable: fs.write, fs.delete, fs.move, fs.hardlink, fs.symlink (5 adet)
+- non-lockable: fs.copy, fs.mkdir, fs.chmod, state.update, job.create
+- provides icinde job.* ve run.* YASAK
+- process.spawn, process.exec eklendi
 ```
 
 ---

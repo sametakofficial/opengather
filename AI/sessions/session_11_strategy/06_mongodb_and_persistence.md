@@ -1,9 +1,25 @@
-# MONGODB & PERSISTENCE
+# MONGODB & VERİ SAKLAMA
 
 ```yaml
-date: 2025-11-30
-sources: v3, v5-part2, memory research
-status: final
+tarih: 2025-12-02
+durum: final
+kaynak: session_11 v6, implementation
+v2_override: plugin-brainstorm-v2
+```
+
+---
+
+## V2 OVERRIDE OZET
+
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- input.path -> input.value
+- input.data eklendi (size_bytes, source, etc.)
+- output.values eklendi (paths array)
+- output.data eklendi (task results detay)
+- plugins collection ayri (memory management)
+- memory_management: hot/cold tiering, completed_first eviction
 ```
 
 ---
@@ -27,7 +43,7 @@ MongoDB Database: archiverr
 {
   _id: ObjectId,
   id: "run_abc123",                    // Application ID
-  
+
   status: {
     state: "completed",                // pending|running|completed|failed
     success: true,
@@ -38,13 +54,13 @@ MongoDB Database: archiverr
     finished_at: ISODate,
     duration_ms: 45000
   },
-  
+
   config: {
     options: {debug: true, dry_run: false},
     plugins: {...},
     tasks: [...]
   },
-  
+
   created_at: ISODate,
   updated_at: ISODate
 }
@@ -63,13 +79,18 @@ MongoDB Database: archiverr
   run_id: "run_abc123",
   index: 0,
   job_id: "job_run_abc123_0",          // Unique across runs
-  
+
   input: {
-    path: "/media/file.mkv",
-    category: "movie",
-    virtual: false
+    value: "/media/file.mkv",          // v2: path -> value
+    data: {                             // v2: eklendi
+      filename: "file.mkv",
+      extension: "mkv",
+      size_bytes: 5368709120,
+      modified_at: ISODate,
+      source: "filesystem"              // filesystem|api|manual
+    }
   },
-  
+
   status: {
     state: "completed",
     success: true,
@@ -80,14 +101,20 @@ MongoDB Database: archiverr
     finished_at: ISODate,
     duration_ms: 2500
   },
-  
+
   output: {
-    tasks: [
-      {name: "print_header", type: "print", success: true},
-      {name: "save_file", type: "save", success: true, destination: "..."}
-    ]
+    values: [                            // v2: eklendi
+      "/srv/archive/Movie (2024)/Movie.mkv",
+      "/srv/archive/Movie (2024)/Movie.nfo"
+    ],
+    data: {                              // v2: eklendi
+      tasks: {
+        save_movie: {type: "save", success: true, destination: "..."},
+        log_result: {type: "print", success: true, rendered: "..."}
+      }
+    }
   },
-  
+
   created_at: ISODate,
   updated_at: ISODate
 }
@@ -108,7 +135,7 @@ MongoDB Database: archiverr
   job_id: "job_run_abc123_0",
   job_index: 0,
   plugin_name: "tmdb",
-  
+
   status: {
     state: "success",                  // success|failed|skipped
     started_at: ISODate,
@@ -116,7 +143,7 @@ MongoDB Database: archiverr
     duration_ms: 800,
     error: null
   },
-  
+
   data: {
     movie: {
       id: 1234,
@@ -127,7 +154,7 @@ MongoDB Database: archiverr
       genres: ["Action", "Comedy"]
     }
   },
-  
+
   created_at: ISODate
 }
 
@@ -147,47 +174,47 @@ from typing import Dict, List, Optional
 
 class PersistenceInterface(ABC):
     """Abstract persistence layer"""
-    
+
     # Run operations
     @abstractmethod
     def save_run(self, run: RunState) -> None: pass
-    
+
     @abstractmethod
     def get_run(self, run_id: str) -> Optional[RunState]: pass
-    
+
     @abstractmethod
     def update_run_status(self, run_id: str, status: Dict) -> None: pass
-    
+
     # Job operations
     @abstractmethod
     def save_job(self, job: JobState) -> None: pass
-    
+
     @abstractmethod
     def get_job(self, job_id: str) -> Optional[JobState]: pass
-    
+
     @abstractmethod
     def get_jobs_by_run(self, run_id: str) -> List[JobState]: pass
-    
+
     @abstractmethod
     def update_job_status(self, job_id: str, status: Dict) -> None: pass
-    
+
     # Plugin operations
     @abstractmethod
     def save_plugin_result(
-        self, 
-        run_id: str, 
-        job_id: str, 
-        plugin_name: str, 
+        self,
+        run_id: str,
+        job_id: str,
+        plugin_name: str,
         result: PluginResult
     ) -> None: pass
-    
+
     @abstractmethod
     def get_plugin_data(
-        self, 
-        job_id: str, 
+        self,
+        job_id: str,
         plugin_name: str
     ) -> Optional[Dict]: pass
-    
+
     # Batch operations
     @abstractmethod
     def flush(self) -> None: pass
@@ -200,24 +227,24 @@ class PersistenceInterface(ABC):
 ```python
 class PyMongoPersistence(PersistenceInterface):
     """Sync MongoDB persistence for CLI"""
-    
+
     RUNS = "runs"
     JOBS = "jobs"
     PLUGINS = "plugins"
-    
+
     def __init__(self, db: Database):
         self._db = db
         self._ensure_indexes()
-    
+
     def _ensure_indexes(self):
         self._db[self.RUNS].create_index("id", unique=True)
         self._db[self.JOBS].create_index([("run_id", 1), ("index", 1)], unique=True)
         self._db[self.JOBS].create_index("job_id", unique=True)
         self._db[self.PLUGINS].create_index(
-            [("run_id", 1), ("job_index", 1), ("plugin_name", 1)], 
+            [("run_id", 1), ("job_index", 1), ("plugin_name", 1)],
             unique=True
         )
-    
+
     def save_run(self, run: RunState) -> None:
         self._db[self.RUNS].replace_one(
             {"id": run.id},
@@ -230,7 +257,7 @@ class PyMongoPersistence(PersistenceInterface):
             },
             upsert=True
         )
-    
+
     def save_job(self, job: JobState) -> None:
         self._db[self.JOBS].replace_one(
             {"job_id": job.job_id},
@@ -246,12 +273,12 @@ class PyMongoPersistence(PersistenceInterface):
             },
             upsert=True
         )
-    
+
     def save_plugin_result(
-        self, 
-        run_id: str, 
-        job_id: str, 
-        plugin_name: str, 
+        self,
+        run_id: str,
+        job_id: str,
+        plugin_name: str,
         result: PluginResult
     ) -> None:
         self._db[self.PLUGINS].replace_one(
@@ -270,19 +297,19 @@ class PyMongoPersistence(PersistenceInterface):
             },
             upsert=True
         )
-    
+
     def get_job(self, job_id: str) -> Optional[JobState]:
         doc = self._db[self.JOBS].find_one({"job_id": job_id})
         if not doc:
             return None
-        
+
         # Load plugin data
         plugins = {}
         for pdoc in self._db[self.PLUGINS].find({"job_id": job_id}):
             plugins[pdoc["plugin_name"]] = pdoc["data"]
-        
+
         return JobState.from_dict(doc, plugins)
-    
+
     def flush(self) -> None:
         pass  # PyMongo writes immediately
 ```
@@ -294,14 +321,14 @@ class PyMongoPersistence(PersistenceInterface):
 ```python
 class MotorPersistence(PersistenceInterface):
     """Async MongoDB persistence for API"""
-    
+
     RUNS = "runs"
     JOBS = "jobs"
     PLUGINS = "plugins"
-    
+
     def __init__(self, db: AsyncIOMotorDatabase):
         self._db = db
-    
+
     async def save_run(self, run: RunState) -> None:
         await self._db[self.RUNS].replace_one(
             {"id": run.id},
@@ -314,16 +341,16 @@ class MotorPersistence(PersistenceInterface):
             },
             upsert=True
         )
-    
+
     async def get_job(self, job_id: str) -> Optional[JobState]:
         doc = await self._db[self.JOBS].find_one({"job_id": job_id})
         if not doc:
             return None
-        
+
         plugins = {}
         async for pdoc in self._db[self.PLUGINS].find({"job_id": job_id}):
             plugins[pdoc["plugin_name"]] = pdoc["data"]
-        
+
         return JobState.from_dict(doc, plugins)
 ```
 
@@ -334,21 +361,21 @@ class MotorPersistence(PersistenceInterface):
 ```python
 class MockPersistence(PersistenceInterface):
     """File-based mock for testing without MongoDB"""
-    
+
     def __init__(self, data_dir: Path):
         self._dir = data_dir
         self._runs: Dict[str, Dict] = {}
         self._jobs: Dict[str, Dict] = {}
         self._plugins: Dict[str, Dict] = {}
-    
+
     def save_run(self, run: RunState) -> None:
         self._runs[run.id] = run.to_dict()
         self._write_file()
-    
+
     def save_job(self, job: JobState) -> None:
         self._jobs[job.job_id] = job.to_dict()
         self._write_file()
-    
+
     def _write_file(self) -> None:
         data = {
             "runs": self._runs,
@@ -357,7 +384,7 @@ class MockPersistence(PersistenceInterface):
         }
         with open(self._dir / "state.json", "w") as f:
             json.dump(data, f, indent=2, default=str)
-    
+
     def flush(self) -> None:
         self._write_file()
 ```
@@ -369,37 +396,37 @@ class MockPersistence(PersistenceInterface):
 ```python
 class DatabaseConnection:
     """Factory for database connections"""
-    
+
     @classmethod
     def from_env(cls) -> 'DatabaseConnection':
         return cls(
             uri=os.environ.get('MONGODB_URI', 'mongodb://localhost:27017'),
             database=os.environ.get('MONGODB_DATABASE', 'archiverr')
         )
-    
+
     def __init__(self, uri: str, database: str):
         self._uri = uri
         self._database = database
         self._client = None
-    
+
     def connect_sync(self) -> PyMongoPersistence:
         """For CLI usage"""
         from pymongo import MongoClient
         self._client = MongoClient(self._uri)
         db = self._client[self._database]
         return PyMongoPersistence(db)
-    
+
     async def connect_async(self) -> MotorPersistence:
         """For API usage"""
         from motor.motor_asyncio import AsyncIOMotorClient
         self._client = AsyncIOMotorClient(self._uri)
         db = self._client[self._database]
         return MotorPersistence(db)
-    
+
     def connect_mock(self, data_dir: Path) -> MockPersistence:
         """For testing"""
         return MockPersistence(data_dir)
-    
+
     def disconnect(self) -> None:
         if self._client:
             self._client.close()
@@ -442,20 +469,20 @@ Cons: Data loss risk on crash
 ```python
 class BufferedPersistence:
     """Write-back persistence with buffering"""
-    
+
     def __init__(self, backend: PersistenceInterface, flush_threshold: int = 100):
         self._backend = backend
         self._threshold = flush_threshold
         self._buffer: List[Callable] = []
-    
+
     def save_job(self, job: JobState) -> None:
         self._buffer.append(lambda: self._backend.save_job(job))
         self._maybe_flush()
-    
+
     def _maybe_flush(self) -> None:
         if len(self._buffer) >= self._threshold:
             self.flush()
-    
+
     def flush(self) -> None:
         for op in self._buffer:
             op()
@@ -471,11 +498,11 @@ class BufferedPersistence:
 def get_run_with_jobs(run_id: str) -> Dict:
     run = db.runs.find_one({"id": run_id})
     jobs = list(db.jobs.find({"run_id": run_id}).sort("index", 1))
-    
+
     for job in jobs:
         plugins = list(db.plugins.find({"job_id": job["job_id"]}))
         job["plugins"] = {p["plugin_name"]: p["data"] for p in plugins}
-    
+
     run["jobs"] = jobs
     return run
 
@@ -507,7 +534,7 @@ def search_jobs_by_path(pattern: str) -> List[Dict]:
 Mevcut              Yeni
 ──────────────────────────
 executions      →   runs
-matches         →   jobs  
+matches         →   jobs
 plugin_results  →   plugins
 ```
 
@@ -540,4 +567,4 @@ plugin_results  →   plugins
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02

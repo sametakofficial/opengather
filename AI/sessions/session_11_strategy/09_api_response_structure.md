@@ -1,9 +1,24 @@
 # API RESPONSE STRUCTURE
 
 ```yaml
-date: 2025-11-30
-sources: v3, v5-part2
-status: final
+tarih: 2025-12-02
+durum: final
+kaynak: plugin-system-brainstorm/06_STATE_MODEL.md
+v2_override: plugin-brainstorm-v2
+```
+
+---
+
+## V2 OVERRIDE OZET
+
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- input.path -> input.value
+- input.data eklendi (size_bytes, source, etc.)
+- output.values eklendi (paths array)
+- output.data eklendi (task results detay)
+- plugins ayri response (memory management)
 ```
 
 ---
@@ -34,19 +49,23 @@ status: final
       "tasks": [...]
     }
   },
-  
+
   // All jobs
   "jobs": [
     {
       "index": 0,
       "job_id": "job_run_abc123_0",
-      
+
       "input": {
-        "path": "/media/file.mkv",
-        "category": "movie",
-        "virtual": false
+        "value": "/media/file.mkv",    // v2: path -> value
+        "data": {                       // v2: eklendi
+          "filename": "file.mkv",
+          "extension": "mkv",
+          "size_bytes": 5368709120,
+          "source": "filesystem"
+        }
       },
-      
+
       "status": {
         "state": "completed",
         "success": true,
@@ -57,7 +76,7 @@ status: final
         "finished_at": "2025-11-30T12:00:03Z",
         "duration_ms": 2500
       },
-      
+
       "output": {
         "tasks": [
           {
@@ -74,7 +93,7 @@ status: final
           }
         ]
       },
-      
+
       "plugins": {
         "scanner": {
           "status": {"success": true},
@@ -83,7 +102,7 @@ status: final
             "virtual": false
           }
         },
-        
+
         "renamer": {
           "status": {"success": true},
           "parsed": {
@@ -94,7 +113,7 @@ status: final
             }
           }
         },
-        
+
         "tmdb": {
           "status": {"success": true},
           "movie": {
@@ -109,7 +128,7 @@ status: final
             "genres": ["Action", "Comedy", "Romance"]
           }
         },
-        
+
         "ffprobe": {
           "status": {"success": true},
           "video": {
@@ -149,10 +168,10 @@ context = {
     'run': {...},
     'job': {...},
     'jobs': [...],
-    
+
     # Config access
     'options': {...},
-    
+
     # Short aliases
     'r': run,
     'j': job,
@@ -234,7 +253,7 @@ context = {
     'job': job_data,
     'jobs': jobs_data,
     'options': config_options,
-    
+
     # Short aliases
     'r': run_data,
     'j': job_data,
@@ -258,36 +277,36 @@ context = {
 class ResponseBuilder:
     def __init__(self, state: StateManager):
         self._state = state
-    
+
     def build(self) -> Dict:
         """Build full API response"""
         run = self._state.get_current_run()
         jobs = self._state.get_all_jobs()
-        
+
         return {
             'run': run.to_dict() if run else {},
             'jobs': [j.to_dict() for j in jobs]
         }
-    
+
     def build_for_template(self, job_index: Optional[int] = None) -> Dict:
         """Build template context with aliases"""
         response = self.build()
-        
+
         context = {
             # Primary
             'run': response['run'],
             'jobs': response['jobs'],
-            
+
             # Aliases
             'execution': response['run'],
             'matches': response['jobs'],
         }
-        
+
         # Current job
         if job_index is not None and job_index < len(response['jobs']):
             context['job'] = response['jobs'][job_index]
             context['match'] = context['job']
-        
+
         return context
 ```
 
@@ -411,6 +430,7 @@ Her plugin'in `status` objesi:
 ```
 
 **Key Changes:**
+
 - `globals` → `run`
 - `matches` → `jobs`
 - `globals.input_path` → `input.path`
@@ -420,4 +440,4 @@ Her plugin'in `status` objesi:
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02

@@ -1,14 +1,42 @@
-# PROJECT STRUCTURE
+# PROJE YAPISI
 
 ```yaml
-date: 2025-11-30
-sources: all sessions
-status: final
+tarih: 2025-12-02
+durum: final
+kaynak: plugin-system-brainstorm/08_IMPLEMENTATION.md
+v2_override: plugin-brainstorm-v2
 ```
 
 ---
 
-## 1. DIRECTORY LAYOUT
+## V2 OVERRIDE OZET
+
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- orchestrator.py henuz YOK (current: tum logic __main__.py'de)
+- services.py henuz YOK (current: SDK icinde)
+- StageExecutor henuz YOK (current: 2 category: input/output)
+```
+
+---
+
+## CURRENT vs TARGET
+
+```
+CURRENT:                           TARGET:
+__main__.py (392 satir)            __main__.py (~50 satir)
+                                   orchestrator.py (~200 satir)
+
+core/plugins/executor.py           core/plugins/stage_executor.py
+core/plugins/sdk/                   core/plugins/services.py
+
+InputPlugin, OutputPlugin          4-stage base classes
+```
+
+---
+
+## 1. DİZİN YAPISI
 
 ```
 archiverr/
@@ -362,6 +390,7 @@ src/archiverr/
 ```
 
 **Key Changes:**
+
 - `orchestrator.py` added (main.py simplified)
 - `plugins/executor.py` refactored for phases
 - `plugins/services.py` added (SDK replacement)
@@ -370,4 +399,4 @@ src/archiverr/
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02

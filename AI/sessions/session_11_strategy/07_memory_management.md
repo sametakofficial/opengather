@@ -1,10 +1,23 @@
 # MEMORY MANAGEMENT
 
 ```yaml
-date: 2025-11-30
-sources: v7, industry research
-status: final
-priority: OPTIONAL (Phase 2)
+tarih: 2025-12-02
+durum: final (optional feature, Phase 2)
+kaynak: session_11 v3, v5
+v2_override: plugin-brainstorm-v2
+```
+
+---
+
+## V2 OVERRIDE OZET
+
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- scope: SADECE plugins collection (jobs ve runs RAM'de)
+- eviction_policy: completed_first (default)
+- lazy_cache_size: 10 (son 10 job cache'de)
+- flush_threshold: 0.8 (80% dolunca flush)
 ```
 
 **Not:** Bu sistem 10,000+ dosya senaryoları için tasarlandı.
@@ -53,10 +66,10 @@ Sorun: Unbounded memory growth
 # config.yml
 options:
   memory:
-    max_state_mb: 500           # RAM limit (default: 500)
-    flush_threshold: 0.8        # Flush at 80% capacity
+    max_state_mb: 500 # RAM limit (default: 500)
+    flush_threshold: 0.8 # Flush at 80% capacity
     eviction_policy: completed_first
-    lazy_cache_size: 10         # LRU cache for loaded jobs
+    lazy_cache_size: 10 # LRU cache for loaded jobs
 ```
 
 ---
@@ -71,20 +84,20 @@ class MemoryTracker:
         self.max_bytes = max_bytes
         self.current_bytes = 0
         self._sizes: Dict[str, int] = {}  # job_id -> size
-    
+
     def track(self, job_id: str, job: JobState) -> None:
         size = self._estimate_size(job)
         self._sizes[job_id] = size
         self.current_bytes += size
-    
+
     def untrack(self, job_id: str) -> None:
         if job_id in self._sizes:
             self.current_bytes -= self._sizes.pop(job_id)
-    
+
     def should_flush(self) -> bool:
         threshold = self.max_bytes * 0.8
         return self.current_bytes >= threshold
-    
+
     def _estimate_size(self, obj) -> int:
         # Deep size estimation
         return len(json.dumps(obj.to_dict()))
@@ -97,7 +110,7 @@ class FlushManager:
     def __init__(self, persistence: PersistenceInterface, tracker: MemoryTracker):
         self._persistence = persistence
         self._tracker = tracker
-    
+
     def flush_completed(self, state: StateManager) -> int:
         """Flush completed jobs, return count"""
         flushed = 0
@@ -111,7 +124,7 @@ class FlushManager:
             self._tracker.untrack(job.job_id)
             flushed += 1
         return flushed
-    
+
     def flush_if_needed(self, state: StateManager) -> None:
         if self._tracker.should_flush():
             self.flush_completed(state)
@@ -125,23 +138,23 @@ class LazyLoader:
         self._persistence = persistence
         self._cache: OrderedDict[str, JobState] = OrderedDict()
         self._cache_size = cache_size
-    
+
     def load(self, job_id: str) -> Optional[JobState]:
         # Check cache
         if job_id in self._cache:
             self._cache.move_to_end(job_id)
             return self._cache[job_id]
-        
+
         # Load from MongoDB
         job = self._persistence.get_job(job_id)
         if not job:
             return None
-        
+
         # Add to cache with LRU eviction
         self._cache[job_id] = job
         if len(self._cache) > self._cache_size:
             self._cache.popitem(last=False)
-        
+
         return job
 ```
 
@@ -154,41 +167,41 @@ class StateManager:
     def __init__(self, config: Dict):
         memory_config = config.get('memory', {})
         max_mb = memory_config.get('max_state_mb', 500)
-        
+
         self._tracker = MemoryTracker(max_mb * 1024 * 1024)
         self._flush_manager = FlushManager(self._persistence, self._tracker)
         self._lazy_loader = LazyLoader(self._persistence)
-        
+
         self._hot_jobs: Dict[str, JobState] = {}
         self._cold_job_ids: Set[str] = set()
-    
+
     def register_job(self, index: int, path: str) -> JobState:
         job = JobState(index=index, run_id=self._run.id, ...)
         self._hot_jobs[job.job_id] = job
         self._tracker.track(job.job_id, job)
-        
+
         # Check memory
         self._flush_manager.flush_if_needed(self)
-        
+
         return job
-    
+
     def get_job(self, job_id: str) -> Optional[JobState]:
         # Hot path
         if job_id in self._hot_jobs:
             return self._hot_jobs[job_id]
-        
+
         # Cold path
         if job_id in self._cold_job_ids:
             return self._lazy_loader.load(job_id)
-        
+
         return None
-    
+
     def evict_job(self, job_id: str) -> None:
         """Move job from hot to cold"""
         if job_id in self._hot_jobs:
             del self._hot_jobs[job_id]
             self._cold_job_ids.add(job_id)
-    
+
     def get_completed_jobs(self) -> List[JobState]:
         """Get jobs ready for flushing"""
         return [
@@ -263,22 +276,22 @@ Reason: Earlier jobs are typically processed first
 ```python
 class BatchModeJobAccess:
     """Streaming access for batch plugins"""
-    
+
     def __init__(self, state: StateManager):
         self._state = state
-    
+
     def iter_all_jobs(self) -> Iterator[JobState]:
         """Stream jobs without loading all in memory"""
         # Hot jobs first
         for job in self._state._hot_jobs.values():
             yield job
-        
+
         # Cold jobs from MongoDB
         for job_id in self._state._cold_job_ids:
             job = self._state._lazy_loader.load(job_id)
             if job:
                 yield job
-    
+
     def get_job_count(self) -> int:
         return len(self._state._hot_jobs) + len(self._state._cold_job_ids)
 ```
@@ -290,18 +303,18 @@ class BatchModeJobAccess:
 ```python
 def estimate_memory_per_job() -> int:
     """Average memory per job in bytes"""
-    
+
     # Base JobState: ~500 bytes
     # JobInput: ~200 bytes
     # JobStatus: ~300 bytes
     # JobOutput: ~200 bytes (varies)
-    
+
     # Plugin data (typical):
     # - scanner: ~100 bytes
     # - renamer: ~500 bytes
     # - tmdb: ~5000 bytes
     # - ffprobe: ~2000 bytes
-    
+
     # Total: ~9000 bytes per job
     return 9000
 
@@ -323,7 +336,7 @@ def estimate_max_jobs(max_mb: int) -> int:
 class MemoryStats:
     def __init__(self, tracker: MemoryTracker):
         self._tracker = tracker
-    
+
     def get_stats(self) -> Dict:
         return {
             'current_bytes': self._tracker.current_bytes,
@@ -336,4 +349,4 @@ class MemoryStats:
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02

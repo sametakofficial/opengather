@@ -76,7 +76,7 @@ logs/
 *.log
 report_*.json
 
-do-not-read.md
+do-not-raead/*
 
 reports
 

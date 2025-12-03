@@ -1,264 +1,451 @@
 # PLUGIN SYSTEM & SERVICES
 
 ```yaml
-date: 2025-12-02
-sources: v4, v5, v6, brainstorm-v1, brainstorm-v2, 11_execution_modes, plugin-system-brainstorm
-status: updated
-```
-
-**UPDATE 2025-12-02:** See `plugin-system-brainstorm/` for finalized, industry-researched specs.
-Key changes: 4-stage model (not 6), generic provides, PluginServices injection.
-
----
-
-## 1. PHASE SİSTEMİ
-
-### 1.1 4-Stage Model (UPDATED)
-
-```
-STAGE       MODE        DESCRIPTION                 EXAMPLES
-──────────────────────────────────────────────────────────────
-input       per_run     Job creation                Scanner, FileReader
-parse       per_job     Parse input data            Renamer
-metadata    per_job     External API data           TMDb, TVDb, FFProbe
-output      per_job     Task execution              Tasker (plugin)
-```
-
-**Simplified from 6 to 4 stages:**
-- Removed `modify` (rare use case, can be metadata)
-- Removed `finalize` (can be per_run in output)
-- Tasker is now a plugin, not core
-
-### 1.2 Phase Execution Sırası
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PHASE EXECUTION                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  PHASE 1: INPUT (per_run)                                    │
-│  └── Scanner, FileReader                                     │
-│      └── Output: List[Job]                                   │
-│                                                              │
-│  PHASE 2: PARSE (per_job)                                    │
-│  └── Renamer                                                 │
-│      └── Input: job.input.path                               │
-│      └── Output: job.plugins.renamer.parsed                  │
-│                                                              │
-│  PHASE 3: METADATA (per_job)                                 │
-│  └── TMDb, TVDb, FFProbe                                     │
-│      └── Input: job.plugins.renamer.parsed                   │
-│      └── Output: job.plugins.{name}.{data}                   │
-│                                                              │
-│  PHASE 4: OUTPUT (per_job)                                   │
-│  └── Tasker plugin                                           │
-│      └── Input: job with all plugin data                     │
-│      └── Output: print, save actions                         │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+tarih: 2025-12-02
+durum: final
+kaynak: plugin-system-brainstorm/01, 02, 03, 04, 09, 10
+v2_override: plugin-brainstorm-v2
 ```
 
 ---
 
-## 2. PLUGIN MANIFEST YAPISI
+## V2 OVERRIDE OZET
 
-### 2.1 manifest.yml Schema
+```
+v1 -> v2 DEGISIKLIKLER:
+
+- always trigger_rule KALDIRILDI (all_done ile ayni)
+- trigger_rules: 5 adet (all_success, one_success, all_done, all_fail, none_fail)
+- provides: input.value, input.data, output.values, output.data eklendi
+- lockable provides: fs.write, fs.delete, fs.move, fs.hardlink, fs.symlink (5 adet)
+- non-lockable: fs.copy, fs.mkdir, fs.chmod, state.update, job.create
+- provides icinde job.* ve run.* YASAK (validation sirasinda bilinmiyor)
+```
+
+---
+
+## 1. STAGE SISTEMI (4 STAGE)
+
+```
++----------------------------------------------------------+
+|                    4 STAGE SISTEMI                        |
++----------------------------------------------------------+
+|                                                           |
+|  STAGE       ACIKLAMA                 ORNEKLER            |
+|  -----       --------                 --------            |
+|  input       Veri girisi, job olustur scanner, file-reader|
+|  parse       Dosya adi cozumle        renamer             |
+|  data        External data al         tmdb, tvdb, ffprobe |
+|  output      Sonuc uret               tasker, rclone      |
+|                                                           |
++----------------------------------------------------------+
+
+WEB UI KATEGORILERI:
+  INPUT  = input + parse
+  OUTPUT = data + output
+```
+
+### Stage Execution Flow
+
+```
+                    ORCHESTRATOR
+                         |
+                         v
++----------------------------------------------------------+
+|                    STAGE LOOP                             |
+|                                                           |
+|  for stage in [INPUT, PARSE, DATA, OUTPUT]:           |
+|      plugins = get_plugins_by_stage(stage)               |
+|      sorted = topological_sort_by_requires(plugins)      |
+|      execute_stage(sorted)                               |
+|                                                           |
++----------------------------------------------------------+
+                         |
+        +----------------+----------------+
+        |                |                |
+        v                v                v
+    +-------+        +--------+        +-------+
+    | INPUT |        | PARSE  |        | DATA  |
+    +-------+        +--------+        +-------+
+        |                |                |
+        v                v                v
+    per_run          per_job           per_job
+    scanner          renamer           tmdb,tvdb
+        |                |                |
+        v                v                v
+    job.create       state.update      http.request
+                                       state.update
+                                          |
+                                          v
+                                      +-------+
+                                      | OUTPUT|
+                                      +-------+
+                                          |
+                                          v
+                                      per_job
+                                      tasker
+                                          |
+                                          v
+                                      fs.write
+```
+
+---
+
+## 2. MANIFEST SCHEMA
 
 ```yaml
 # plugins/{name}/manifest.yml
-name: string                    # Unique identifier
-version: string                 # Semver
-description: string             # Human readable
+name: string # Unique identifier
+version: string # Semver
+description: string # Optional
 
-# Phase & Execution
-phase: input | parse | metadata | modify | finalize
-execution_mode: per_job | per_run  # Default: per_job
+# Stage & Execution
+stage: input | parse | data | output
+# mode: implicit (per_run for input, per_job for others)
 
-# Dependencies
-requires: List[string]          # e.g., ["renamer.parsed"]
+# Dependency (EXPLICIT PREFIX)
+requires: List[string] # provides.*, job.*, events.* prefix ZORUNLU
+provides: List[string] # Teknik etki bazli (fs.*, http.*, job.*, state.*, process.*)
 
-# Class info
-class_name: string              # Python class name
-entry_point: string             # Default: "client.py"
+# Execution behavior
+trigger_rule: all_success | one_success | all_done | all_fail | none_fail
+# v2: always KALDIRILDI (all_done ile ayni)
+reactive: bool # Default: false
+
+# Implementation
+class_name: string
+entry_point: string # Default: client.py
+config_schema: Dict # Optional
 ```
 
-### 2.2 Örnekler
+### Manifest Ornekleri
 
 ```yaml
 # plugins/scanner/manifest.yml
 name: scanner
 version: 1.0.0
-phase: input
-execution_mode: per_run
+stage: input
 requires: []
+provides:
+  - job.create
+  - fs.read
+  - input.value     # v2: eklendi
+  - input.data      # v2: eklendi
 class_name: ScannerPlugin
 
 # plugins/renamer/manifest.yml
 name: renamer
 version: 1.0.0
-phase: parse
-execution_mode: per_job
+stage: parse
 requires: []
+provides:
+  - state.update
 class_name: RenamerPlugin
 
 # plugins/tmdb/manifest.yml
 name: tmdb
 version: 1.0.0
-phase: metadata
-execution_mode: per_job
+stage: data
 requires:
-  - renamer.parsed.movie
-  - renamer.parsed.show
+  - job.plugins.renamer.parsed            # EXPLICIT prefix
+provides:
+  - http.request
+  - state.update
 class_name: TMDbPlugin
+
+# plugins/tasker/manifest.yml
+name: tasker
+version: 1.0.0
+stage: output
+requires:
+  - provides.state.update                 # EXPLICIT prefix
+provides:
+  - fs.write
+  - fs.write:{{config.tasker.save_path}}  # v2: lockable path
+  - output.values   # v2: eklendi
+  - output.data     # v2: eklendi
+class_name: TaskerPlugin
 ```
 
 ---
 
-## 3. EXECUTION MODE
-
-### 3.1 per_job vs per_run
+## 3. PROVIDES SISTEMI
 
 ```
-MODE        SIGNATURE                   USE CASE
-────────────────────────────────────────────────────────────────
-per_job     execute(job, services)      Renamer, FFProbe, TMDb
-per_run     execute_run(services)       Scanner, Rclone, Summary
++----------------------------------------------------------+
+|              PROVIDES FELSEFESI                           |
++----------------------------------------------------------+
+|                                                           |
+|  PROVIDES = TEKNIK ETKI (gercek sistem etkisi)           |
+|                                                           |
+|  DOGRU:  fs.write, http.request, job.create              |
+|  YANLIS: metadata.movie (kategori, etki yok)             |
+|  YANLIS: notification.sent (belirsiz)                    |
+|                                                           |
+|  KURAL: Disk I/O, Network, Process gibi olculebilir      |
+|         teknik etki olmali                               |
+|                                                           |
++----------------------------------------------------------+
 ```
 
-**TMDb Not:** TMDb per_job modunda çalışır. API batching istiyorsa
-içeride kendi cache/batch mekanizmasını kullanır. Execution mode
-plugin'in ne zaman çalıştığını belirler, nasıl çalıştığını değil.
+### Standart Provides Listesi
 
-### 3.2 BasePlugin Interface
+```
++----------------------------------------------------------+
+|                 STANDART PROVIDES                         |
++----------------------------------------------------------+
+|                                                           |
+|  FS (Filesystem - disk etkisi)                           |
+|  fs.read            Dosya okudu                          |
+|  fs.write           Dosya yazdi                          |
+|  fs.delete          Dosya sildi                          |
+|  fs.move            Dosya tasidi                         |
+|  fs.copy            Dosya kopyaladi                      |
+|  fs.hardlink        Hardlink olusturdu                   |
+|  fs.symlink         Symlink olusturdu                    |
+|  fs.mkdir           Dizin olusturdu                      |
+|                                                           |
+|  HTTP (Network - bandwidth etkisi)                       |
+|  http.request       HTTP istegi yapti                    |
+|                                                           |
+|  JOB (Job lifecycle)                                     |
+|  job.create         Yeni job olusturdu                   |
+|                                                           |
+|  STATE (State operations)                                |
+|  state.update       State guncelledi                     |
+|                                                           |
+|  PROCESS (External process - CPU etkisi)                 |
+|  process.spawn      Dis process calistirdi               |
+|  process.exec       Komut execute etti                   |
+|                                                           |
++----------------------------------------------------------+
 
-```python
-class BasePlugin(ABC):
-    name: str
-    config: Dict
-    
-    @property
-    def manifest(self) -> PluginManifest:
-        """Load from manifest.yml"""
-    
-    @property
-    def execution_mode(self) -> str:
-        """'per_job' or 'per_run'"""
-        return self.manifest.execution_mode
-    
-    # Per-job execution
-    def execute(self, job: Job, services: PluginServices) -> PluginResult:
-        """Override for per_job mode"""
-        raise NotImplementedError
-    
-    # Per-run execution
-    def execute_run(self, services: PluginServices) -> PluginResult:
-        """Override for per_run mode"""
-        raise NotImplementedError
-    
-    # Event handler (optional)
-    def on_event(self, event: str, data: Dict) -> None:
-        """Handle EventBus events"""
-        pass
+KALDIRILAN (kategori bazli, teknik etki yok):
+  - metadata.*        # Sadece state.update kullan
+  - notification.*    # Belirsiz, spesifik kullan
+  - http.response     # http.request yeterli
+  - data.*            # Kategori
 ```
 
 ---
 
-## 4. PLUGIN SERVICES (eski: SDK)
-
-### 4.1 Neden "Services" adı?
+## 4. REQUIRES SISTEMI (UNIFIED)
 
 ```
-SDK       → Software Development Kit (harici geliştiriciler için)
-Services  → Internal service interface (plugin'lerin core ile iletişimi)
-
-Archiverr bağlamında "Services" daha doğru çünkü:
-- Plugin'ler harici değil, proje parçası
-- Interface tarzı bir yapı (not a toolkit)
++----------------------------------------------------------+
+|              REQUIRES - EXPLICIT PREFIX                   |
++----------------------------------------------------------+
+|                                                           |
+|  REDDEDILEN ALANLAR:                                      |
+|    after, waits_for, depends_on, triggers_on             |
+|                                                           |
+|  KABUL EDILEN: requires (tek alan)                       |
+|                                                           |
+|  ZORUNLU PREFIX:                                          |
+|    provides.*  -> Provide tamamlansin                    |
+|    job.*       -> State path dolu olsun                  |
+|    events.*    -> Event emit edilsin                     |
+|                                                           |
+|  REDDEDILEN: Implicit parsing (belirsizlik yaratir)      |
+|                                                           |
++----------------------------------------------------------+
 ```
 
-### 4.2 PluginServices Interface
+### Requires Ornekleri
+
+```yaml
+# State bekle (job.* prefix)
+requires:
+  - job.input.path
+  - job.plugins.renamer.parsed
+
+# Provide bekle (provides.* prefix)
+requires:
+  - provides.http.request
+  - provides.fs.write
+  - provides.state.update
+
+# Event bekle (events.* prefix)
+requires:
+  - events.job.created
+  - events.run.completed
+```
+
+```
+YANLIS (prefix yok):
+  requires:
+    - http.request      # provides.http.request olmali
+    - renamer           # job.plugins.renamer olmali
+```
+
+### Trigger Rule
+
+```
++----------------------------------------------------------+
+|  TRIGGER RULE (Airflow'dan)                               |
++----------------------------------------------------------+
+|  RULE             SEMANTIK                                |
++----------------------------------------------------------+
+|  all_success      Tum requires SUCCESS (default)         |
+|  one_success      En az biri SUCCESS                     |
+|  all_done         Hepsi DONE (success/fail farketmez)    |
+|  all_fail         Hepsi FAIL                             |
+|  none_fail        Hicbiri FAIL degil                     |
++----------------------------------------------------------+
+
+KAYNAK: Apache Airflow
+NOT: Tek trigger_rule atanir, reactive ayri konsept
+V2 UPDATE: "always" KALDIRILDI - reactive: true kullanin
+```
+
+---
+
+## 5. PLUGIN SERVICES
+
+```
++----------------------------------------------------------+
+|              TEK INTERFACE: PluginServices                |
++----------------------------------------------------------+
+|                                                           |
+|  MEVCUT (karisik):                                        |
+|    get_debugger()           # Global                     |
+|    context.event_bus        # Context field              |
+|    state??                  # Belirsiz                   |
+|                                                           |
+|  YENI (tek interface):                                    |
+|    services.state           # State islemleri            |
+|    services.events          # Event emit/subscribe       |
+|    services.logger          # Loglama                    |
+|    services.config          # Config erisimi             |
+|                                                           |
++----------------------------------------------------------+
+```
+
+### PluginServices Structure
+
+```
+                    PluginServices
+                         |
+        +----------------+----------------+
+        |                |                |
+        v                v                v
+   StateService    EventService    LoggerService
+        |                |                |
+        v                v                v
+   get_job()         emit()           info()
+   update()          subscribe()      debug()
+   get_run()                          error()
+                                      warn()
+        |
+        v
+   ConfigService
+        |
+        v
+   get()
+   get_plugin()
+```
+
+### Service Interfaces
 
 ```python
 @dataclass
 class PluginServices:
-    """Services provided to plugins during execution"""
-    
-    # Job access
-    jobs: JobService
-    
-    # Task emission
-    tasks: TaskService
-    
-    # Logging
-    logger: PluginLogger
-    
-    # Config access
+    state: StateService
+    events: EventService
+    logger: LoggerService
     config: ConfigService
+
+class StateService:
+    def get_current_job(self) -> JobState: ...
+    def get_job(self, job_id: str) -> Optional[JobState]: ...
+    def get_all_jobs(self) -> List[JobState]: ...
+    def update(self, job_id: str, key: str, value: Any) -> None: ...
+    def get_run(self) -> RunState: ...
+
+class EventService:
+    def emit(self, event: str, data: Dict = None) -> None: ...
+    def subscribe(self, event: str, handler: Callable) -> None: ...
+
+class LoggerService:
+    def debug(self, message: str, **kwargs) -> None: ...
+    def info(self, message: str, **kwargs) -> None: ...
+    def warn(self, message: str, **kwargs) -> None: ...
+    def error(self, message: str, **kwargs) -> None: ...
+
+class ConfigService:
+    def get(self, key: str, default: Any = None) -> Any: ...
+    def get_plugin(self, plugin_name: str) -> Dict: ...
 ```
 
-### 4.3 JobService
-
-```python
-class JobService:
-    """Job operations for plugins"""
-    
-    def __init__(self, state: StateManager):
-        self._state = state
-    
-    # Read operations
-    def get_current(self) -> Job:
-        """Get current job (per_job mode)"""
-    
-    def get_all(self) -> List[Job]:
-        """Get all jobs (batch mode)"""
-    
-    def get_by_id(self, job_id: str) -> Optional[Job]:
-        """Get specific job"""
-    
-    # Write operations (modify phase only)
-    def create(self, input_path: str, category: str = "unknown") -> Job:
-        """Create new job"""
-    
-    def update_input(self, job_id: str, **kwargs) -> None:
-        """Update job input data"""
-    
-    # Plugin data
-    def get_plugin_data(self, job_id: str, plugin_name: str) -> Optional[Dict]:
-        """Get another plugin's data for this job"""
-```
-
-### 4.4 TaskService
-
-```python
-class TaskService:
-    """Task operations for plugins"""
-    
-    def emit(self, job: Job, task_type: str, **data) -> None:
-        """Emit task for execution"""
-        # Types: rename, move, copy, delete, custom
-```
+**Uyari:** Interface referansi, execution session'da mevcut codebase'e gore uyarlanmalidir.
 
 ---
 
-## 5. PLUGIN RESULT
+## 6. PLUGIN SIGNATURE
 
-### 5.1 PluginResult Structure
+### per_job Mode
+
+```python
+class TMDbPlugin(BasePlugin):
+    def execute(self, job: JobState, services: PluginServices) -> PluginResult:
+        # Loglama
+        services.logger.info("Processing movie", title=job.input.path)
+
+        # Onceki plugin verisine erisim
+        parsed = job.plugins.get("renamer", {}).get("parsed", {})
+
+        # API cagri
+        movie = self.fetch_movie(parsed.get("movie", {}).get("name"))
+
+        # State guncelle
+        services.state.update(job.id, "tmdb.movie", movie)
+
+        # Event emit
+        services.events.emit("http.response", {"plugin": "tmdb", "job_id": job.id})
+
+        return PluginResult.success({"movie": movie})
+```
+
+### per_run Mode
+
+```python
+class ScannerPlugin(BasePlugin):
+    def execute_run(self, services: PluginServices) -> PluginResult:
+        # Config'den hedefleri al
+        targets = services.config.get_plugin("scanner").get("targets", [])
+
+        # Tarama
+        files = self.scan(targets)
+
+        # Her dosya icin job olustur
+        for path in files:
+            job_id = services.state.create_job(path)
+            services.logger.debug("Job created", job_id=job_id)
+
+        return PluginResult.success({"count": len(files)})
+```
+
+**Uyari:** Ornek kod, direkt kopyalanmaz. Yaklasimi gostermek icin yazilmistir.
+
+---
+
+## 7. PLUGIN RESULT
 
 ```python
 @dataclass
 class PluginResult:
     status: PluginStatus          # SUCCESS, FAILED, SKIPPED
-    data: Optional[Dict] = None   # Plugin-specific data
-    error: Optional[str] = None   # Error message if failed
-    
+    data: Optional[Dict] = None
+    error: Optional[str] = None
+
     @classmethod
     def success(cls, data: Dict) -> 'PluginResult':
         return cls(status=PluginStatus.SUCCESS, data=data)
-    
+
     @classmethod
     def failed(cls, error: str) -> 'PluginResult':
         return cls(status=PluginStatus.FAILED, error=error)
-    
+
     @classmethod
     def skipped(cls, reason: str = "") -> 'PluginResult':
         return cls(status=PluginStatus.SKIPPED, error=reason)
@@ -266,206 +453,85 @@ class PluginResult:
 class PluginStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
-    SKIPPED = "skipped"          # eski: not_supported
-```
-
-### 5.2 Data Structure Convention
-
-```
-Plugin          Data Keys
-────────────────────────────────────────────────
-scanner         input.path, input.virtual
-renamer         parsed.movie, parsed.show
-tmdb            movie, show, season, episode
-ffprobe         video, audio, container
+    SKIPPED = "skipped"
 ```
 
 ---
 
-## 6. VALIDATION SİSTEMİ
-
-### 6.1 requires Validation
-
-```python
-class RequiresValidator:
-    """Validate plugin requirements before execution"""
-    
-    def validate(self, plugin: BasePlugin, job: Job) -> Tuple[bool, List[str]]:
-        """
-        Check if all requires are satisfied.
-        
-        Returns:
-            (can_execute, missing_paths)
-        """
-        missing = []
-        for path in plugin.manifest.requires:
-            if not self._path_exists(job, path):
-                missing.append(path)
-        
-        return (len(missing) == 0, missing)
-    
-    def _path_exists(self, job: Job, path: str) -> bool:
-        """Check if nested path exists in job data"""
-        parts = path.split('.')
-        current = job.plugins
-        for part in parts:
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                return False
-        return True
-```
-
-### 6.2 Validation Akışı
+## 8. EXECUTION MODE
 
 ```
-Plugin Execution Request
-        │
-        ▼
-┌───────────────────┐
-│ Check requires    │
-│ for current job   │
-└─────────┬─────────┘
-          │
-    ┌─────┴─────┐
-    │           │
-    ▼           ▼
-satisfied    missing
-    │           │
-    ▼           ▼
- EXECUTE     SKIP
-    │           │
-    ▼           ▼
-SUCCESS/    SKIPPED
-FAILED      (with reason)
++----------------------------------------------------------+
+|                    EXECUTION MODE                         |
++----------------------------------------------------------+
+|                                                           |
+|  per_job                                                  |
+|  - Her job icin bir kez calisir                          |
+|  - execute(job, services) signature                      |
+|  - Ornek: renamer, tmdb, tasker                          |
+|                                                           |
+|  per_run                                                  |
+|  - Tum run icin bir kez calisir                          |
+|  - execute_run(services) signature                       |
+|  - Ornek: scanner, rclone, summary                       |
+|                                                           |
++----------------------------------------------------------+
+
+EXECUTION PATTERN:
+
+  INPUT STAGE (per_run):
+    scanner.execute_run(services)
+    --> jobs[] olusturuldu
+
+  PARSE STAGE (per_job):
+    for job in jobs:
+        renamer.execute(job, services)
+
+  DATA STAGE (per_job):
+    for job in jobs:
+        tmdb.execute(job, services)
+        tvdb.execute(job, services)
+        ffprobe.execute(job, services)
+
+  OUTPUT STAGE (mixed):
+    for job in jobs:
+        tasker.execute(job, services)     # per_job
+    rclone.execute_run(services)          # per_run
 ```
 
 ---
 
-## 7. PLUGIN KATEGORİLERİ ZORUNLULUKLARI
-
-### 7.1 INPUT Category
+## 9. MEVCUT vs YENI
 
 ```
-Zorunluluk: En az 1 input plugin ÖNERILIR (yoksa 0 job)
-Execution: Run başında, bir kez
-Output: List[Job] döner
-Example: Scanner, FileReader
-```
+MEVCUT (plugin.json):
+  {
+    "name": "tmdb",
+    "category": "output",
+    "depends_on": ["renamer"],
+    "expects": ["renamer.parsed.movie"]
+  }
 
-### 7.2 PARSE Category
+YENI (manifest.yml):
+  name: tmdb
+  stage: data
+  requires:
+    - job.plugins.renamer.parsed         # EXPLICIT prefix
+  provides:
+    - http.request
+    - state.update
+  trigger_rule: all_success
 
-```
-Zorunluluk: Opsiyonel
-Execution: Input bittikten sonra, per_job
-Dependency: Genelde input plugin'e bağlı
-Example: Renamer
-```
-
-### 7.3 METADATA Category
-
-```
-Zorunluluk: Opsiyonel
-Execution: Parse bittikten sonra
-Dependency: requires ile tanımlanır
-Example: TMDb, TVDb, FFProbe
-```
-
-### 7.4 MODIFY Category
-
-```
-Zorunluluk: Opsiyonel
-Execution: Metadata bittikten sonra
-Capability: Yeni job oluşturabilir, var olanı değiştirebilir
-Example: Splitter, DuplicateDetector
+DEGISIKLIKLER:
+  - category: output -> stage: data (tmdb icin)
+  - depends_on KALDIRILDI (requires yeterli)
+  - expects -> requires (EXPLICIT PREFIX)
+  - stage isimleri: input, parse, data, output
+  - +provides (TEKNIK ETKI bazli)
+  - +trigger_rule (all_success, one_success, all_done, all_fail, none_fail, always)
+  - +reactive (per_run icin)
 ```
 
 ---
 
-## 8. PHASE EXECUTOR
-
-```python
-class PhaseExecutor:
-    """Execute plugins by phase"""
-    
-    PHASES = ['input', 'parse', 'metadata', 'modify', 'finalize']
-    
-    def __init__(self, plugins: List[BasePlugin], state: StateManager):
-        self._plugins = self._group_by_phase(plugins)
-        self._state = state
-    
-    def execute(self) -> None:
-        for phase in self.PHASES:
-            self._execute_phase(phase)
-    
-    def _execute_phase(self, phase: str) -> None:
-        plugins = self._plugins.get(phase, [])
-        if not plugins:
-            return
-        
-        # Sort by requires (topological)
-        sorted_plugins = self._sort_by_requires(plugins)
-        
-        for plugin in sorted_plugins:
-            if plugin.execution_mode == 'per_run':
-                self._execute_per_run(plugin)
-            else:
-                self._execute_per_job(plugin)
-    
-    def _execute_per_job(self, plugin: BasePlugin) -> None:
-        services = self._build_services()
-        for job in self._state.get_all_jobs():
-            # Validate requires
-            can_run, missing = self._validator.validate(plugin, job)
-            if not can_run:
-                result = PluginResult.skipped(f"Missing: {missing}")
-            else:
-                result = plugin.execute(job, services)
-            
-            self._state.update_plugin(job.index, plugin.name, result)
-    
-    def _execute_per_run(self, plugin: BasePlugin) -> None:
-        services = self._build_services()
-        result = plugin.execute_run(services)
-        self._state.update_plugin_result(plugin.name, result)
-```
-
----
-
-## 9. MEVCUT vs YENİ
-
-### Mevcut plugin.json
-
-```json
-{
-  "name": "tmdb",
-  "version": "1.0.0",
-  "category": "output",
-  "class_name": "TMDbPlugin",
-  "depends_on": ["renamer"],
-  "expects": ["renamer.parsed.movie", "renamer.parsed.show"]
-}
-```
-
-### Yeni manifest.yml
-
-```yaml
-name: tmdb
-version: 1.0.0
-phase: metadata
-execution_mode: per_job
-requires:
-  - renamer.parsed.movie
-  - renamer.parsed.show
-class_name: TMDbPlugin
-```
-
-**Değişiklikler:**
-- `category: output` → `phase: metadata`
-- `depends_on` kaldırıldı (requires yeterli)
-- `expects` → `requires`
-- `+execution_mode`
-
----
-
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02

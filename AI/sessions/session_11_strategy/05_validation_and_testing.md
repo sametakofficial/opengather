@@ -1,23 +1,41 @@
 # VALIDATION & TESTING
 
 ```yaml
-date: 2025-11-30
-sources: v3, v5, v6
-status: final
+tarih: 2025-12-02
+durum: final
+kaynak: plugin-system-brainstorm/09_REQUIRES_SYSTEM.md
+v2_override: plugin-brainstorm-v2
 ```
 
 ---
 
-## 1. VALIDATION KATEGORİLERİ
+## V2 OVERRIDE OZET
 
 ```
-VALIDATION LAYER              WHEN                  ACTION
-──────────────────────────────────────────────────────────────
-Config Validation            Startup               Fail/Warn
-Manifest Validation          Plugin discovery      Fail (skip plugin)
-Plugin Config Validation     Plugin loading        Fail (disable plugin)
-Requires Validation          Pre-execution         Skip (mark skipped)
-Runtime Validation           During execution      Log error, continue
+v1 -> v2 DEGISIKLIKLER:
+
+- Runtime Validation KALDIRILDI (run asla durmasin)
+- startup: config, schema, conflict, dynamic-var check
+- pre-execution: requires, plugin-init
+- runtime: YOK
+- dynamic variable check: job.* ve run.* provides icinde YASAK
+- error codes eklendi (E001-E021, W001-W003)
+```
+
+---
+
+## 1. VALIDATION KATMANLARI
+
+```
+LAYER                    NE ZAMAN              AKSIYON
+----------------------------------------------------------
+Config Validation        Startup               Fail/Warn
+Manifest Validation      Plugin discovery      Fail (skip plugin)
+Plugin Config Validation Plugin loading        Fail (disable plugin)
+Conflict Detection       Startup               Fail/Warn (--force bypass)
+Dynamic Var Check        Startup               Fail (job.*/run.* YASAK)
+Requires Validation      Pre-execution         Skip (mark skipped)
+Runtime Validation       v2: KALDIRILDI        Run asla durmasin
 ```
 
 ---
@@ -55,7 +73,7 @@ class ConfigValidationRules:
         if not config.get('plugins'):
             return "No plugins defined"
         return None
-    
+
     @staticmethod
     def validate_at_least_one_enabled(config: Dict) -> Optional[str]:
         plugins = config.get('plugins', {})
@@ -63,14 +81,14 @@ class ConfigValidationRules:
         if not enabled:
             return "No plugins enabled"
         return None
-    
+
     @staticmethod
     def validate_task_type(task: Dict) -> Optional[str]:
         valid_types = ['print', 'save', 'summary']
         if task.get('type') not in valid_types:
             return f"Invalid task type: {task.get('type')}"
         return None
-    
+
     @staticmethod
     def validate_task_has_template(task: Dict) -> Optional[str]:
         if task.get('type') == 'print' and not task.get('template'):
@@ -86,47 +104,42 @@ class ConfigValidationRules:
 
 ```
 manifest.yml
-├── name: Required[str] - lowercase, no spaces
-├── version: Required[str] - semver
-├── phase: Required[input|parse|metadata|modify]
-├── class_name: Required[str]
-├── execution_mode: Optional[per_job|batch] (default: per_job)
-├── requires: Optional[List[str]]
-├── entry_point: Optional[str] (default: client.py)
-└── config_schema: Optional[Dict]
+|-- name: Required[str] - lowercase, no spaces
+|-- version: Required[str] - semver
+|-- stage: Required[input|parse|data|output]
+|-- class_name: Required[str]
+|-- requires: Optional[List[str]]
+|-- provides: Optional[List[str]]
+|-- trigger_rule: Optional[all_success|one_success|all_done|all_fail|none_fail]
+|                 # v2: always KALDIRILDI, 5 adet kaldi
+|-- reactive: Optional[bool]
+|-- entry_point: Optional[str] (default: client.py)
++-- config_schema: Optional[Dict]
 ```
 
-### 3.2 Validation Implementation
+### 3.2 Validation Rules
 
-```python
-class ManifestValidator:
-    def validate(self, manifest: Dict, plugin_dir: Path) -> ValidationResult:
-        errors = []
-        warnings = []
-        
-        # Required fields
-        for field in ['name', 'version', 'phase', 'class_name']:
-            if not manifest.get(field):
-                errors.append(f"Missing: {field}")
-        
-        # Name format
-        name = manifest.get('name', '')
-        if not re.match(r'^[a-z][a-z0-9_]*$', name):
-            errors.append(f"Invalid name format: {name}")
-        
-        # Phase
-        if manifest.get('phase') not in ['input', 'parse', 'metadata', 'modify']:
-            errors.append(f"Invalid phase: {manifest.get('phase')}")
-        
-        # Entry point exists
-        entry = manifest.get('entry_point', 'client.py')
-        if not (plugin_dir / entry).exists():
-            errors.append(f"Entry point not found: {entry}")
-        
-        # Class exists in entry point
-        # (checked at load time, not here)
-        
-        return ValidationResult(errors=errors, warnings=warnings)
+```
++----------------------------------------------------------+
+|                    MANIFEST VALIDATION                    |
++----------------------------------------------------------+
+|                                                           |
+|  REQUIRED FIELDS                                          |
+|  - name: non-empty, lowercase, [a-z][a-z0-9_]*           |
+|  - version: semver format                                |
+|  - stage: input | parse | data | output                  |
+|  - class_name: valid Python identifier                   |
+|                                                           |
+|  PROVIDES                                                 |
+|  - Standart listeden (http.*, fs.*, job.*, metadata.*)   |
+|  - Custom: custom.* prefix                               |
+|                                                           |
+|  REQUIRES (implicit parsing)                              |
+|  - job.* veya run.* -> state                             |
+|  - Provides listesinde -> provide                        |
+|  - Plugin adiysa -> plugin                               |
+|                                                           |
++----------------------------------------------------------+
 ```
 
 ---
@@ -156,24 +169,24 @@ class RequiresValidator:
         """
         requires = plugin.manifest.requires
         missing = []
-        
+
         for path in requires:
             if not self._path_exists(job, path):
                 missing.append(path)
-        
+
         return RequiresResult(
             can_execute=len(missing) == 0,
             missing=missing
         )
-    
+
     def _path_exists(self, job: JobState, path: str) -> bool:
         parts = path.split('.')
-        
+
         # First part is plugin name
         plugin_name = parts[0]
         if plugin_name not in job.plugins:
             return False
-        
+
         # Navigate nested path
         current = job.plugins[plugin_name]
         for part in parts[1:]:
@@ -182,7 +195,7 @@ class RequiresValidator:
             if part not in current:
                 return False
             current = current[part]
-        
+
         # Check not None/empty
         return current is not None
 ```
@@ -275,7 +288,7 @@ class TestRequiresValidator:
     @pytest.fixture
     def validator(self):
         return RequiresValidator()
-    
+
     @pytest.fixture
     def job_with_movie(self):
         return JobState(
@@ -289,12 +302,12 @@ class TestRequiresValidator:
                 }
             }
         )
-    
+
     def test_valid_requires(self, validator, job_with_movie):
         plugin = MockPlugin(requires=['renamer.parsed.movie'])
         result = validator.validate(plugin, job_with_movie)
         assert result.can_execute is True
-    
+
     def test_missing_requires(self, validator, job_with_movie):
         plugin = MockPlugin(requires=['tmdb.movie'])
         result = validator.validate(plugin, job_with_movie)
@@ -325,15 +338,15 @@ class ValidationResult:
     valid: bool
     errors: List[str]
     warnings: List[str]
-    
+
     @classmethod
     def ok(cls) -> 'ValidationResult':
         return cls(valid=True, errors=[], warnings=[])
-    
+
     @classmethod
     def fail(cls, *errors: str) -> 'ValidationResult':
         return cls(valid=False, errors=list(errors), warnings=[])
-    
+
     def __bool__(self) -> bool:
         return self.valid
 ```
@@ -361,14 +374,14 @@ Validation: WARNING level (not error)
 ```python
 def validate_input_plugins(plugins: List[PluginManifest]) -> ValidationResult:
     input_plugins = [p for p in plugins if p.phase == 'input']
-    
+
     if not input_plugins:
         return ValidationResult(
             valid=True,
             errors=[],
             warnings=["No input plugins enabled - no jobs will be created"]
         )
-    
+
     return ValidationResult.ok()
 ```
 
@@ -384,7 +397,7 @@ class MockPlugin(BasePlugin):
     def __init__(self, **kwargs):
         self._requires = kwargs.get('requires', [])
         self._result = kwargs.get('result', PluginResult.success({}))
-    
+
     @property
     def manifest(self):
         return PluginManifest(
@@ -395,7 +408,7 @@ class MockPlugin(BasePlugin):
             requires=self._requires,
             class_name='MockPlugin'
         )
-    
+
     def execute(self, job, services):
         return self._result
 ```
@@ -450,4 +463,4 @@ pytest -x tests/
 
 ---
 
-**Son Güncelleme:** 2025-11-30
+**Son Guncelleme:** 2025-12-02
