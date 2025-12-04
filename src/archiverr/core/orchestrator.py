@@ -25,6 +25,7 @@ from archiverr.utils.debug import Debugger, get_debugger
 from .plugins.registry import PluginRegistry, Stage
 from .plugins.stage_executor import StageExecutor
 from .exceptions import CriticalError, StageError, PluginError
+from .validation import validate_at_startup, ValidationResult
 
 
 @dataclass
@@ -175,6 +176,7 @@ class Orchestrator:
         
         - Discovers and loads plugins
         - Validates at least one plugin loaded
+        - Runs startup validation (config, manifests, dependencies)
         - Starts run in state manager
         - Emits run.started event
         - Registers event handlers
@@ -195,7 +197,35 @@ class Orchestrator:
                 {"discovered": discovered_count, "enabled": 0}
             )
         
-        # Validate dependencies
+        # Run startup validation
+        manifests = self._plugin_registry.get_all_manifests()
+        enabled_plugins = self._plugin_registry.enabled_plugins
+        
+        validation_result = validate_at_startup(
+            config=self._config,
+            manifests=manifests,
+            enabled_plugins=enabled_plugins
+        )
+        
+        # Log warnings
+        for warning in validation_result.warnings:
+            self._log("warn", str(warning))
+        
+        # Check for errors
+        if not validation_result.valid:
+            for error in validation_result.errors:
+                self._log("error", str(error))
+            
+            if validation_result.has_fatal():
+                raise CriticalError(
+                    "Startup validation failed with fatal errors",
+                    {"error_count": validation_result.error_count()}
+                )
+            else:
+                # Non-fatal errors: log and continue (best effort)
+                self._log("warn", f"Startup validation found {validation_result.error_count()} errors, continuing...")
+        
+        # Legacy dependency validation (will be removed after full migration)
         dep_errors = self._plugin_registry.validate_dependencies()
         if dep_errors:
             self._log("warn", f"Dependency warnings: {len(dep_errors)}")
