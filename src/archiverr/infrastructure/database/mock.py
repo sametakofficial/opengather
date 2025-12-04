@@ -10,9 +10,12 @@ File Structure:
 JSON Structure:
     {
         "_meta": {...},
-        "executions": [...],
-        "matches": [...],
-        "plugin_results": [...]
+        "executions": [...],      # Legacy (deprecated)
+        "matches": [...],         # Legacy (deprecated)
+        "plugin_results": [...],  # Legacy (deprecated)
+        "runs": [...],            # New: RunState data
+        "jobs": [...],            # New: JobState data
+        "plugins": [...]          # New: PluginData (separate collection)
     }
 """
 
@@ -22,6 +25,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from threading import Lock
+from copy import deepcopy
 
 from .interface import PersistenceInterface
 
@@ -243,9 +247,14 @@ class MockPersistence(PersistenceInterface):
         return {
             "backend": "MockPersistence",
             "db_file": str(self._db_file),
+            # Legacy collections
             "executions": len(self._data.get("executions", [])),
             "matches": len(self._data.get("matches", [])),
             "plugin_results": len(self._data.get("plugin_results", [])),
+            # New collections (Session 11)
+            "runs": len(self._data.get("runs", [])),
+            "jobs": len(self._data.get("jobs", [])),
+            "plugins": len(self._data.get("plugins", [])),
             "last_modified": self._data.get("_meta", {}).get("last_modified")
         }
     
@@ -259,19 +268,256 @@ class MockPersistence(PersistenceInterface):
             self._data = self._create_empty_db()
             self._save()
     
+    # =========================================================================
+    # NEW METHODS (Session 11 - FINAL_DATASETS.yml compliant)
+    # =========================================================================
+    
+    def save_run(self, run: Dict[str, Any]) -> None:
+        """
+        Save or update run state.
+        
+        Args:
+            run: RunState.to_dict() output or dict with 'id' field
+        """
+        with self._lock:
+            # Support both dict and object with to_dict()
+            if hasattr(run, 'to_dict'):
+                run_dict = run.to_dict()
+            else:
+                run_dict = dict(run)
+            
+            run_id = run_dict.get("id", "")
+            if not run_id:
+                raise ValueError("Run must have 'id' field")
+            
+            runs = self._data.get("runs", [])
+            found = False
+            for i, r in enumerate(runs):
+                if r.get("id") == run_id:
+                    runs[i] = run_dict
+                    found = True
+                    break
+            
+            if not found:
+                runs.append(run_dict)
+            
+            self._data["runs"] = runs
+            self._update_meta()
+            self._save()
+    
+    def save_job(self, job: Dict[str, Any]) -> None:
+        """
+        Save or update job state.
+        
+        Args:
+            job: JobState.to_dict() output or dict with 'id' field
+        """
+        with self._lock:
+            # Support both dict and object with to_dict()
+            if hasattr(job, 'to_dict'):
+                job_dict = job.to_dict()
+            else:
+                job_dict = dict(job)
+            
+            job_id = job_dict.get("id", "")
+            if not job_id:
+                raise ValueError("Job must have 'id' field")
+            
+            jobs = self._data.get("jobs", [])
+            found = False
+            for i, j in enumerate(jobs):
+                if j.get("id") == job_id:
+                    jobs[i] = job_dict
+                    found = True
+                    break
+            
+            if not found:
+                jobs.append(job_dict)
+            
+            self._data["jobs"] = jobs
+            self._update_meta()
+            self._save()
+    
+    def save_plugin(self, plugin: Dict[str, Any]) -> None:
+        """
+        Save plugin data to separate collection.
+        
+        Args:
+            plugin: PluginData.to_dict() output or dict with job_id and plugin_name
+        """
+        with self._lock:
+            # Support both dict and object with to_dict()
+            if hasattr(plugin, 'to_dict'):
+                plugin_dict = plugin.to_dict()
+            else:
+                plugin_dict = dict(plugin)
+            
+            job_id = plugin_dict.get("job_id", "")
+            plugin_name = plugin_dict.get("plugin_name", "")
+            
+            if not job_id or not plugin_name:
+                raise ValueError("Plugin must have 'job_id' and 'plugin_name' fields")
+            
+            # Use composite key for identification
+            plugins = self._data.get("plugins", [])
+            found = False
+            for i, p in enumerate(plugins):
+                if p.get("job_id") == job_id and p.get("plugin_name") == plugin_name:
+                    plugins[i] = plugin_dict
+                    found = True
+                    break
+            
+            if not found:
+                plugins.append(plugin_dict)
+            
+            self._data["plugins"] = plugins
+            self._update_meta()
+            self._save()
+    
+    def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get run by ID.
+        
+        Args:
+            run_id: Run ID (format: run_abc123)
+            
+        Returns:
+            Run dict or None if not found
+        """
+        for r in self._data.get("runs", []):
+            if r.get("id") == run_id:
+                return deepcopy(r)
+        return None
+    
+    def get_jobs(self, run_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all jobs for a run, sorted by index.
+        
+        Args:
+            run_id: Run ID
+            
+        Returns:
+            List of job dicts sorted by index
+        """
+        jobs = [
+            deepcopy(j) for j in self._data.get("jobs", [])
+            if j.get("run_id") == run_id
+        ]
+        return sorted(jobs, key=lambda x: x.get("index", 0))
+    
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get job by ID.
+        
+        Args:
+            job_id: Job ID (format: job_run_abc123_0)
+            
+        Returns:
+            Job dict or None if not found
+        """
+        for j in self._data.get("jobs", []):
+            if j.get("id") == job_id:
+                return deepcopy(j)
+        return None
+    
+    def get_plugins(self, job_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all plugin data for a job.
+        
+        Args:
+            job_id: Job ID
+            
+        Returns:
+            List of plugin data dicts
+        """
+        return [
+            deepcopy(p) for p in self._data.get("plugins", [])
+            if p.get("job_id") == job_id
+        ]
+    
+    def get_plugin(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get specific plugin data for a job.
+        
+        Args:
+            job_id: Job ID
+            plugin_name: Plugin name
+            
+        Returns:
+            Plugin data dict or None if not found
+        """
+        for p in self._data.get("plugins", []):
+            if p.get("job_id") == job_id and p.get("plugin_name") == plugin_name:
+                return deepcopy(p)
+        return None
+    
+    def get_plugins_for_run(self, run_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all plugin data for a run.
+        
+        Args:
+            run_id: Run ID
+            
+        Returns:
+            List of all plugin data dicts for the run
+        """
+        return [
+            deepcopy(p) for p in self._data.get("plugins", [])
+            if p.get("run_id") == run_id
+        ]
+    
+    def delete_run(self, run_id: str) -> bool:
+        """
+        Delete run and all related data (jobs, plugins).
+        
+        Args:
+            run_id: Run ID
+            
+        Returns:
+            True if run was deleted, False if not found
+        """
+        with self._lock:
+            runs = self._data.get("runs", [])
+            original_len = len(runs)
+            
+            # Remove run
+            self._data["runs"] = [r for r in runs if r.get("id") != run_id]
+            
+            # Remove related jobs
+            self._data["jobs"] = [
+                j for j in self._data.get("jobs", [])
+                if j.get("run_id") != run_id
+            ]
+            
+            # Remove related plugins
+            self._data["plugins"] = [
+                p for p in self._data.get("plugins", [])
+                if p.get("run_id") != run_id
+            ]
+            
+            self._update_meta()
+            self._save()
+            
+            return len(self._data["runs"]) < original_len
+    
     # ==================== PRIVATE HELPERS ====================
     
     def _create_empty_db(self) -> Dict[str, Any]:
         """Create empty database structure"""
         return {
             "_meta": {
-                "version": "1.0.0",
+                "version": "2.0.0",  # Bumped for Session 11
                 "created_at": datetime.now().isoformat(),
                 "last_modified": datetime.now().isoformat()
             },
+            # Legacy collections (deprecated)
             "executions": [],
             "matches": [],
-            "plugin_results": []
+            "plugin_results": [],
+            # New collections (Session 11)
+            "runs": [],
+            "jobs": [],
+            "plugins": []
         }
     
     def _update_meta(self) -> None:

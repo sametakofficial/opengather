@@ -1,26 +1,25 @@
 """
-Config Loader with Environment Variable Support
+Config Loader with full feature support.
+
+Session 11 - Phase 6: Enhanced config loading.
 
 Features:
 - Load config.yml with ${ENV_VAR} expansion
+- !include directive for file/directory includes
+- FlexGet-style config normalization (plugin as top-level key)
+- Legacy format support (plugins: wrapper)
 - Mask sensitive values back to env var names for storage
-- Support for nested env vars in any field
 
 Usage:
     # In config.yml:
     tmdb:
       api_key: ${TMDB_API_KEY}
+    tasks: !include ./tasks/
     
-    # In .env:
-    TMDB_API_KEY=abc123
-    
-    # Load with expansion:
-    config = load_config("config.yml")
-    # config['tmdb']['api_key'] == 'abc123'
-    
-    # Create snapshot with masked values:
-    snapshot = create_config_snapshot(config)
-    # snapshot['plugins']['tmdb']['api_key'] == '${TMDB_API_KEY}'
+    # Load with all features:
+    config = load_config_with_tracking("config.yml")
+    # config['_enabled_plugins'] == ['tmdb', 'scanner', ...]
+    # config['_plugins']['tmdb']['api_key'] == 'actual_key'
 """
 
 import os
@@ -28,6 +27,10 @@ import re
 from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 import yaml
+
+# Import new Phase 6 modules
+from .yaml_loader import load_yaml_with_includes, IncludeError
+from .config_normalizer import normalize_config, detect_config_format
 
 
 # Pattern to match ${ENV_VAR} or $ENV_VAR
@@ -165,13 +168,20 @@ def _mask_sensitive_recursive(obj: Any, field_name: str = None) -> Any:
     return obj
 
 
-def load_config(path: str = "config.yml", expand: bool = True) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def load_config(
+    path: str = "config.yml",
+    expand: bool = True,
+    use_includes: bool = True,
+    normalize: bool = False
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Load config from YAML file.
     
     Args:
         path: Path to config file
         expand: Whether to expand environment variables
+        use_includes: Whether to process !include directives
+        normalize: Whether to normalize config (FlexGet style detection)
         
     Returns:
         Tuple of (expanded_config, original_config)
@@ -183,14 +193,29 @@ def load_config(path: str = "config.yml", expand: bool = True) -> Tuple[Dict[str
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     
-    with open(config_path, 'r', encoding='utf-8') as f:
-        original_config = yaml.safe_load(f)
+    # Load with or without include support
+    if use_includes:
+        try:
+            original_config = load_yaml_with_includes(str(config_path))
+        except IncludeError as e:
+            raise ValueError(f"Config include error: {e}")
+    else:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            original_config = yaml.safe_load(f)
+    
+    if original_config is None:
+        original_config = {}
     
     if expand:
         expanded_config = expand_env_vars(original_config)
-        return expanded_config, original_config
+    else:
+        expanded_config = original_config.copy()
     
-    return original_config, original_config
+    # Normalize if requested
+    if normalize:
+        expanded_config = normalize_config(expanded_config)
+    
+    return expanded_config, original_config
 
 
 def create_config_snapshot(
@@ -254,15 +279,29 @@ def load_config_simple(path: str = "config.yml") -> Dict[str, Any]:
 _original_config: Dict[str, Any] = {}
 
 
-def load_config_with_tracking(path: str = "config.yml") -> Dict[str, Any]:
+def load_config_with_tracking(
+    path: str = "config.yml",
+    normalize: bool = True
+) -> Dict[str, Any]:
     """
     Load config and track original for later snapshotting.
     
+    This is the recommended way to load config for the application.
+    It:
+    - Processes !include directives
+    - Expands environment variables
+    - Normalizes config (FlexGet style detection)
+    - Tracks original for snapshot creation
+    
+    Args:
+        path: Path to config file
+        normalize: Whether to normalize (detect FlexGet style)
+    
     Returns:
-        Expanded config for runtime use
+        Expanded and normalized config for runtime use
     """
     global _original_config
-    expanded, original = load_config(path)
+    expanded, original = load_config(path, expand=True, use_includes=True, normalize=normalize)
     _original_config = original
     return expanded
 
@@ -270,3 +309,17 @@ def load_config_with_tracking(path: str = "config.yml") -> Dict[str, Any]:
 def get_tracked_original() -> Dict[str, Any]:
     """Get the tracked original config (with ${ENV_VAR} syntax)"""
     return _original_config
+
+
+# Re-export for convenience
+__all__ = [
+    'load_config',
+    'load_config_simple',
+    'load_config_with_tracking',
+    'get_tracked_original',
+    'create_config_snapshot',
+    'expand_env_vars',
+    'mask_env_vars',
+    'mask_sensitive_fields',
+    'IncludeError',
+]

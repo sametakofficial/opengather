@@ -62,12 +62,17 @@ class PyMongoPersistence(PersistenceInterface):
     For API (async context), use Motor directly via get_database dependency.
     """
     
-    # Collection names
+    # Collection names (legacy)
     EXECUTIONS = "executions"
     MATCHES = "matches"
     PLUGIN_RESULTS = "plugin_results"
     BRANCHES = "branches"
     COMMITS = "commits"
+    
+    # New collection names (Session 11)
+    RUNS = "runs"
+    JOBS = "jobs"
+    PLUGINS = "plugins"
     
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
@@ -172,6 +177,9 @@ class PyMongoPersistence(PersistenceInterface):
         self._db[self.COMMITS].create_index("branch_id")
         self._db[self.COMMITS].create_index("execution_id")
         self._db[self.COMMITS].create_index([("branch_id", 1), ("created_at", -1)])
+        
+        # Create new collection indexes (Session 11)
+        self._create_new_indexes()
     
     # ==================== EXECUTION OPERATIONS ====================
     
@@ -313,6 +321,140 @@ class PyMongoPersistence(PersistenceInterface):
         
         return results
     
+    # =========================================================================
+    # NEW METHODS (Session 11 - FINAL_DATASETS.yml compliant)
+    # =========================================================================
+    
+    def save_run(self, run: Dict[str, Any]) -> None:
+        """Save or update run state."""
+        try:
+            if hasattr(run, 'to_dict'):
+                run_dict = run.to_dict()
+            else:
+                run_dict = dict(run)
+            
+            run_id = run_dict.get("id", "")
+            if not run_id:
+                raise ValueError("Run must have 'id' field")
+            
+            self._db[self.RUNS].update_one(
+                {"id": run_id},
+                {
+                    "$set": run_dict,
+                    "$setOnInsert": {"created_at": datetime.utcnow()},
+                    "$currentDate": {"updated_at": True}
+                },
+                upsert=True
+            )
+        except OperationFailure as e:
+            logger.error(f"Failed to save run: {e}")
+            raise
+    
+    def save_job(self, job: Dict[str, Any]) -> None:
+        """Save or update job state."""
+        try:
+            if hasattr(job, 'to_dict'):
+                job_dict = job.to_dict()
+            else:
+                job_dict = dict(job)
+            
+            job_id = job_dict.get("id", "")
+            if not job_id:
+                raise ValueError("Job must have 'id' field")
+            
+            self._db[self.JOBS].update_one(
+                {"id": job_id},
+                {
+                    "$set": job_dict,
+                    "$setOnInsert": {"created_at": datetime.utcnow()},
+                    "$currentDate": {"updated_at": True}
+                },
+                upsert=True
+            )
+        except OperationFailure as e:
+            logger.error(f"Failed to save job: {e}")
+            raise
+    
+    def save_plugin(self, plugin: Dict[str, Any]) -> None:
+        """Save plugin data to separate collection."""
+        try:
+            if hasattr(plugin, 'to_dict'):
+                plugin_dict = plugin.to_dict()
+            else:
+                plugin_dict = dict(plugin)
+            
+            job_id = plugin_dict.get("job_id", "")
+            plugin_name = plugin_dict.get("plugin_name", "")
+            
+            if not job_id or not plugin_name:
+                raise ValueError("Plugin must have 'job_id' and 'plugin_name' fields")
+            
+            self._db[self.PLUGINS].update_one(
+                {"job_id": job_id, "plugin_name": plugin_name},
+                {
+                    "$set": plugin_dict,
+                    "$setOnInsert": {"created_at": datetime.utcnow()}
+                },
+                upsert=True
+            )
+        except OperationFailure as e:
+            logger.error(f"Failed to save plugin: {e}")
+            raise
+    
+    def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Get run by ID."""
+        return self._db[self.RUNS].find_one({"id": run_id})
+    
+    def get_jobs(self, run_id: str) -> List[Dict[str, Any]]:
+        """Get all jobs for a run, sorted by index."""
+        cursor = self._db[self.JOBS].find({"run_id": run_id}).sort("index", 1)
+        return list(cursor)
+    
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Get job by ID."""
+        return self._db[self.JOBS].find_one({"id": job_id})
+    
+    def get_plugins(self, job_id: str) -> List[Dict[str, Any]]:
+        """Get all plugin data for a job."""
+        cursor = self._db[self.PLUGINS].find({"job_id": job_id})
+        return list(cursor)
+    
+    def get_plugin(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """Get specific plugin data for a job."""
+        return self._db[self.PLUGINS].find_one({
+            "job_id": job_id,
+            "plugin_name": plugin_name
+        })
+    
+    def delete_run(self, run_id: str) -> bool:
+        """Delete run and all related data (jobs, plugins)."""
+        # Delete plugins for this run
+        self._db[self.PLUGINS].delete_many({"run_id": run_id})
+        
+        # Delete jobs for this run
+        self._db[self.JOBS].delete_many({"run_id": run_id})
+        
+        # Delete run
+        result = self._db[self.RUNS].delete_one({"id": run_id})
+        return result.deleted_count > 0
+    
+    def _create_new_indexes(self) -> None:
+        """Create indexes for new collections (Session 11)."""
+        # runs indexes
+        self._db[self.RUNS].create_index("id", unique=True)
+        self._db[self.RUNS].create_index("created_at")
+        self._db[self.RUNS].create_index("status.state")
+        
+        # jobs indexes
+        self._db[self.JOBS].create_index([("run_id", 1), ("index", 1)], unique=True)
+        self._db[self.JOBS].create_index("id", unique=True)
+        self._db[self.JOBS].create_index("run_id")
+        
+        # plugins indexes
+        self._db[self.PLUGINS].create_index([("job_id", 1), ("plugin_name", 1)], unique=True)
+        self._db[self.PLUGINS].create_index("run_id")
+        self._db[self.PLUGINS].create_index("job_id")
+    
     # ==================== STATISTICS ====================
     
     def get_statistics(self) -> Dict[str, Any]:
@@ -321,9 +463,14 @@ class PyMongoPersistence(PersistenceInterface):
             "backend": "PyMongoPersistence",
             "uri": self._uri,
             "database": self._database_name,
+            # Legacy collections
             "executions": self._db[self.EXECUTIONS].count_documents({}),
             "matches": self._db[self.MATCHES].count_documents({}),
-            "plugin_results": self._db[self.PLUGIN_RESULTS].count_documents({})
+            "plugin_results": self._db[self.PLUGIN_RESULTS].count_documents({}),
+            # New collections (Session 11)
+            "runs": self._db[self.RUNS].count_documents({}),
+            "jobs": self._db[self.JOBS].count_documents({}),
+            "plugins": self._db[self.PLUGINS].count_documents({})
         }
     
     # ==================== GIT-LIKE VERSIONING ====================

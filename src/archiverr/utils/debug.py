@@ -192,3 +192,7 @@ def get_debugger() -> DebugSystem:
     if _debugger is None:
         _debugger = DebugSystem(enabled=False)
     return _debugger
+
+
+# Type alias for cleaner imports
+Debugger = DebugSystem
