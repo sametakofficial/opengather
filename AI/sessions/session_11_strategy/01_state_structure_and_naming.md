@@ -48,7 +48,7 @@ v1 -> v2 DEGISIKLIKLER:
 ## 2. STATE HIERARCHY
 
 ```
-RunState
+RunState                           (MongoDB: runs collection)
 |
 +-- id: str                    "run_abc123"
 +-- status: RunStatus
@@ -61,64 +61,76 @@ RunState
 |     +-- finished_at: datetime
 |     +-- duration_ms: int
 +-- config: Dict               Frozen snapshot
+
+JobState                           (MongoDB: jobs collection)
 |
-+-- jobs: Dict[int, JobState]
-      |
-      +-- [0]: JobState
-      |     +-- id: str        "job_abc123_0"
-      |     +-- index: int     0
-      |     +-- run_id: str    "run_abc123"
-      |     +-- input: InputData
-      |     |     +-- path: str
-      |     |     +-- category: str
-      |     +-- plugins: Dict[str, Any]
-      |     |     +-- scanner: {...}
-                        _state
-                        movie
-                            title
-                            year
-                        cast
-                        crew
-                        etc.
-      |     |     +-- renamer: {...}
-      |     |     +-- tmdb: {...}
-      |     +-- status: JobStatus
-      |           +-- state: enum
-      |           +-- success: bool
-      |           +-- executed: List[str]
-      |           +-- failed: List[str]
-      |           +-- skipped: List[str]
-      |
-      +-- [1]: JobState
-      +-- [2]: JobState
-      ...
++-- id: str                    "job_run_abc123_0"
++-- index: int                 0
++-- run_id: str                "run_abc123"
++-- input: InputData
+|     +-- value: str           "/path/file.mkv" veya "The Matrix 1999"
+|     +-- data: Dict           {filename, extension, size_bytes, source}
++-- output: OutputData
+|     +-- values: List[str]    ["/archive/Movie (2024)/Movie.mkv"]
+|     +-- data: Dict           {tasks: {...}}
++-- status: JobStatus
+      +-- state: enum
+      +-- success: bool
+      +-- executed: List[str]
+      +-- failed: List[str]
+      +-- skipped: List[str]
+
+PluginData                         (MongoDB: plugins collection)
+|
++-- id: str                    "plugin_job_run_abc123_0_tmdb"
++-- job_id: str                "job_run_abc123_0"
++-- run_id: str                "run_abc123"
++-- job_index: int             0
++-- plugin_name: str           "tmdb"
++-- stage: str                 "data"
++-- status: Dict               {success, started_at, finished_at, duration_ms}
++-- data: Dict                 Plugin-specific data (movie, show, etc.)
 ```
+
+**ÖNEMLİ:** `plugins` ayrı collection'da!
+
+- Memory management için (hot/cold tiering)
+- JobState içinde plugins YOKTUR
+- Template context'e `plugins` alias olarak inject edilir
 
 ---
 
-## 3. PLUGINS STRUCTURE
+## 3. PLUGINS YAPISI (AYRI COLLECTION)
 
 ```
 +----------------------------------------------------------+
-|              PLUGINS STRUCTURE (FLAT)                     |
+|              PLUGINS = AYRI COLLECTION                    |
 +----------------------------------------------------------+
 |                                                           |
-|  REDDEDILEN (Nested by stage):                           |
-|  plugins:                                                 |
-|    input:                                                |
-|      scanner: {...}                                      |
-|    parse:                                                |
-|      renamer: {...}                                      |
+|  NEDEN AYRI?                                              |
+|  - Memory management (hot/cold tiering)                  |
+|  - 10.000+ dosya senaryosunda ~100MB+ plugin data        |
+|  - Lazy loading: ihtiyaç halinde MongoDB'den yükle       |
+|  - JobState hafif kalır                                   |
 |                                                           |
-|  KABUL EDILEN (Flat):                                    |
-|  plugins:                                                 |
-|    scanner: {...}                                        |
-|    renamer: {...}                                        |
-|    tmdb: {...}                                           |
+|  MongoDB plugins collection:                              |
+|  {                                                        |
+|    job_id: "job_run_abc123_0",                           |
+|    plugin_name: "tmdb",                                  |
+|    stage: "data",                                        |
+|    status: {success: true, duration_ms: 800},            |
+|    data: {movie: {title: "Movie", ...}}                  |
+|  }                                                        |
 |                                                           |
-|  GEREKCE:                                                |
-|  - Template erisimi kolay: job.plugins.tmdb.movie        |
-|  - Stage bilgisi manifest'te, state'te gereksiz          |
+|  Template context'e `plugins` alias inject edilir:       |
+|  context = {                                             |
+|    plugins: load_plugins_for_job(job_id)                 |
+|  }                                                        |
+|                                                           |
+|  Template erisimi AYNI kalır:                            |
+|    {{ plugins.tmdb.movie.title }}                        |
+|  veya alias ile:                                          |
+|    {{ job.plugins.tmdb.movie.title }}                    |
 |                                                           |
 +----------------------------------------------------------+
 ```
@@ -201,17 +213,29 @@ class OutputData:
 
 @dataclass
 class JobState:
+    """Job state - plugins AYRI collection'da!"""
     index: int
     run_id: str
     id: str = ""
     input: InputData = field(default_factory=lambda: InputData(""))
-    output: OutputData = field(default_factory=OutputData)  # v2: eklendi
+    output: OutputData = field(default_factory=OutputData)
     status: JobStatus = field(default_factory=JobStatus)
-    # v2: plugins ayri collection'da (memory management)
+    # NOT: plugins burada YOK - ayrı collection (memory management)
 
     def __post_init__(self):
         if not self.id:
             self.id = f"job_{self.run_id}_{self.index}"
+
+@dataclass
+class PluginData:
+    """Plugin data - ayrı collection'da saklanır"""
+    job_id: str
+    run_id: str
+    job_index: int
+    plugin_name: str
+    stage: str  # input | parse | data | output
+    status: Dict[str, Any] = field(default_factory=dict)
+    data: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class RunStatus:

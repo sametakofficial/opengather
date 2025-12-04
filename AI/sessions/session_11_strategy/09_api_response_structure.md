@@ -18,8 +18,16 @@ v1 -> v2 DEGISIKLIKLER:
 - input.data eklendi (size_bytes, source, etc.)
 - output.values eklendi (paths array)
 - output.data eklendi (task results detay)
-- plugins ayri response (memory management)
+- plugins AYRI COLLECTION (memory management için)
+- job.plugins YOK - ayrı endpoint ile erişilir
+- Template context'e plugins alias inject edilir
 ```
+
+**ÖNEMLİ:** Plugins ayrı collection'da saklanır!
+
+- Memory management (hot/cold tiering)
+- API: GET /jobs/{id}/plugins
+- Template: {{ plugins.tmdb.movie.title }}
 
 ---
 
@@ -78,78 +86,88 @@ v1 -> v2 DEGISIKLIKLER:
       },
 
       "output": {
-        "tasks": [
-          {
-            "name": "print_header",
-            "type": "print",
-            "success": true,
-            "rendered": "MOVIE: Mr. & Mrs. Smith (2005)"
-          },
-          {
-            "name": "save_file",
-            "type": "save",
-            "success": true,
-            "destination": "/movies/Mr. & Mrs. Smith (2005)/file.mkv"
-          }
-        ]
-      },
-
-      "plugins": {
-        "scanner": {
-          "status": {"success": true},
-          "input": {
-            "path": "/media/file.mkv",
-            "virtual": false
-          }
-        },
-
-        "renamer": {
-          "status": {"success": true},
-          "parsed": {
-            "movie": {
-              "name": "Mr. & Mrs. Smith",
-              "year": 2005,
-              "quality": "1080p"
+        "values": ["/movies/Mr. & Mrs. Smith (2005)/file.mkv"],
+        "data": {
+          "tasks": {
+            "print_header": {
+              "type": "print",
+              "success": true,
+              "rendered": "MOVIE: Mr. & Mrs. Smith (2005)"
+            },
+            "save_file": {
+              "type": "save",
+              "success": true,
+              "destination": "/movies/Mr. & Mrs. Smith (2005)/file.mkv"
             }
-          }
-        },
-
-        "tmdb": {
-          "status": {"success": true},
-          "movie": {
-            "id": 1234,
-            "title": "Mr. & Mrs. Smith",
-            "original_title": "Mr. & Mrs. Smith",
-            "release_date": "2005-06-10",
-            "overview": "...",
-            "poster_path": "/abc123.jpg",
-            "backdrop_path": "/def456.jpg",
-            "vote_average": 7.2,
-            "genres": ["Action", "Comedy", "Romance"]
-          }
-        },
-
-        "ffprobe": {
-          "status": {"success": true},
-          "video": {
-            "codec": "hevc",
-            "width": 1920,
-            "height": 1080,
-            "fps": 23.976,
-            "bitrate": 5000000
-          },
-          "audio": [
-            {
-              "codec": "aac",
-              "channels": 6,
-              "language": "eng"
-            }
-          ],
-          "container": {
-            "format": "matroska",
-            "duration": 7200.5
           }
         }
+      }
+
+      // NOT: plugins burada YOK!
+      // Ayrı endpoint: GET /jobs/{job_id}/plugins
+    }
+  ],
+
+  // PLUGINS AYRI COLLECTION (memory management)
+  // Endpoint: GET /v1/jobs/{job_id}/plugins
+  "plugins": [
+    {
+      "job_id": "job_run_abc123_0",
+      "plugin_name": "scanner",
+      "stage": "input",
+      "status": {"success": true, "duration_ms": 100},
+      "data": {
+        "filename": "file.mkv",
+        "extension": "mkv",
+        "size_bytes": 5368709120
+      }
+    },
+    {
+      "job_id": "job_run_abc123_0",
+      "plugin_name": "renamer",
+      "stage": "parse",
+      "status": {"success": true, "duration_ms": 50},
+      "data": {
+        "parsed": {
+          "movie": {
+            "name": "Mr. & Mrs. Smith",
+            "year": 2005,
+            "quality": "1080p"
+          }
+        }
+      }
+    },
+    {
+      "job_id": "job_run_abc123_0",
+      "plugin_name": "tmdb",
+      "stage": "data",
+      "status": {"success": true, "duration_ms": 800},
+      "data": {
+        "movie": {
+          "id": 1234,
+          "title": "Mr. & Mrs. Smith",
+          "original_title": "Mr. & Mrs. Smith",
+          "release_date": "2005-06-10",
+          "overview": "...",
+          "poster_path": "/abc123.jpg",
+          "vote_average": 7.2,
+          "genres": ["Action", "Comedy", "Romance"]
+        }
+      }
+    },
+    {
+      "job_id": "job_run_abc123_0",
+      "plugin_name": "ffprobe",
+      "stage": "data",
+      "status": {"success": true, "duration_ms": 500},
+      "data": {
+        "video": {
+          "codec": "hevc",
+          "width": 1920,
+          "height": 1080,
+          "fps": 23.976
+        },
+        "audio": [{"codec": "aac", "channels": 6, "language": "eng"}]
       }
     }
   ]
@@ -169,14 +187,22 @@ context = {
     'job': {...},
     'jobs': [...],
 
+    # PLUGINS (ayrı collection'dan yüklenir, context'e inject edilir)
+    'plugins': load_plugins_for_job(job.id),  # {tmdb: {...}, renamer: {...}}
+
     # Config access
     'options': {...},
+    'config': {...},
 
     # Short aliases
     'r': run,
     'j': job,
     'o': options,
 }
+
+# NOT: job.plugins YOK
+# plugins ayrı key olarak inject edilir
+# Ama alias ile job.plugins olarak da erişilebilir
 ```
 
 ---
@@ -205,15 +231,20 @@ context = {
 ### 3.3 Plugin Data
 
 ```jinja2
-{# Direct access #}
+{# Direct access (plugins context'e inject edilir) #}
+{{ plugins.tmdb.movie.title }}
+{{ plugins.renamer.parsed.movie.name }}
+{{ plugins.ffprobe.video.codec }}
+
+{# job.plugins alias olarak da çalışır #}
 {{ job.plugins.tmdb.movie.title }}
-{{ job.plugins.renamer.parsed.movie.name }}
-{{ job.plugins.ffprobe.video.codec }}
 
 {# With filters #}
-{{ job.plugins.tmdb.movie.release_date[:4] }}
-{{ job.input.path | basename }}
+{{ plugins.tmdb.movie.release_date[:4] }}
+{{ job.input.value | basename }}
 ```
+
+**NOT:** `plugins` ayrı collection'dan yüklenir ve context'e inject edilir.
 
 ### 3.4 Iteration
 

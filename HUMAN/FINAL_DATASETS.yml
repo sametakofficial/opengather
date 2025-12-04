@@ -233,8 +233,7 @@ provides:
     - http.request
   job:
     - job.create
-  state:
-    - state.update
+
   process:
     - process.spawn
     - process.exec
@@ -259,7 +258,6 @@ non_lockable_provides:
   - fs.chmod
   - http.request
   - job.create
-  - state.update
   - process.spawn
   - process.exec
   - input.value
@@ -293,7 +291,6 @@ manifest_tmdb:
     - job.plugins.renamer.parsed
   provides:
     - http.request
-    - state.update
   trigger_rule: all_success
   reactive: false
   class_name: TMDbPlugin
@@ -326,21 +323,18 @@ manifest_renamer:
   version: 1.0.0
   stage: parse
   requires: []
-  provides:
-    - state.update
+
   class_name: RenamerPlugin
 
 manifest_tasker:
   name: tasker
   version: 1.0.0
   stage: output
-  requires:
-    - provides.state.update
+
   provides:
     - fs.write
     - output.values
     - output.data
-    - state.update
   class_name: TaskerPlugin
 
 config_example:

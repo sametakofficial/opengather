@@ -54,14 +54,19 @@ archiverr/
 │       │   │   ├── base.py          # BasePlugin, PluginResult
 │       │   │   ├── registry.py      # Discovery + Loading
 │       │   │   ├── resolver.py      # Dependency resolution
-│       │   │   ├── executor.py      # Phase execution
-│       │   │   ├── services.py      # PluginServices, JobService
+│       │   │   ├── executor.py      # Stage execution
+│       │   │   ├── services.py      # PluginServices interface
 │       │   │   └── validators.py    # RequiresValidator
 │       │   │
-│       │   └── tasks/
+│       │   │   # NOT: core/tasks YOK!
+│       │   │   # Tasker bir PLUGIN (stage: output)
+│       │   │   # Template rendering PluginServices içinde
+│       │   │
+│       │   └── validation/
 │       │       ├── __init__.py
-│       │       ├── manager.py       # Task orchestration
-│       │       └── template.py      # Jinja2 rendering
+│       │       ├── config.py        # ConfigValidator
+│       │       ├── manifest.py      # ManifestValidator
+│       │       └── dependency.py    # DependencyValidator
 │       │
 │       ├── state/
 │       │   ├── __init__.py
@@ -106,18 +111,21 @@ archiverr/
 │       │
 │       └── plugins/
 │           ├── __init__.py
-│           ├── scanner/
+│           ├── scanner/             # stage: input
 │           │   ├── manifest.yml
 │           │   └── client.py
-│           ├── renamer/
+│           ├── renamer/             # stage: parse
 │           │   ├── manifest.yml
 │           │   └── client.py
-│           ├── tmdb/
+│           ├── tmdb/                # stage: data
 │           │   ├── manifest.yml
 │           │   └── client.py
-│           ├── tvdb/
-│           ├── ffprobe/
-│           └── ...
+│           ├── tvdb/                # stage: data
+│           ├── ffprobe/             # stage: data
+│           ├── tasker/              # stage: output (TASK SYSTEM!)
+│           │   ├── manifest.yml     # provides: fs.write, output.values
+│           │   └── client.py        # save/print tasks
+│           └── rclone/              # stage: output
 │
 ├── tests/
 │   ├── __init__.py
@@ -169,20 +177,24 @@ __main__.py
 core/orchestrator.py
 ├── Coordinate full run lifecycle
 ├── Initialize components
-├── Execute phases
-├── Execute tasks
+├── Execute stages (input → parse → data → output)
 └── Handle errors
 
 core/plugins/
 ├── registry.py    → Discover and load plugins
 ├── resolver.py    → Resolve dependencies
-├── executor.py    → Execute by phase
-├── services.py    → Plugin runtime services
-└── validators.py  → Validation logic
+├── executor.py    → Execute by stage
+├── services.py    → PluginServices interface
+└── validators.py  → RequiresValidator
 
-core/tasks/
-├── manager.py     → Task orchestration
-└── template.py    → Template rendering
+core/validation/
+├── config.py      → Config validation
+├── manifest.py    → Manifest validation
+└── dependency.py  → Dependency graph validation
+
+# NOT: core/tasks YOK!
+# Task sistemi = tasker plugin (stage: output)
+# Template rendering = PluginServices.template içinde
 ```
 
 ### 2.3 State
@@ -240,10 +252,11 @@ __main__.py
     │       ├── core.plugins.executor
     │       │       ├── core.plugins.services
     │       │       └── core.plugins.validators
-    │       └── core.tasks.manager
-    │               └── core.tasks.template
+    │       └── core.validation.*
     │
     └── utils.debug
+
+# NOT: core.tasks YOK - tasker bir plugin!
 ```
 
 ---
@@ -319,13 +332,15 @@ AI Directory:
 │  Layer 2: Depends on Layer 1                                 │
 │  ├── core/plugins/registry.py → base, services               │
 │  ├── core/plugins/executor.py → services, validators         │
-│  └── core/tasks/manager.py → template                        │
+│  └── core/validation/* → models                              │
 │                                                              │
 │  Layer 3: Depends on Layer 2                                 │
 │  └── core/orchestrator.py → all                              │
 │                                                              │
 │  Layer 4: Entry point                                        │
 │  └── __main__.py → orchestrator                              │
+│                                                              │
+│  NOT: core/tasks YOK - tasker plugin olarak çalışır!         │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -376,26 +391,36 @@ src/archiverr/
 │   │   ├── base.py
 │   │   ├── registry.py
 │   │   ├── resolver.py
-│   │   ├── executor.py     # Phase-based
-│   │   ├── services.py     # NEW
+│   │   ├── executor.py     # Stage-based (4 stage)
+│   │   ├── services.py     # NEW: PluginServices
 │   │   └── validators.py
-│   └── tasks/
+│   └── validation/         # NEW: Validation system
+│       ├── config.py
+│       ├── manifest.py
+│       └── dependency.py
 ├── infrastructure/
 │   ├── config/             # NEW: Separate config handling
 │   ├── persistence/
-│   └── memory/             # NEW: Memory management
+│   └── memory/             # NEW: Memory management (optional)
 ├── state/
 ├── events/
 └── plugins/
+    ├── scanner/            # stage: input
+    ├── renamer/            # stage: parse
+    ├── tmdb/               # stage: data
+    ├── tasker/             # stage: output (TASK SYSTEM!)
+    └── ...
 ```
 
 **Key Changes:**
 
 - `orchestrator.py` added (main.py simplified)
-- `plugins/executor.py` refactored for phases
+- `plugins/executor.py` refactored for 4 stages
 - `plugins/services.py` added (SDK replacement)
-- `infrastructure/memory/` added
+- `core/validation/` added
+- `infrastructure/memory/` added (optional)
 - `infrastructure/config/` separated
+- **`core/tasks/` KALDIRILDI** → `tasker` plugin olarak taşındı
 
 ---
 
