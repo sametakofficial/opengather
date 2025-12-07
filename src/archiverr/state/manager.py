@@ -497,25 +497,29 @@ class GlobalStateManager:
         return LegacyMatch(job)
     
     def get_job(self, index: int) -> Optional[JobState]:
-        """Get job by index."""
-        return self._jobs.get(index)
+        """Get job by index (Session 12: _jobs is a list)."""
+        if 0 <= index < len(self._jobs):
+            return self._jobs[index]
+        return None
     
     def get_job_by_id(self, job_id: str) -> Optional[JobState]:
-        """Get job by ID."""
+        """Get job by ID (Session 12)."""
         try:
             parts = job_id.split('_')
             index = int(parts[-1])
-            return self._jobs.get(index)
+            if 0 <= index < len(self._jobs):
+                return self._jobs[index]
         except (ValueError, IndexError):
-            return None
+            pass
+        return None
     
     def get_all_jobs(self) -> List[JobState]:
-        """Get all jobs."""
-        return list(self._jobs.values())
+        """Get all jobs (Session 12: _jobs is already a list)."""
+        return self._jobs.copy()  # Return copy to prevent mutation
     
     def complete_job(self, index: int):
-        """Mark job as completed."""
-        job = self._jobs.get(index)
+        """Mark job as completed (Session 12)."""
+        job = self.get_job(index)
         if not job:
             raise ValueError(f"Job {index} not found")
         

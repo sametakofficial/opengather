@@ -155,7 +155,9 @@ class StageExecutor:
                 self._execute_per_job(stage, sorted_plugins)
                 
         except Exception as e:
+            import traceback
             self._log("error", f"Stage {stage.value} failed: {e}")
+            self._log("error", f"Traceback: {traceback.format_exc()}")
             raise StageError(f"Stage execution failed", stage=stage.value, context={"error": str(e)})
     
     def _execute_per_run(self, stage: Stage, plugins: List[Any]) -> None:
@@ -456,11 +458,16 @@ class StageExecutor:
     
     def _topological_sort(self, plugins: Dict[str, Any], stage: Stage) -> List[Any]:
         """
-        Sort plugins by dependency order.
+        Sort plugins by dependency order using topological sort.
         
         Simple implementation: plugins with no requires first,
         then by number of requires.
         """
+        # Session 12: Debug check
+        if isinstance(plugins, list):
+            self._log("error", f"_topological_sort received list instead of dict for stage {stage.value}")
+            return plugins  # Return as-is if already a list
+        
         plugin_list = list(plugins.values())
         
         def sort_key(plugin):
