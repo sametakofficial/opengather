@@ -253,11 +253,8 @@ class Orchestrator:
             "plugins": self._plugin_registry.enabled_plugins
         })
         
-        # Register provides from all plugins at startup
-        self._register_all_provides()
-        
-        # P2.2: Track reactive plugins for future implementation
-        self._reactive_plugins = self._identify_reactive_plugins()
+        # Session 12: Provides registry removed
+        # No need to register provides or track reactive plugins
         
         # Register event handlers for persistence
         self._register_event_handlers()

@@ -22,7 +22,6 @@ from archiverr.events import EventBus
 from archiverr.utils.debug import Debugger, get_debugger
 from archiverr.core.exceptions import StageError, PluginError
 from archiverr.core.services import PluginServices, create_plugin_services
-from archiverr.core.provides_registry import ProvidesRegistry, get_provides_registry
 
 from .registry import PluginRegistry, Stage
 from .requires_validator import RequiresValidator, RequiresResult
@@ -114,17 +113,11 @@ class StageExecutor:
         # Plugin data cache: {job_id: {plugin_name: data}}
         self._plugin_data_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
         
-        # Provides registry for tracking plugin provides completion
-        self._provides_registry: ProvidesRegistry = get_provides_registry()
-        
-        # RequiresValidator with provides and events support
+        # Session 12: Provides registry removed
+        # RequiresValidator now validates plugin data dependencies
         self._requires_validator = RequiresValidator(
-            provides_registry=self._provides_registry,
             event_bus=self._event_bus
         )
-        
-        # Register provides from all plugins at startup
-        self._register_all_provides()
     
     def execute_stage(self, stage: Stage) -> None:
         """
@@ -198,8 +191,7 @@ class StageExecutor:
                 
                 duration_ms = self._calc_duration(start_time)
                 
-                # Mark all provides as completed (P0.1: Critical provides completion)
-                self._complete_plugin_provides(plugin_name, success=True)
+                # Session 12: Provides system removed
                 
                 # Emit success event
                 self._emit_plugin_completed(
@@ -215,8 +207,7 @@ class StageExecutor:
                 duration_ms = self._calc_duration(start_time)
                 self._log("error", f"Plugin {plugin_name} failed: {e}")
                 
-                # Mark all provides as failed (P0.1: Critical provides completion)
-                self._complete_plugin_provides(plugin_name, success=False)
+                # Session 12: Provides system removed
                 
                 self._emit_plugin_failed(
                     plugin_name=plugin_name,
@@ -392,8 +383,7 @@ class StageExecutor:
             
             self._mark_executed(job, plugin_name, success)
             
-            # Mark all provides as completed (P0.1: Critical provides completion)
-            self._complete_plugin_provides(plugin_name, success)
+            # Session 12: Provides system removed
             
             # Emit event
             self._emit_plugin_completed(
@@ -780,34 +770,4 @@ class StageExecutor:
         """Clear plugin data cache"""
         self._plugin_data_cache.clear()
     
-    def get_provides_registry(self) -> ProvidesRegistry:
-        """Get the provides registry for template context injection."""
-        return self._provides_registry
-    
-    def _register_all_provides(self) -> None:
-        """
-        Register all provides from enabled plugins.
-        
-        Called at startup to populate the provides registry.
-        """
-        for stage in Stage:
-            plugins = self._registry.get_plugins_by_stage(stage)
-            for plugin_name, plugin in plugins.items():
-                manifest = self._registry.get_manifest(plugin_name)
-                if manifest:
-                    provides = manifest.get('provides', [])
-                    self._provides_registry.register_from_manifest(plugin_name, provides)
-                    self._log("debug", f"Registered provides for {plugin_name}: {provides}")
-    
-    def _complete_plugin_provides(self, plugin_name: str, success: bool = True) -> None:
-        """
-        Mark all provides from a plugin as completed or failed.
-        
-        Args:
-            plugin_name: Name of the plugin
-            success: Whether the plugin succeeded
-        """
-        if success:
-            self._provides_registry.complete_all(plugin_name)
-        else:
-            self._provides_registry.fail_all(plugin_name)
+    # Session 12: Provides registry methods removed
