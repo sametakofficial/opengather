@@ -6,20 +6,24 @@ options:
   dry_run: true
   
 scanner:
+  enabled: true
   targets:
-    - "/tmp/test_movies"
+    - "/tmp/test_movies/Movie.2024.1080p.mkv"
   allow_virtual_paths: true
   extensions: [mkv, mp4]
 
 renamer:
+  enabled: true
   media_type: auto
 
 tmdb:
+  enabled: true
   api_key: "${TMDB_API_KEY}"
   language: en-US
   region: US
 
 tasker:
+  enabled: true
   dry_run: true
   tasks:
     - type: print

@@ -291,6 +291,17 @@ class PluginRegistry:
             self.discover_and_load()
         return self._plugin_info.get(name)
     
+    def get_all_plugins(self) -> Dict[str, Any]:
+        """
+        Get all loaded plugin instances (Session 12).
+        
+        Returns:
+            Dict of plugin_name -> plugin_instance
+        """
+        if not self._loaded:
+            self.discover_and_load()
+        return self._all_plugins.copy()
+    
     def get_all_manifests(self) -> Dict[str, Dict[str, Any]]:
         """Get all discovered manifests."""
         if not self._loaded:

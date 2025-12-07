@@ -151,7 +151,10 @@ class Orchestrator:
             # Phase 1: Initialize
             self._initialize()
             
-            # Phase 2: Execute stages
+            # Phase 1.5: Execute per_run plugins (Session 12: before stages)
+            self._execute_per_run_plugins()
+            
+            # Phase 2: Execute stages (per_job plugins)
             self._execute_stages()
             
             # Phase 3: Finalize
@@ -259,9 +262,55 @@ class Orchestrator:
         # Register event handlers for persistence
         self._register_event_handlers()
     
+    def _execute_per_run_plugins(self) -> None:
+        """
+        Execute per_run plugins (Session 12).
+        
+        Per_run plugins execute once per run, before stages.
+        They typically create jobs (e.g., scanner plugin).
+        """
+        # Get all loaded plugins and filter for run_mode: per_run
+        all_plugins = self._plugin_registry.get_all_plugins()
+        per_run_plugins = []
+        
+        for plugin_name, plugin_instance in all_plugins.items():
+            manifest = self._plugin_registry.get_manifest(plugin_name)
+            if manifest and manifest.get('run_mode') == 'per_run':
+                per_run_plugins.append((plugin_name, plugin_instance))
+        
+        if not per_run_plugins:
+            self._log("debug", "No per_run plugins to execute")
+            return
+        
+        self._log("info", f"Executing {len(per_run_plugins)} per_run plugins")
+        
+        for plugin_name, plugin_instance in per_run_plugins:
+            try:
+                self._log("debug", f"Executing per_run plugin: {plugin_name}")
+                
+                # Execute plugin (scanner creates jobs via services.createJob)
+                if hasattr(plugin_instance, 'execute_run'):
+                    plugin_instance.execute_run(self._stage_executor._state)
+                elif hasattr(plugin_instance, 'get_matches'):
+                    # Legacy: scanner uses get_matches
+                    matches = plugin_instance.get_matches()
+                    # Create jobs from matches
+                    for match in matches:
+                        job_id = self._state.create_job(
+                            input_value=match.get('path', match.get('value', '')),
+                            input_data=match
+                        )
+                        self._log("debug", f"Created job: {job_id} from {plugin_name}")
+                
+                self._log("info", f"Per_run plugin {plugin_name} completed")
+                
+            except Exception as e:
+                self._log("error", f"Per_run plugin {plugin_name} failed: {e}")
+                # Continue with next plugin (best effort)
+    
     def _execute_stages(self) -> None:
         """
-        Execute all 4 stages in order.
+        Execute all 3 stages in order (Session 12).
         
         Stage execution is best-effort: if a stage fails,
         we log the error and continue to the next stage.
