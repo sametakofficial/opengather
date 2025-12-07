@@ -23,8 +23,23 @@ class DependencyResolver:
         graph = {}
         for plugin_name in enabled_plugins:
             metadata = self.plugin_metadata.get(plugin_name, {})
-            depends_on = metadata.get('depends_on', [])
-            graph[plugin_name] = [d for d in depends_on if d in enabled_plugins]
+            
+            # Session 11: Use 'requires' instead of 'depends_on'
+            # Support both for backward compatibility
+            requires = metadata.get('requires', []) or metadata.get('depends_on', [])
+            
+            # Extract plugin names from requires paths
+            # Examples:
+            #   'job.plugins.renamer.parsed' -> 'renamer'
+            #   'provides.http.request' -> None (not a plugin dependency)
+            #   'renamer' -> 'renamer' (legacy format)
+            deps = []
+            for req in requires:
+                plugin_dep = self._extract_plugin_from_requires(req)
+                if plugin_dep and plugin_dep in enabled_plugins:
+                    deps.append(plugin_dep)
+            
+            graph[plugin_name] = deps
         
         # Check for cycles
         if self._has_cycle(graph):
@@ -78,10 +93,56 @@ class DependencyResolver:
         
         return False
     
+    def _extract_plugin_from_requires(self, require: str) -> str:
+        """
+        Extract plugin name from a requires path.
+        
+        Session 11 format examples:
+            'job.plugins.renamer.parsed' -> 'renamer'
+            'job.plugins.tmdb.movie' -> 'tmdb'
+            'provides.http.request' -> None (capability, not plugin)
+            'events.job.created' -> None (event, not plugin)
+            'renamer' -> 'renamer' (legacy direct plugin name)
+            
+        Returns:
+            Plugin name or None if not a plugin dependency
+        """
+        if not require:
+            return None
+        
+        # Check for job.plugins.{plugin_name}.{path} format
+        if require.startswith('job.plugins.'):
+            parts = require.split('.')
+            if len(parts) >= 3:
+                return parts[2]  # job.plugins.{plugin_name}
+        
+        # Skip provides.* and events.* (not plugin dependencies)
+        if require.startswith('provides.') or require.startswith('events.'):
+            return None
+        
+        # Skip job.input.* and job.output.* (not plugin dependencies)
+        if require.startswith('job.input.') or require.startswith('job.output.'):
+            return None
+        
+        # Legacy format: direct plugin name
+        # Only if it doesn't contain dots (to avoid false positives)
+        if '.' not in require:
+            return require
+        
+        return None
+    
     def get_dependencies(self, plugin_name: str) -> List[str]:
         """Get direct dependencies of a plugin"""
         metadata = self.plugin_metadata.get(plugin_name, {})
-        return metadata.get('depends_on', [])
+        requires = metadata.get('requires', []) or metadata.get('depends_on', [])
+        
+        deps = []
+        for req in requires:
+            plugin_dep = self._extract_plugin_from_requires(req)
+            if plugin_dep:
+                deps.append(plugin_dep)
+        
+        return deps
     
     def check_expects(self, plugin_name: str, available_data: Set[str]) -> bool:
         """

@@ -1,44 +1,40 @@
 """
-State Manager
+Global State Manager - Session 12 Refactored
 
-Dependency-injected state management.
-Write-through to persistence layer.
+Session 12: 6 Global State Objects
+- run: RunState (read-only for all)
+- config: Dict (frozen, read-only for all)
+- job: JobState (current job, per_job only)
+- jobs: List[JobState] (all jobs, per_job read-only)
+- plugin: Dict (current job plugins, per_job only)
+- plugins: List[Dict] (all jobs plugins, per_job read-only)
 """
 
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 from uuid import uuid4
 
-from .models import ExecutionState, MatchState, PluginResult, ExecutionStatus
+from .models import RunState, JobState, InputData, StateEnum, PluginData, PluginStatus, PluginState
 
-# Lazy import to avoid circular dependency
 if TYPE_CHECKING:
     from archiverr.events import EventBus
 
 
-class StateManager:
+class GlobalStateManager:
     """
-    State manager with dependency injection.
+    Session 12 Global State Manager.
     
-    Design Principles:
-    - Plugin-agnostic: Core doesn't know plugin names or structures
-    - Flat structure: No nested globals wrappers
-    - Write-through: Every change persisted immediately (when persistence configured)
-    - Dependency Injection: All dependencies passed via constructor
+    Manages 6 global state objects:
+    1. run: RunState (read-only for all plugins)
+    2. config: Dict (frozen config, read-only for all)
+    3. job: JobState (current job, per_job only)
+    4. jobs: List[JobState] (all jobs, per_job read-only)
+    5. plugin: Dict[str, PluginState] (current job plugins, per_job only)
+    6. plugins: List[Dict] (all jobs' plugins, per_job read-only)
     
-    Usage:
-        # DI pattern (recommended)
-        state = StateManager(
-            persistence=persistence,
-            debugger=debugger,
-            event_bus=event_bus
-        )
-        
-        exec_id = state.start_execution(config)
-        match = state.register_match(0, "/path/to/file.mkv")
-        state.update_plugin_result(0, "scanner", result)
-        state.complete_match(0)
-        state.complete_execution()
+    Plugin Data Structure:
+        plugin.{name}.status: PluginStatus
+        plugin.{name}.data: Dict (plugin's own data)
     """
     
     def __init__(
@@ -47,22 +43,16 @@ class StateManager:
         debugger=None,
         event_bus: Optional['EventBus'] = None
     ):
-        """
-        Initialize state manager with dependencies.
-        
-        Args:
-            persistence: Persistence layer (MockPersistence, PyMongoPersistence, etc.)
-            debugger: Debug logger instance
-            event_bus: EventBus for emitting state change events
-        """
-        # Dependencies
         self._persistence = persistence
         self._debugger = debugger
         self._event_bus = event_bus
         
-        # State storage
-        self._execution: Optional[ExecutionState] = None
-        self._matches: Dict[int, MatchState] = {}
+        # Session 12: 6 global state objects
+        self._run: Optional[RunState] = None
+        self._config: Dict[str, Any] = {}
+        self._current_job: Optional[JobState] = None
+        self._jobs: List[JobState] = []
+        self._plugins_storage: Dict[str, Dict[str, PluginState]] = {}  # job_id -> plugin_name -> PluginState
     
     def configure(
         self, 
@@ -70,16 +60,7 @@ class StateManager:
         debugger=None,
         event_bus: Optional['EventBus'] = None
     ):
-        """
-        Reconfigure state manager with new dependencies.
-        
-        Provided for backward compatibility. Prefer constructor injection.
-        
-        Args:
-            persistence: Persistence layer (MockPersistence or MongoDBPersistence)
-            debugger: Debug logger instance
-            event_bus: EventBus for emitting state change events
-        """
+        """Reconfigure dependencies."""
         if persistence is not None:
             self._persistence = persistence
         if debugger is not None:
@@ -88,117 +69,207 @@ class StateManager:
             self._event_bus = event_bus
     
     def reset(self):
-        """Reset state for new execution (useful for testing)"""
-        self._execution = None
-        self._matches = {}
+        """Reset state for new run (Session 12)."""
+        self._run = None
+        self._config = {}
+        self._current_job = None
+        self._jobs = []
+        self._plugins_storage = {}
+    
+    # ==================== SESSION 12: GLOBAL STATE PROPERTIES ====================
+    
+    @property
+    def run(self) -> Optional[RunState]:
+        """Global state 1: run (read-only for all plugins)"""
+        return self._run
+    
+    @property
+    def config(self) -> Dict[str, Any]:
+        """Global state 2: config (frozen, read-only for all plugins)"""
+        return self._config
+    
+    @property
+    def job(self) -> Optional[JobState]:
+        """Global state 3: job (current job, per_job plugins only)"""
+        return self._current_job
+    
+    @property
+    def jobs(self) -> List[JobState]:
+        """Global state 4: jobs (all jobs, per_job read-only)"""
+        return self._jobs.copy()  # Return copy to prevent mutation
+    
+    @property
+    def plugin(self) -> Dict[str, PluginState]:
+        """Global state 5: plugin (current job's plugins, per_job only)"""
+        if not self._current_job:
+            return {}
+        return self._plugins_storage.get(self._current_job.id, {}).copy()
+    
+    @property
+    def plugins(self) -> List[Dict[str, Any]]:
+        """
+        Global state 6: plugins (all jobs' plugins, per_job read-only)
+        
+        Returns:
+            List of {job_id, job_index, run_id, plugins: {...}}
+        """
+        result = []
+        for job in self._jobs:
+            job_plugins = self._plugins_storage.get(job.id, {})
+            result.append({
+                "job_id": job.id,
+                "job_index": job.index,
+                "run_id": job.run_id,
+                "plugins": {
+                    name: state.to_dict()
+                    for name, state in job_plugins.items()
+                }
+            })
+        return result
     
     def _emit(self, event_name: str, data: Dict[str, Any] = None, source: str = "state"):
-        """Emit event if event bus is configured"""
+        """Emit event if event bus is configured."""
         if self._event_bus:
             self._event_bus.emit(event_name, data or {}, source)
     
-    # ==================== EXECUTION ====================
+    def _log(self, level: str, component: str, message: str, **kwargs):
+        """Log with debugger."""
+        if self._debugger:
+            log_func = getattr(self._debugger, level, self._debugger.info)
+            log_func(component, message, **kwargs)
     
-    def start_execution(self, config: Dict[str, Any]) -> str:
+    def _generate_id(self) -> str:
+        """Generate unique ID."""
+        return str(uuid4())[:8]
+    
+    # ==================== RUN (was EXECUTION) ====================
+    
+    def start_run(self, config: Dict[str, Any]) -> str:
         """
-        Start new execution.
+        Start new run (Session 12).
         
         Args:
-            config: Full config.yml content (stored as snapshot)
+            config: Full config.yml content (frozen)
             
         Returns:
-            Execution ID
+            Run ID
         """
-        execution_id = self._generate_id()
+        run_id = self._generate_id()
         
-        self._execution = ExecutionState(
-            id=execution_id,
-            started_at=datetime.now(),
-            status=ExecutionStatus.RUNNING,
-            config_snapshot=self._create_config_snapshot(config)
+        # Session 12: Store frozen config
+        self._config = config.copy()  # Frozen copy
+        
+        self._run = RunState(
+            id=run_id,
+            config=config
         )
+        self._run.start()
         
         # Persist
         if self._persistence:
-            self._persistence.save_execution(self._execution)
+            if hasattr(self._persistence, 'save_run'):
+                self._persistence.save_run(self._run)
+            elif hasattr(self._persistence, 'save_execution'):
+                # Legacy persistence adapter
+                self._persistence.save_execution(self._run_to_execution())
         
-        self._log("debug", "execution", "Started execution", id=execution_id)
+        self._log("debug", "run", "Started run", id=run_id)
         
-        # Emit event
-        self._emit("execution.started", {
-            "execution_id": execution_id,
-            "config_keys": list(config.keys())
+        self._emit("run.started", {
+            "run_id": run_id,
+            "config": config,
+            "plugins": list(config.get('plugins', {}).keys()) if isinstance(config.get('plugins'), dict) else []
         })
         
-        return execution_id
+        return run_id
     
-    def complete_execution(self, branch_name: str = "main") -> ExecutionState:
+    def complete_run(self, branch_name: str = "main") -> RunState:
         """
-        Complete current execution and create commit.
-        
-        Args:
-            branch_name: Branch to commit to (default: "main")
+        Complete current run.
         
         Returns:
-            Final execution state
+            Final RunState
         """
-        if not self._execution:
-            raise RuntimeError("No active execution")
+        if not self._run:
+            raise RuntimeError("No active run")
         
-        self._execution.finished_at = datetime.now()
-        self._execution.duration_ms = int(
-            (self._execution.finished_at - self._execution.started_at).total_seconds() * 1000
-        )
-        self._execution.status = ExecutionStatus.COMPLETED
-        self._execution.success = self._execution.failed_matches == 0
+        self._run.complete()
         
-        # Persist execution
+        # Persist
         if self._persistence:
-            self._persistence.save_execution(self._execution)
+            if hasattr(self._persistence, 'save_run'):
+                self._persistence.save_run(self._run)
+            elif hasattr(self._persistence, 'save_execution'):
+                self._persistence.save_execution(self._run_to_execution())
             
-            # Create branch if needed and commit
+            # Create commit
             self._create_commit(branch_name)
         
         self._log("info", "execution", "Execution completed",
-                 matches=self._execution.total_matches,
-                 errors=self._execution.failed_matches,
-                 duration_ms=self._execution.duration_ms)
+                 matches=self._run.status.total_jobs,
+                 errors=self._run.status.failed,
+                 duration_ms=self._run.status.duration_ms)
         
-        # Emit event
         self._emit("execution.completed", {
-            "execution_id": self._execution.id,
-            "total_matches": self._execution.total_matches,
-            "completed_matches": self._execution.completed_matches,
-            "failed_matches": self._execution.failed_matches,
-            "duration_ms": self._execution.duration_ms,
-            "success": self._execution.success
+            "execution_id": self._run.id,
+            "total_matches": self._run.status.total_jobs,
+            "completed_matches": self._run.status.completed,
+            "failed_matches": self._run.status.failed,
+            "duration_ms": self._run.status.duration_ms,
+            "success": self._run.status.success
         })
         
-        return self._execution
+        return self._run
+    
+    def _run_to_execution(self):
+        """Convert RunState to legacy ExecutionState format for persistence."""
+        if not self._run:
+            return None
+        
+        class LegacyExecution:
+            def __init__(self, run: RunState):
+                self.id = run.id
+                self.started_at = run.status.started_at
+                self.finished_at = run.status.finished_at
+                self.duration_ms = run.status.duration_ms
+                self.success = run.status.success
+                self.status = type('Status', (), {'value': run.status.state.value})()
+                self.total_matches = run.status.total_jobs
+                self.completed_matches = run.status.completed
+                self.failed_matches = run.status.failed
+                self.config_snapshot = run.config
+            
+            def to_dict(self):
+                return {
+                    "_id": f"exec_{self.id}",
+                    "id": self.id,
+                    "started_at": self.started_at.isoformat() if self.started_at else None,
+                    "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+                    "duration_ms": self.duration_ms,
+                    "success": self.success,
+                    "status": self.status.value,
+                    "summary": {
+                        "total_matches": self.total_matches,
+                        "completed_matches": self.completed_matches,
+                        "failed_matches": self.failed_matches
+                    },
+                    "config_snapshot": self.config_snapshot
+                }
+        
+        return LegacyExecution(self._run)
     
     def _create_commit(self, branch_name: str = "main"):
-        """
-        Create branch (if needed) and commit for current execution.
-        
-        This implements git-like versioning:
-        - Each execution becomes a commit
-        - Commits are linked to branches
-        - Default branch is "main"
-        """
-        if not self._persistence or not self._execution:
+        """Create commit for versioning."""
+        if not self._persistence or not self._run:
             return
         
-        # Check if persistence supports versioning
         if not hasattr(self._persistence, 'create_branch'):
-            self._log("debug", "state", "Persistence does not support versioning")
             return
         
         try:
-            # Get or create branch (use name= keyword argument!)
             branch = self._persistence.get_branch(name=branch_name)
             
             if not branch:
-                # Create branch
                 branch = self._persistence.create_branch(
                     name=branch_name,
                     description=f"Default branch" if branch_name == "main" else f"Branch: {branch_name}",
@@ -208,386 +279,532 @@ class StateManager:
             else:
                 self._log("debug", "state", f"Using existing branch", branch=branch_name)
             
-            # Create commit
             branch_id = branch.get("_id")
             
             commit = self._persistence.create_commit(
                 branch_id=branch_id,
-                execution_id=self._execution.id,
-                message=f"Execution {self._execution.id}: {self._execution.total_matches} matches",
+                execution_id=self._run.id,
+                message=f"Run {self._run.id}: {self._run.status.total_jobs} jobs",
                 metadata={
-                    "success": self._execution.success,
-                    "total_matches": self._execution.total_matches,
-                    "completed_matches": self._execution.completed_matches,
-                    "failed_matches": self._execution.failed_matches,
-                    "duration_ms": self._execution.duration_ms
+                    "success": self._run.status.success,
+                    "total_jobs": self._run.status.total_jobs,
+                    "completed": self._run.status.completed,
+                    "failed": self._run.status.failed,
+                    "duration_ms": self._run.status.duration_ms
                 }
             )
             
-            commit_id = commit.get("_id", "unknown")
             self._log("info", "state", f"Created commit", 
-                     commit=commit_id, branch=branch_name)
+                     commit=commit.get("_id", "unknown"), branch=branch_name)
             
         except Exception as e:
             self._log("warn", "state", f"Failed to create commit: {e}")
     
     @property
-    def execution(self) -> Optional[ExecutionState]:
-        """Get current execution state"""
-        return self._execution
+    def run(self) -> Optional[RunState]:
+        """Get current run state."""
+        return self._run
+    
+    @property
+    def run_id(self) -> Optional[str]:
+        """Get current run ID."""
+        return self._run.id if self._run else None
+    
+    # Legacy property aliases
+    @property
+    def execution(self):
+        """Legacy: Get current run as execution."""
+        return self._run_to_execution()
     
     @property
     def execution_id(self) -> Optional[str]:
-        """Get current execution ID"""
-        return self._execution.id if self._execution else None
+        """Legacy: Get current run ID."""
+        return self.run_id
     
-    # ==================== MATCHES ====================
+    # ==================== JOBS (was MATCHES) ====================
     
-    def register_match(self, index: int, input_path: str) -> MatchState:
+    def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
         """
-        Register new match for processing.
+        Create new job (Session 12).
         
         Args:
-            index: Match index (0-based)
-            input_path: Input file path
+            input_value: Input path or virtual identifier
+            input_data: Additional input metadata
             
         Returns:
-            MatchState object
+            Job ID (string)
         """
-        if not self._execution:
-            raise RuntimeError("No active execution")
+        if not self._run:
+            raise RuntimeError("No active run")
         
-        match = MatchState(
+        index = len(self._jobs)
+        
+        job = JobState(
             index=index,
-            input_path=input_path,
-            execution_id=self._execution.id,
-            started_at=datetime.now(),
-            status=ExecutionStatus.RUNNING
+            run_id=self._run.id,
+            input=InputData(
+                value=input_value,
+                data=input_data or {}
+            )
         )
+        job.start()
         
-        self._matches[index] = match
-        self._execution.total_matches = len(self._matches)
+        # Session 12: Use list instead of dict
+        self._jobs.append(job)
+        self._run.increment_jobs()
+        
+        # Initialize plugin storage for this job
+        self._plugins_storage[job.id] = {}
         
         # Persist
         if self._persistence:
-            self._persistence.save_match(match)
-            self._persistence.save_execution(self._execution)
+            if hasattr(self._persistence, 'save_job'):
+                self._persistence.save_job(job)
+            elif hasattr(self._persistence, 'save_match'):
+                self._persistence.save_match(self._job_to_match(job))
+            
+            if hasattr(self._persistence, 'save_run'):
+                self._persistence.save_run(self._run)
+            elif hasattr(self._persistence, 'save_execution'):
+                self._persistence.save_execution(self._run_to_execution())
         
-        self._log("debug", "match", f"Registered match {index}", input_path=input_path)
+        self._log("debug", "job", f"Created job {index}", input_value=input_value)
         
-        # Emit event
-        self._emit("match.started", {
+        self._emit("job.created", {
             "index": index,
-            "input_path": input_path,
-            "execution_id": self._execution.id
+            "job_id": job.id,
+            "input_value": input_value,
+            "run_id": self._run.id
         })
         
-        return match
+        return job.id
     
-    def get_match(self, index: int) -> Optional[MatchState]:
-        """Get match by index"""
-        return self._matches.get(index)
-    
-    def get_all_matches(self) -> Dict[int, MatchState]:
-        """Get all matches"""
-        return self._matches.copy()
-    
-    def update_plugin_result(
-        self, 
-        match_index: int, 
-        plugin_name: str, 
-        result: PluginResult
-    ):
+    def set_current_job(self, job_id: str) -> None:
         """
-        Update plugin result for a match.
+        Set current job context (Session 12).
+        
+        Used by Orchestrator to set current job before executing per_job plugins.
+        """
+        job = self.get_job_by_id(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        self._current_job = job
+    
+    def clear_current_job(self) -> None:
+        """Clear current job context (Session 12)."""
+        self._current_job = None
+    
+    def update_job(self, job_id: str, key: str, value: Any) -> None:
+        """
+        Update job state (Session 12 internal method).
+        
+        Called by PluginServices.updateJob(key, value).
+        PluginServices provides job_id internally.
         
         Args:
-            match_index: Match index
-            plugin_name: Plugin name (core doesn't validate this)
-            result: PluginResult object
+            job_id: Job ID
+            key: Dot-notation path (e.g., "output.values", "status.state")
+            value: New value
         """
-        match = self._matches.get(match_index)
-        if not match:
-            raise ValueError(f"Match {match_index} not found")
+        job = self.get_job_by_id(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
         
-        match.add_plugin_result(plugin_name, result)
+        # Parse dot notation and set value
+        parts = key.split('.')
+        obj = job
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+        
+        self._emit("job.updated", {
+            "job_id": job_id,
+            "key": key,
+            "value": value
+        })
+    
+    def update_plugin(self, job_id: str, plugin_name: str, data: Dict[str, Any]) -> None:
+        """
+        Update plugin data (Session 12 internal method).
+        
+        Called by PluginServices.updatePlugin(data).
+        PluginServices provides job_id and plugin_name internally.
+        
+        Args:
+            job_id: Job ID
+            plugin_name: Plugin name
+            data: Plugin data (stored in plugin.{name}.data)
+        """
+        if job_id not in self._plugins_storage:
+            self._plugins_storage[job_id] = {}
+        
+        if plugin_name not in self._plugins_storage[job_id]:
+            self._plugins_storage[job_id][plugin_name] = PluginState()
+        
+        # Update plugin data
+        self._plugins_storage[job_id][plugin_name].data = data
+        
+        # Also update JobState.plugins for backward compatibility
+        job = self.get_job_by_id(job_id)
+        if job:
+            job.plugins[plugin_name] = self._plugins_storage[job_id][plugin_name].to_dict()
+        
+        self._emit("plugin.updated", {
+            "job_id": job_id,
+            "plugin_name": plugin_name,
+            "data": data
+        })
+    
+    def _job_to_match(self, job: JobState):
+        """Convert JobState to legacy MatchState format for persistence."""
+        class LegacyMatch:
+            def __init__(self, j: JobState):
+                self.index = j.index
+                self.input_path = j.input.value
+                self.execution_id = j.run_id
+                self.success = j.status.success
+                self.status = type('Status', (), {'value': j.status.state.value})()
+                self.executed_plugins = j.status.executed
+                self.failed_plugins = j.status.failed
+                self.not_supported_plugins = j.status.skipped
+                self.started_at = j.status.started_at
+                self.finished_at = j.status.finished_at
+                self.duration_ms = j.status.duration_ms
+                self.plugins = j.plugins
+                self.tasks = []
+            
+            @property
+            def id(self):
+                return f"match_{self.index}_{self.execution_id}"
+            
+            def to_dict(self):
+                return {
+                    "_id": self.id,
+                    "execution_id": f"exec_{self.execution_id}",
+                    "index": self.index,
+                    "input_path": self.input_path,
+                    "success": self.success,
+                    "status": self.status.value,
+                    "executed_plugins": self.executed_plugins,
+                    "failed_plugins": self.failed_plugins,
+                    "not_supported_plugins": self.not_supported_plugins,
+                    "started_at": self.started_at.isoformat() if self.started_at else None,
+                    "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+                    "duration_ms": self.duration_ms,
+                    "tasks": self.tasks
+                }
+        
+        return LegacyMatch(job)
+    
+    def get_job(self, index: int) -> Optional[JobState]:
+        """Get job by index."""
+        return self._jobs.get(index)
+    
+    def get_job_by_id(self, job_id: str) -> Optional[JobState]:
+        """Get job by ID."""
+        try:
+            parts = job_id.split('_')
+            index = int(parts[-1])
+            return self._jobs.get(index)
+        except (ValueError, IndexError):
+            return None
+    
+    def get_all_jobs(self) -> List[JobState]:
+        """Get all jobs."""
+        return list(self._jobs.values())
+    
+    def complete_job(self, index: int):
+        """Mark job as completed."""
+        job = self._jobs.get(index)
+        if not job:
+            raise ValueError(f"Job {index} not found")
+        
+        job.complete(success=job.status.success)
+        
+        # Update run stats
+        self._run.increment_completed()
+        if not job.status.success:
+            self._run.increment_failed()
         
         # Persist
         if self._persistence:
-            self._persistence.save_plugin_result(
-                self._execution.id,
-                match_index,
-                plugin_name,
-                result.to_dict()
-            )
+            if hasattr(self._persistence, 'save_job'):
+                self._persistence.save_job(job)
+            elif hasattr(self._persistence, 'save_match'):
+                self._persistence.save_match(self._job_to_match(job))
         
-        self._log("debug", "plugin", f"Plugin {plugin_name} completed for match {match_index}",
-                 success=result.success)
+        self._log("debug", "job", f"Job {index} completed",
+                 success=job.status.success, duration_ms=job.status.duration_ms)
         
-        # Emit event
-        event_name = "plugin.completed" if result.success else "plugin.failed"
+        event_name = "job.completed" if job.status.success else "job.failed"
         self._emit(event_name, {
-            "match_index": match_index,
-            "plugin_name": plugin_name,
-            "success": result.success,
-            "duration_ms": result.duration_ms,
-            "error": result.error
+            "index": index,
+            "success": job.status.success,
+            "duration_ms": job.status.duration_ms,
+            "executed_plugins": job.status.executed,
+            "failed_plugins": job.status.failed
         })
     
-    def mark_plugin_not_supported(self, match_index: int, plugin_name: str):
-        """Mark plugin as not supported for this match"""
-        match = self._matches.get(match_index)
-        if match:
-            match.add_not_supported(plugin_name)
+    # Legacy aliases
+    def register_match(self, index: int, input_path: str):
+        """Legacy: Create job."""
+        return self.create_job(input_path)
+    
+    def get_match(self, index: int):
+        """Legacy: Get job."""
+        return self.get_job(index)
+    
+    def get_all_matches(self):
+        """Legacy: Get all jobs as dict."""
+        return {j.index: j for j in self._jobs.values()}
+    
+    def complete_match(self, index: int):
+        """Legacy: Complete job."""
+        self.complete_job(index)
+    
+    # Internal compatibility - expose _matches for code that accesses it directly
+    @property
+    def _matches(self):
+        """Legacy: Direct access to jobs dict."""
+        return self._jobs
+    
+    @_matches.setter
+    def _matches(self, value):
+        """Legacy: Set jobs dict."""
+        self._jobs = value
+    
+    @property
+    def _execution(self):
+        """Legacy: Direct access to run."""
+        return self._run_to_execution()
+    
+    # ==================== PLUGIN DATA ====================
+    
+    def save_plugin_data(self, job_id: str, plugin_name: str, data: Dict[str, Any]):
+        """
+        Save plugin data for a job.
+        
+        Args:
+            job_id: Job ID
+            plugin_name: Plugin name
+            data: Plugin output data
+        """
+        if job_id not in self._plugins:
+            self._plugins[job_id] = {}
+        
+        self._plugins[job_id][plugin_name] = data
+        
+        # Also update job.plugins for template access
+        job = self.get_job_by_id(job_id)
+        if job:
+            job.plugins[plugin_name] = data
+        
+        # Persist to plugins collection
+        if self._persistence and hasattr(self._persistence, 'save_plugin_data'):
+            try:
+                # Get job info
+                job_index = 0
+                run_id = ""
+                if job:
+                    job_index = job.index
+                    run_id = job.run_id
+                
+                plugin_data = PluginData(
+                    job_id=job_id,
+                    run_id=run_id,
+                    job_index=job_index,
+                    plugin_name=plugin_name,
+                    stage="",  # Could be passed in
+                    data=data
+                )
+                self._persistence.save_plugin_data(plugin_data)
+            except Exception:
+                pass
+    
+    def get_plugin_data(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """Get plugin data for a job."""
+        if job_id in self._plugins:
+            return self._plugins[job_id].get(plugin_name)
+        
+        # Try from job.plugins
+        job = self.get_job_by_id(job_id)
+        if job:
+            return job.plugins.get(plugin_name)
+        
+        return None
+    
+    def get_all_plugin_data(self, job_id: str) -> Dict[str, Dict[str, Any]]:
+        """Get all plugin data for a job."""
+        result = {}
+        
+        if job_id in self._plugins:
+            result.update(self._plugins[job_id])
+        
+        job = self.get_job_by_id(job_id)
+        if job:
+            result.update(job.plugins)
+        
+        return result
+    
+    # Legacy plugin result method
+    def update_plugin_result(self, job_index: int, plugin_name: str, result):
+        """Legacy: Update plugin result for a job."""
+        job = self.get_job(job_index)
+        if not job:
+            raise ValueError(f"Job {job_index} not found")
+        
+        # Extract data from result
+        data = {}
+        if hasattr(result, 'data'):
+            data = result.data
+        elif isinstance(result, dict):
+            data = result
+        
+        # Update job.plugins
+        job.plugins[plugin_name] = data
+        
+        # Update status
+        success = True
+        if hasattr(result, 'success'):
+            success = result.success
+        
+        if success:
+            job.add_executed(plugin_name)
+        else:
+            job.add_failed(plugin_name)
+        
+        # Persist
+        if self._persistence:
+            if hasattr(self._persistence, 'save_plugin_result'):
+                self._persistence.save_plugin_result(
+                    self._run.id if self._run else "",
+                    job_index,
+                    plugin_name,
+                    result.to_dict() if hasattr(result, 'to_dict') else data
+                )
+    
+    def mark_plugin_not_supported(self, job_index: int, plugin_name: str):
+        """Mark plugin as skipped."""
+        job = self.get_job(job_index)
+        if job:
+            job.add_skipped(plugin_name)
             
-            # Emit event
             self._emit("plugin.skipped", {
-                "match_index": match_index,
+                "job_index": job_index,
                 "plugin_name": plugin_name,
                 "reason": "not_supported"
             })
     
-    def add_task_result(self, match_index: int, task_result: Dict[str, Any]):
-        """Add task execution result to match"""
-        match = self._matches.get(match_index)
-        if match:
-            match.add_task_result(task_result)
+    def add_task_result(self, job_index: int, task_result: Dict[str, Any]):
+        """Add task result to job output."""
+        job = self.get_job(job_index)
+        if job:
+            if 'tasks' not in job.output.data:
+                job.output.data['tasks'] = {}
             
-            # Persist
-            if self._persistence:
-                self._persistence.save_match(match)
-    
-    def complete_match(self, match_index: int):
-        """
-        Mark match as completed.
-        
-        Args:
-            match_index: Match index
-        """
-        match = self._matches.get(match_index)
-        if not match:
-            raise ValueError(f"Match {match_index} not found")
-        
-        match.complete()
-        
-        # Update execution stats
-        self._execution.completed_matches += 1
-        if not match.success:
-            self._execution.failed_matches += 1
-        
-        # Persist
-        if self._persistence:
-            self._persistence.save_match(match)
-            self._persistence.save_execution(self._execution)
-        
-        self._log("debug", "match", f"Match {match_index} completed",
-                 success=match.success, duration_ms=match.duration_ms)
-        
-        # Emit event
-        event_name = "match.completed" if match.success else "match.failed"
-        self._emit(event_name, {
-            "index": match_index,
-            "success": match.success,
-            "duration_ms": match.duration_ms,
-            "executed_plugins": match.executed_plugins,
-            "failed_plugins": match.failed_plugins
-        })
+            task_name = task_result.get('name', 'unnamed')
+            job.output.data['tasks'][task_name] = task_result
+            
+            # Add to output.values if save task
+            if task_result.get('type') == 'save' and task_result.get('success'):
+                dest = task_result.get('destination')
+                if dest:
+                    job.output.values.append(dest)
     
     # ==================== TEMPLATE CONTEXT ====================
     
-    def build_template_context(self, match_index: int) -> Dict[str, Any]:
-        """
-        Build Jinja2 template context from state.
-        
-        This replaces the temp_api_response rebuild pattern!
-        Context structure matches existing config.yml templates.
-        
-        Args:
-            match_index: Current match index
-            
-        Returns:
-            Template context dict
-        """
-        match = self._matches.get(match_index)
-        if not match:
+    def build_template_context(self, job_index: int) -> Dict[str, Any]:
+        """Build Jinja2 template context from state."""
+        job = self.get_job(job_index)
+        if not job:
             return {}
         
-        # Build globals (for {{ globals.status.matches }} etc.)
-        globals_context = {
+        # Run context
+        run_context = {
+            "id": self._run.id if self._run else "",
             "status": {
-                "success": self._execution.success if self._execution else True,
-                "matches": self._execution.total_matches if self._execution else 0,
-                "completed": self._execution.completed_matches if self._execution else 0,
-                "errors": self._execution.failed_matches if self._execution else 0
+                "success": self._run.status.success if self._run else True,
+                "total_jobs": self._run.status.total_jobs if self._run else 0,
+                "completed": self._run.status.completed if self._run else 0,
+                "failed": self._run.status.failed if self._run else 0
             },
-            "summary": {
-                "total_matches": self._execution.total_matches if self._execution else 0,
-                "completed_matches": self._execution.completed_matches if self._execution else 0,
-                "failed_matches": self._execution.failed_matches if self._execution else 0
-            },
-            "config": self._execution.config_snapshot if self._execution else {}
+            "config": self._run.config if self._run else {}
         }
         
-        # Build match_globals (for {{ match_globals.input.path }} etc.)
-        match_globals = {
-            "index": match.index,
+        # Job context
+        job_context = {
+            "index": job.index,
+            "id": job.id,
             "input": {
-                "path": match.input_path,
-                # Category from scanner/file_reader plugin if available
-                "category": self._get_match_category(match)
+                "value": job.input.value,
+                "path": job.input.value,  # Legacy alias
+                "data": job.input.data
+            },
+            "output": {
+                "values": job.output.values,
+                "data": job.output.data
             },
             "status": {
-                "success": match.success,
-                "executed_plugins": match.executed_plugins,
-                "failed_plugins": match.failed_plugins
-            }
+                "success": job.status.success,
+                "executed": job.status.executed,
+                "failed": job.status.failed,
+                "skipped": job.status.skipped
+            },
+            "plugins": job.plugins
         }
         
-        # Build context
+        # Full context
         context = {
-            # Global access
-            "globals": globals_context,
+            "run": run_context,
+            "job": job_context,
+            "jobs": [self._job_to_context(j) for j in self._jobs.values()],
             
-            # Match globals access
-            "match_globals": match_globals,
+            # Legacy aliases
+            "globals": run_context,
+            "match_globals": job_context,
+            "match": job_context,
             
-            # Shorthand: {{ index }}
-            "index": match.index,
-            
-            # Execution shorthand
-            "execution": {
-                "id": self._execution.id if self._execution else None,
-                "started_at": self._execution.started_at.isoformat() if self._execution and self._execution.started_at else None
-            },
-            
-            # Match shorthand
-            "match": {
-                "index": match.index,
-                "input_path": match.input_path,
-                "success": match.success,
-                "plugins": match.plugins
-            },
-            
-            # All matches for indexed access: {{ matches[0].plugins.tmdb.movie.title }}
-            "matches": [
-                {
-                    "index": m.index,
-                    "input_path": m.input_path,
-                    "success": m.success,
-                    "plugins": m.plugins
-                }
-                for m in sorted(self._matches.values(), key=lambda x: x.index)
-            ]
+            # Config access
+            "config": self._run.config if self._run else {},
+            "options": self._run.config.get('options', {}) if self._run else {}
         }
         
-        # Plugin data flat access: {{ renamer.parsed.movie.name }}
-        # This is what makes templates work without knowing full path
-        for plugin_name, plugin_data in match.plugins.items():
+        # Add plugin shortcuts
+        for plugin_name, plugin_data in job.plugins.items():
             context[plugin_name] = plugin_data
         
         return context
     
-    # ==================== API RESPONSE BUILD ====================
-    
-    def build_api_response_for_templates(self) -> Dict[str, Any]:
-        """
-        Build lightweight API response structure for template rendering.
-        
-        This is a fast alternative to builder.build() that uses in-memory state.
-        Returns same structure as API response, but built from state directly.
-        
-        Use this for task execution during match processing.
-        Use builder.build() only for final report generation.
-        
-        Returns:
-            API response-like dict suitable for template_manager.render()
-        """
-        matches = []
-        for idx in sorted(self._matches.keys()):
-            match = self._matches[idx]
-            matches.append({
-                'globals': {
-                    'index': match.index,
-                    'input_path': match.input_path,
-                    'status': {
-                        'success': match.success,
-                        'success_plugins': match.executed_plugins,
-                        'failed_plugins': match.failed_plugins,
-                        'not_supported_plugins': match.not_supported_plugins,
-                        'started_at': match.started_at.isoformat() if match.started_at else None,
-                        'finished_at': match.finished_at.isoformat() if match.finished_at else None,
-                        'duration_ms': match.duration_ms
-                    },
-                    'output': {
-                        'tasks': match.tasks
-                    }
-                },
-                'plugins': match.plugins
-            })
-        
+    def _job_to_context(self, job: JobState) -> Dict[str, Any]:
+        """Convert job to template context dict."""
         return {
-            'globals': {
-                'status': {
-                    'success': self._execution.success if self._execution else True,
-                    'matches': self._execution.total_matches if self._execution else 0,
-                    'completed': self._execution.completed_matches if self._execution else 0,
-                    'errors': self._execution.failed_matches if self._execution else 0,
-                    'started_at': self._execution.started_at.isoformat() if self._execution and self._execution.started_at else None,
-                    'execution_id': self._execution.id if self._execution else None
-                },
-                'config': self._execution.config_snapshot if self._execution else {}
+            "index": job.index,
+            "id": job.id,
+            "input": {
+                "value": job.input.value,
+                "data": job.input.data
             },
-            'matches': matches
+            "plugins": job.plugins
         }
     
-    # ==================== PRIVATE HELPERS ====================
+    # ==================== LEGACY COMPATIBILITY ====================
     
-    def _generate_id(self) -> str:
-        """Generate unique ID"""
-        return str(uuid4())[:8]
+    def start_execution(self, config: Dict[str, Any]) -> str:
+        """Legacy: Start run."""
+        return self.start_run(config)
+    
+    def complete_execution(self, branch_name: str = "main"):
+        """Legacy: Complete run."""
+        return self.complete_run(branch_name)
     
     def _create_config_snapshot(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Create FULL config snapshot with masked sensitive values.
-        
-        - Stores complete plugin configurations
-        - API keys stored as ${ENV_VAR} syntax, not actual values
-        - Full reproducibility: snapshot + .env = same execution
-        """
-        from archiverr.utils.config_loader import create_config_snapshot, get_tracked_original
-        
-        # Get original config with ${ENV_VAR} syntax
-        original_config = get_tracked_original()
-        
-        # Create snapshot with masked sensitive values
-        return create_config_snapshot(config, original_config)
-    
-    def _get_match_category(self, match: MatchState) -> str:
-        """
-        Get category from any input plugin result.
-        
-        Plugin-agnostic: Searches all plugin results for a 'category' field
-        instead of hardcoding specific plugin names.
-        
-        Args:
-            match: MatchState with plugin results
-            
-        Returns:
-            Category string or "unknown" if not found
-        """
-        # Generic: find category from any plugin that provides it
-        for plugin_name, plugin_data in match.plugins.items():
-            if isinstance(plugin_data, dict) and "category" in plugin_data:
-                return plugin_data.get("category", "unknown")
-        return "unknown"
-    
-    def _log(self, level: str, component: str, message: str, **kwargs):
-        """Log if debugger available"""
-        if self._debugger:
-            log_func = getattr(self._debugger, level, self._debugger.debug)
-            log_func(component, message, **kwargs)
+        """Create minimal config snapshot."""
+        return {
+            "plugins": list(config.keys()),
+            "options": config.get("options", {}),
+            "aliases": config.get("aliases", {})
+        }
 
 
-# Backward compatibility alias
-# DEPRECATED: Use StateManager with DI instead
-GlobalStateManager = StateManager
+# Backward compatibility alias (Session 12: class renamed)
+StateManager = GlobalStateManager

@@ -22,23 +22,23 @@ from typing import Dict, Any, List, Optional
 
 
 # System-injected aliases - always available, cannot be overridden
+# TRUTH SOURCE: HUMAN/FINAL_DATASETS.yml default_aliases.system
+# EXACTLY 8 aliases - NO MORE, NO LESS
 SYSTEM_ALIASES: Dict[str, str] = {
-    'job': 'job',
-    'jobs': 'jobs',
-    'run': 'run',
-    'options': 'options',
-    'index': 'index',
-    'count': 'count',
-    'globals': 'globals',
+    'run': 'run',            # Run state
+    'job': 'job',            # Current job state
+    'jobs': 'jobs',          # All jobs list
+    'plugins': 'plugins',    # All plugins for current job
+    'config': 'config',      # Frozen config snapshot (readonly)
+    'options': 'options',    # config.options shortcut (readonly)
+    'provides': 'provides',  # Active provides registry (readonly)
+    'events': 'events',      # Event bus (readonly)
 }
 
-# Short aliases - can be overridden by user
-SHORT_ALIASES: Dict[str, str] = {
-    'j': 'job',
-    'r': 'run',
-    'o': 'options',
-    'g': 'globals',
-}
+# NO SHORT ALIASES PROVIDED BY SYSTEM
+# Users define their own aliases in config.aliases
+# See FINAL_DATASETS.yml default_aliases.user: config.aliases
+SHORT_ALIASES: Dict[str, str] = {}
 
 
 class AliasResolver:

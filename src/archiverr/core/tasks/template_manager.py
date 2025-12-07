@@ -24,15 +24,28 @@ class TemplateManager:
     _FUNCTION_PATTERN = re.compile(r'\b(index|count):([a-zA-Z0-9_.\[\]]*)')
     _DOLLAR_PATTERN = re.compile(r'\$([a-zA-Z0-9_\.]+)')
     
-    # Default aliases (always available)
-    DEFAULT_ALIASES = {
-        'e': 'execution',
-        'm': 'match',
-        'g': 'globals',
-    }
+    # NO DEFAULT ALIASES - System provides only SYSTEM_ALIASES
+    # Users define their own aliases in config.aliases
+    # Inline aliases via Jinja2: {% set m = job.plugins.tmdb.movie %}
+    # See FINAL_DATASETS.yml default_aliases
+    DEFAULT_ALIASES = {}
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        provides_registry: Optional[Any] = None,
+        event_bus: Optional[Any] = None
+    ):
         self.env = Environment(loader=BaseLoader())
+        
+        # Store full config for template access ({{ config.ffprobe.timeout }})
+        self._config: Dict[str, Any] = config or {}
+        
+        # Provides registry for {{ provides }} alias (Session 11)
+        self._provides_registry = provides_registry
+        
+        # Event bus for {{ events }} alias (Session 11)
+        self._event_bus = event_bus
         
         # User-defined aliases from config.yml
         self._user_aliases: Dict[str, str] = {}
@@ -55,6 +68,8 @@ class TemplateManager:
             config: Full config.yml content
             loaded_plugins: Dict of plugin_name -> plugin metadata
         """
+        # Store full config for template access
+        self._config = config
         self._load_user_aliases(config)
         
         if loaded_plugins:
@@ -168,34 +183,57 @@ class TemplateManager:
         api_config = api_globals.get('config', {})
         global_options = api_config.get('options', {})
         
+        # =================================================================
+        # SYSTEM ALIASES - EXACTLY 8 (FINAL_DATASETS.yml default_aliases)
+        # =================================================================
+        # These are the ONLY system-provided aliases. Users define their
+        # own aliases in config.aliases or inline with {% set %}
+        # =================================================================
+        
         jinja_context = {
-            'apiresponse': context,  # Full API response
+            # 1. run - Run state
+            'run': {
+                'id': api_globals.get('status', {}).get('execution_id'),
+                'status': api_globals.get('status', {}),
+                'config': self._config,
+            },
             
-            # IMPORTANT: globals = API root globals (for {{ globals.status.matches }})
-            # This is what config.yml templates expect
-            'globals': api_globals,
+            # 2. job - Current job state
+            'job': {
+                'index': current_index,
+                'id': match_globals.get('job_id', f'job_{current_index}'),
+                'input': match_globals.get('input', {}),
+                'output': match_output,
+                'status': match_globals.get('status', {}),
+                'plugins': match_plugins,
+            },
             
-            # match_globals = current match's globals (for {{ match_globals.input.path }})
-            'match_globals': match_globals,
+            # 3. jobs - All jobs list
+            'jobs': matches,
             
-            'options': global_options,  # From api_response.globals.config.options
-            'output': match_output,  # match.globals.output (tasks, validations, paths)
+            # 4. plugins - All plugins for current job
+            'plugins': match_plugins,
+            
+            # 5. config - Frozen config snapshot (readonly)
+            'config': self._config,
+            
+            # 6. options - config.options shortcut
+            'options': self._config.get('options', {}),
+            
+            # 7. provides - Active provides registry (readonly)
+            'provides': self._get_provides_dict(),
+            
+            # 8. events - Event bus history (readonly)
+            'events': self._get_events_dict(),
+            
+            # =================================================================
+            # ADDITIONAL CONTEXT (not system aliases, but needed for compat)
+            # =================================================================
             'index': current_index,
             'total': len(matches),
-            'matches': matches,  # For indexed access {{ matches[0].plugins.tmdb }}
-            
-            # NEW: Alias support - additional accessors
-            'execution': {
-                'id': api_globals.get('status', {}).get('execution_id'),
-                'started_at': api_globals.get('status', {}).get('started_at'),
-                'success': api_globals.get('status', {}).get('success', True)
-            },
-            'match': {
-                'index': current_index,
-                'input_path': match_globals.get('input_path', ''),
-                'success': match_globals.get('status', {}).get('success', True) if isinstance(match_globals.get('status'), dict) else True,
-                'plugins': match_plugins
-            }
+            'globals': api_globals,  # Legacy compat
+            'match_globals': match_globals,  # Legacy compat
+            'output': match_output,  # Legacy compat
         }
         
         # Add default aliases (e, m, g)
@@ -433,3 +471,44 @@ class TemplateManager:
             return bool(result.strip())
         except Exception:
             return False
+    
+    def _get_provides_dict(self) -> Dict[str, Any]:
+        """
+        Get provides registry as dict for template context.
+        
+        Returns:
+            Dict structure: {provide: {plugin: status, ...}, ...}
+            Example: {'http.request': {'tmdb': 'completed'}, 'fs.read': {'scanner': 'completed'}}
+        """
+        if self._provides_registry is None:
+            return {}
+        
+        if hasattr(self._provides_registry, 'to_dict'):
+            return self._provides_registry.to_dict()
+        
+        return {}
+    
+    def _get_events_dict(self) -> Dict[str, Any]:
+        """
+        Get event bus history as dict for template context.
+        
+        Returns:
+            Dict structure: {event_type: [event_data, ...], ...}
+            Example: {'plugin.completed': [{'plugin_name': 'tmdb', ...}, ...]}
+        """
+        if self._event_bus is None:
+            return {}
+        
+        # Use get_history_dict for grouped format
+        if hasattr(self._event_bus, 'get_history_dict'):
+            return self._event_bus.get_history_dict()
+        
+        return {}
+    
+    def set_provides_registry(self, provides_registry: Any) -> None:
+        """Set the provides registry for template injection."""
+        self._provides_registry = provides_registry
+    
+    def set_event_bus(self, event_bus: Any) -> None:
+        """Set the event bus for template injection."""
+        self._event_bus = event_bus

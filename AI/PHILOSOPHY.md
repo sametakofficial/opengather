@@ -471,7 +471,95 @@ OUTPUT: Cikti olustur, values+data doldur, dosya KAYDEDER
 
 ---
 
-## 14. OZET
+## 14. LOGGING PRENSİPLERİ
+
+### 14.1 Plugin Agnostik Loglama
+
+```
++----------------------------------------------------------+
+|              LOGGING KATMANLARI                          |
++----------------------------------------------------------+
+|
+|  CORE SYSTEM:
+|    - Debug KAPALI → HİÇBİR LOG YAZDIRMAZ
+|    - Debug AÇIK → Sadece DEBUG seviyesinde sistem logları
+|    - Core asla kullanıcıya görünen output yazdırmaz
+|
+|  PLUGINS:
+|    - Çıktı üretimi TAM plugin sorumluluğundadır
+|    - Tasker plugin print/save task'ları yönetir
+|    - Diğer pluginler kendi loglarını services.logger ile yapar
+|
++----------------------------------------------------------+
+```
+
+### 14.2 Verbose Output Yasağı
+
+```
+YASAK:
+  - Core'da print() kullanımı
+  - Büyük ASCII box'lar (NORMALIZED METADATA gibi)
+  - Her işlemde otomatik log
+  - Hardcoded banner/header çıktıları
+
+İZİN VERİLEN:
+  - Plugin'in tasker task'ları ile çıktı üretmesi
+  - Debug modunda DEBUG seviye loglar
+  - Error/exception logları (her zaman)
+```
+
+### 14.3 Tasker Plugin Output
+
+```yaml
+# Tüm kullanıcı çıktısı tasker task'ları ile yapılır:
+tasker:
+  tasks:
+    - name: print_job_info
+      type: print
+      template: "{{ job.index }}: {{ p.movie.name if p.movie else p.show.name }}"
+    
+    - name: print_metadata
+      type: print  
+      template: "{{ m.title.primary }} ({{ m.release.year }})"
+```
+
+### 14.4 Debug Modu
+
+```yaml
+options:
+  debug: true   # DEBUG loglar açık
+  debug: false  # Sadece plugin print task'ları görünür
+```
+
+---
+
+## 15. LEGACY YOK PRENSİBİ
+
+```
++----------------------------------------------------------+
+|              LEGACY YASAKTIR                              |
++----------------------------------------------------------+
+|
+|  KURAL: Refactoring sürecinde legacy kod YOKTUR
+|
+|  SEBEP:
+|    - Henüz ilk release yapılmadı
+|    - Geriye uyumluluk gereksiz
+|    - Legacy yöntemler karmaşıklık ekler
+|    - Test ve bakım zorlaşır
+|
+|  UYGULAMA:
+|    - Eski terminoloji kullanılmaz (match → job)
+|    - Eski API yok (get_matches → get_all_jobs)
+|    - Deprecation warning yok, direkt kaldır
+|    - "Backward compatibility" düşünülmez
+|
++----------------------------------------------------------+
+```
+
+---
+
+## 16. OZET
 
 ```
 Core      = Dumb + Plugin Agnostik

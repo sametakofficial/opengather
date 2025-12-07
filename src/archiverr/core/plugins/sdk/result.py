@@ -112,6 +112,31 @@ class PluginResult(BaseModel):
             finished_at=now
         )
     
+    @classmethod
+    def skipped_result(
+        cls,
+        reason: str = "",
+        started_at: Optional[datetime] = None
+    ) -> 'PluginResult':
+        """
+        Factory for skipped results (e.g., virtual paths, unsupported media).
+        
+        Args:
+            reason: Why plugin was skipped
+            started_at: When execution started (defaults to now)
+            
+        Returns:
+            PluginResult with success=True, skipped=True in metadata
+        """
+        now = datetime.now()
+        return cls(
+            success=True,  # Skipped is not a failure
+            data={},
+            started_at=started_at or now,
+            finished_at=now,
+            metadata={'skipped': True, 'skip_reason': reason}
+        )
+    
     class Config:
         """Pydantic config"""
         # Allow arbitrary types for datetime

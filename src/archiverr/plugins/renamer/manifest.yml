@@ -1,17 +1,30 @@
 # Renamer Plugin - Parses media file names
-# Clean manifest without overengineering
+# Session 11 - Stage-based format
 
 name: renamer
 version: 1.0.0
 description: Parses media file names to extract movie/show metadata
-category: output
+stage: parse
 class_name: RenamerPlugin
+entry_point: client.py
 
 # No dependencies - runs first after input
-depends_on: []
-expects: []
+requires: []
+
+# Provides state update (parsed metadata)
+provides:
+  - state.update
+
+trigger_rule: all_success
 
 # Supports both movies and shows
 categories:
   - movie
   - show
+
+# Configuration schema
+config_schema:
+  media_type:
+    type: string
+    default: auto
+    description: Media type detection (auto, movie, show)

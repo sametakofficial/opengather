@@ -1,15 +1,21 @@
 # FFprobe Plugin - Media file technical analysis
-# Clean manifest with validation rules
+# Session 11 - Stage-based format
 
 name: ffprobe
 version: 1.0.0
 description: Extracts technical metadata (video, audio, container) from media files
-category: output
+stage: data
 class_name: FFProbePlugin
+entry_point: client.py
 
-# No dependencies - can run in parallel with renamer
-depends_on: []
-expects: []
+# No dependencies - can run in parallel with other data plugins
+requires: []
+
+# Provides process execution capability
+provides:
+  - process.execute
+
+trigger_rule: all_success
 
 # Supports all media types
 categories: []
@@ -22,8 +28,13 @@ config_schema:
     max: 300
     default: 30
     description: FFprobe command timeout in seconds
-  
+
   ffprobe_path:
     type: string
     default: ffprobe
     description: Path to ffprobe binary
+
+  cache_enabled:
+    type: boolean
+    default: true
+    description: Enable caching of ffprobe results

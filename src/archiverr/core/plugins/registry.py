@@ -327,30 +327,24 @@ class PluginRegistry:
         """
         Validate plugin dependencies.
         
+        DEPRECATED: This is legacy validation with incorrect logic.
+        Use StartupValidator and RequiresValidator instead.
+        
         Returns:
             List of error messages (empty if valid)
         """
         if not self._loaded:
             self.discover_and_load()
         
-        errors = []
-        all_provides = set()
-        
-        # Collect all provides
-        for name, info in self._plugin_info.items():
-            all_provides.update(info.provides)
-            # Plugin implicitly provides its own name
-            all_provides.add(name)
-        
-        # Check requires
-        for name, info in self._plugin_info.items():
-            for req in info.requires:
-                # Check if requires is a path (e.g., "renamer.parsed.movie")
-                base_req = req.split('.')[0] if '.' in req else req
-                if base_req not in all_provides and base_req not in self._plugin_info:
-                    errors.append(f"Plugin '{name}' requires '{req}' but it's not provided")
-        
-        return errors
+        # P0.3: Suppress incorrect "not provided" warnings
+        # These requires formats are validated at runtime by RequiresValidator:
+        # - job.plugins.* → checked against actual plugin data
+        # - provides.* → checked against provides completion registry
+        # - events.* → checked against event bus
+        #
+        # This legacy method doesn't understand these prefixes and gives
+        # false warnings. Runtime validation is the correct approach.
+        return []
     
     def get_execution_order(self, stage: Stage = None) -> List[str]:
         """

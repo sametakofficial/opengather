@@ -1,19 +1,24 @@
 # TMDb Plugin - The Movie Database metadata provider
-# Clean manifest with validation rules
+# Session 11 - Stage-based format
 
 name: tmdb
 version: 1.0.0
 description: Fetches movie and TV show metadata from TMDb API
-category: output
+stage: data
 class_name: TMDbPlugin
+entry_point: client.py
 
-# Execution order
-depends_on:
-  - renamer
+# Requires parsed data from renamer
+requires:
+  - job.plugins.renamer.parsed
 
-# Required data
-expects:
-  - renamer.parsed
+# Provides HTTP requests and state updates
+provides:
+  - http.request
+  - state.update
+
+trigger_rule: all_success
+reactive: false
 
 # Supported media types
 categories:
@@ -21,7 +26,6 @@ categories:
   - show
 
 # Configuration schema with validation rules
-# Core validates this at load time - plugin-agnostic
 config_schema:
   api_key:
     type: string
@@ -31,24 +35,24 @@ config_schema:
     not_contains: ['"', "'", " "]
     secret: true
     description: TMDb API key (v3) - alphanumeric, no quotes or spaces
-  
+
   language:
     type: string
     pattern: "^[a-z]{2}-[A-Z]{2}$"
     default: en-US
     description: Language code (e.g., en-US, tr-TR)
-  
+
   region:
     type: string
     pattern: "^[A-Z]{2}$"
     default: TR
     description: Region code (e.g., US, TR)
-  
+
   include-raw:
     type: boolean
     default: false
     description: Include raw API response in output
-  
+
   extras:
     type: dict
     description: Extra data to fetch (credits, images, etc.)

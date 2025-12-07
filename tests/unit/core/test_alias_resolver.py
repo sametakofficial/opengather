@@ -26,21 +26,26 @@ class TestAliasResolverResolve:
         assert resolver.resolve("m") == "job.plugins.tmdb.movie"
     
     def test_resolve_short_alias(self):
-        """Should resolve built-in short aliases."""
+        """SHORT_ALIASES is now empty - users define their own.
+        
+        Per FINAL_DATASETS.yml: No system short aliases.
+        Users define their own in config.aliases.
+        """
         resolver = AliasResolver()
         
-        assert resolver.resolve("j") == "job"
-        assert resolver.resolve("r") == "run"
-        assert resolver.resolve("o") == "options"
-        assert resolver.resolve("g") == "globals"
+        # With empty SHORT_ALIASES, these return unchanged
+        assert resolver.resolve("j") == "j"  # Unknown alias
+        assert resolver.resolve("r") == "r"  # Unknown alias
+        assert resolver.resolve("o") == "o"  # Unknown alias
     
     def test_resolve_system_alias(self):
-        """Should resolve system aliases."""
+        """Should resolve system aliases (8 total per FINAL_DATASETS.yml)."""
         resolver = AliasResolver()
         
         assert resolver.resolve("job") == "job"
         assert resolver.resolve("run") == "run"
-        assert resolver.resolve("index") == "index"
+        assert resolver.resolve("config") == "config"
+        assert resolver.resolve("plugins") == "plugins"
     
     def test_resolve_unknown_returns_itself(self):
         """Should return unknown alias unchanged."""
@@ -87,7 +92,10 @@ class TestAliasResolverBuildContext:
         assert context["m"]["title"] == "Test Movie"
     
     def test_build_context_with_short_aliases(self):
-        """Should inject short aliases."""
+        """SHORT_ALIASES is empty - no short aliases injected by system.
+        
+        Per FINAL_DATASETS.yml: Users define their own aliases.
+        """
         resolver = AliasResolver()
         
         base_context = {
@@ -97,8 +105,11 @@ class TestAliasResolverBuildContext:
         
         context = resolver.build_context(base_context)
         
-        assert context["j"]["id"] == "job-123"
-        assert context["r"]["id"] == "run-456"
+        # No short aliases injected
+        assert "j" not in context
+        assert "r" not in context
+        # But system aliases still accessible directly
+        assert context["job"]["id"] == "job-123"
     
     def test_build_context_preserves_base(self):
         """Should not modify original base context."""
@@ -164,13 +175,18 @@ class TestCreateAliasResolver:
         assert resolver.resolve("s") == "job.plugins.tmdb.show"
     
     def test_create_from_empty_config(self):
-        """Should handle config without aliases."""
+        """Should handle config without aliases.
+        
+        Per FINAL_DATASETS.yml: No short aliases by default.
+        """
         config = {"options": {"debug": True}}
         
         resolver = create_alias_resolver(config)
         
-        # Should still have short aliases
-        assert resolver.resolve("j") == "job"
+        # No short aliases - users define their own
+        assert resolver.resolve("j") == "j"  # Unknown, returns as-is
+        # But system aliases work
+        assert resolver.resolve("job") == "job"
     
     def test_create_filters_invalid_aliases(self):
         """Should filter out invalid alias definitions."""
@@ -202,8 +218,12 @@ class TestExpandAliasInPath:
         assert result == "job.plugins.tmdb.movie.title"
     
     def test_expand_short_alias(self):
-        """Should expand short alias."""
-        resolver = AliasResolver()
+        """SHORT_ALIASES is empty - user must define their own.
+        
+        Per FINAL_DATASETS.yml: No system short aliases.
+        """
+        # Create resolver with user-defined short alias
+        resolver = AliasResolver({"j": "job"})
         
         result = expand_alias_in_path("j.id", resolver)
         
@@ -238,15 +258,20 @@ class TestGetAllAliases:
     """Tests for AliasResolver.get_all_aliases() method."""
     
     def test_get_all_aliases(self):
-        """Should return combined aliases."""
+        """Should return combined aliases (user + system, no short).
+        
+        Per FINAL_DATASETS.yml: SHORT_ALIASES is empty.
+        """
         resolver = AliasResolver({"custom": "job.custom"})
         
         all_aliases = resolver.get_all_aliases()
         
-        # Should include user, short, and system aliases
+        # Should include user and system aliases
         assert "custom" in all_aliases
-        assert "j" in all_aliases
         assert "job" in all_aliases
+        assert "config" in all_aliases
+        # No short aliases
+        assert "j" not in all_aliases
     
     def test_user_aliases_property(self):
         """Should return only user aliases."""
@@ -267,24 +292,29 @@ class TestGetAllAliases:
 
 
 class TestSystemAndShortAliases:
-    """Tests for system and short alias constants."""
+    """Tests for system and short alias constants.
+    
+    Per FINAL_DATASETS.yml default_aliases:
+    - System: run, job, jobs, plugins, config, options, provides, events (8 total)
+    - Short: {} (empty - users define their own in config.aliases)
+    """
     
     def test_system_aliases_exist(self):
-        """Should have expected system aliases."""
+        """Should have exactly 8 system aliases per FINAL_DATASETS.yml."""
+        assert len(SYSTEM_ALIASES) == 8
+        assert "run" in SYSTEM_ALIASES
         assert "job" in SYSTEM_ALIASES
         assert "jobs" in SYSTEM_ALIASES
-        assert "run" in SYSTEM_ALIASES
+        assert "plugins" in SYSTEM_ALIASES
+        assert "config" in SYSTEM_ALIASES
         assert "options" in SYSTEM_ALIASES
-        assert "index" in SYSTEM_ALIASES
-        assert "globals" in SYSTEM_ALIASES
+        assert "provides" in SYSTEM_ALIASES
+        assert "events" in SYSTEM_ALIASES
     
-    def test_short_aliases_exist(self):
-        """Should have expected short aliases."""
-        assert "j" in SHORT_ALIASES
-        assert "r" in SHORT_ALIASES
-        assert "o" in SHORT_ALIASES
-        assert "g" in SHORT_ALIASES
+    def test_short_aliases_empty(self):
+        """SHORT_ALIASES should be empty per FINAL_DATASETS.yml.
         
-        # Short aliases should point to system aliases
-        assert SHORT_ALIASES["j"] == "job"
-        assert SHORT_ALIASES["r"] == "run"
+        Users define their own aliases in config.aliases.
+        """
+        assert SHORT_ALIASES == {}
+        assert len(SHORT_ALIASES) == 0

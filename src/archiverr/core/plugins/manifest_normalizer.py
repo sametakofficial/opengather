@@ -9,10 +9,13 @@ Converts:
 - expects → requires (with job.plugins. prefix)
 - Adds provides if missing
 - Adds trigger_rule if missing
+
+P2.1: Jinja2 template rendering in manifest fields (requires, provides).
 """
 
 from typing import Dict, Any, List, Optional, Tuple
 import warnings
+from jinja2 import Environment, BaseLoader, TemplateSyntaxError
 
 
 # Category to stage mapping (for backward compatibility)

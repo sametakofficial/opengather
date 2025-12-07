@@ -1,0 +1,38 @@
+# Test Configuration - Simple config for testing
+# Session 11 format
+
+options:
+  debug: true
+  dry_run: true
+
+# Aliases
+aliases:
+  p: "job.plugins.renamer.parsed"
+  m: "job.plugins.tmdb.movie"
+
+# INPUT STAGE
+scanner:
+  enabled: true
+  targets:
+    - /tmp/test.mkv
+  allow_virtual_paths: true
+
+# PARSE STAGE
+renamer:
+  enabled: true
+  media_type: auto
+
+# DATA STAGE
+tmdb:
+  enabled: false # Disabled for test without API key
+
+ffprobe:
+  enabled: false # Disabled for test without ffprobe
+
+# OUTPUT STAGE
+tasker:
+  enabled: true
+  tasks:
+    - name: test_print
+      type: print
+      template: "Test: {{ index }}"

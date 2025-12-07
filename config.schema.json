@@ -30,9 +30,13 @@
           "type": "boolean",
           "description": "Use hardlinks instead of copying files",
           "default": false
+        },
+        "memory": {
+          "type": "object",
+          "description": "Memory management options"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "plugins": {
       "type": "object",
@@ -106,6 +110,6 @@
       }
     }
   },
-  "required": ["options", "plugins", "tasks"],
-  "additionalProperties": false
+  "required": ["options"],
+  "additionalProperties": true
 }

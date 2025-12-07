@@ -19,8 +19,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from archiverr.state import GlobalStateManager, ExecutionState, MatchState, PluginResult
-from archiverr.state.models import ExecutionStatus
+# Session 11: Use new API with legacy aliases for compatibility
+from archiverr.state import (
+    GlobalStateManager,
+    StateManager,
+    ExecutionState,   # Legacy alias -> RunState
+    MatchState,       # Legacy alias -> JobState
+    PluginResult,
+    ExecutionStatus,  # Legacy alias -> StateEnum
+    StateEnum,        # New API
+    JobState,         # New API
+    RunState,         # New API
+)
 
 
 # ==================== FIXTURES ====================
@@ -37,9 +47,14 @@ def temp_db_path():
 def mock_persistence():
     """Mock persistence layer."""
     mock = MagicMock()
+    # Session 11: New API uses save_run/save_job
+    mock.save_run = MagicMock()
+    mock.save_job = MagicMock()
+    mock.save_plugin_result = MagicMock()
+    mock.save_plugin_data = MagicMock()
+    # Legacy methods for compatibility
     mock.save_execution = MagicMock()
     mock.save_match = MagicMock()
-    mock.save_plugin_result = MagicMock()
     mock.update_execution = MagicMock()
     mock.update_match = MagicMock()
     return mock
@@ -146,24 +161,24 @@ class TestExecutionLifecycle:
         """Test start_execution saves to persistence."""
         configured_state.start_execution(sample_config)
         
-        # Should have called save_execution
-        mock_persistence.save_execution.assert_called()
+        # Session 11: Uses save_run (new API) 
+        mock_persistence.save_run.assert_called()
     
     def test_complete_execution(self, configured_state, sample_config):
         """Test completing execution."""
         configured_state.start_execution(sample_config)
         configured_state.complete_execution()
         
-        # Execution should be marked complete (status is an enum)
-        assert configured_state._execution.status == ExecutionStatus.COMPLETED
+        # Session 11: Use run (not _execution) and status.state (not status)
+        assert configured_state.run.status.state == StateEnum.COMPLETED
     
     def test_complete_execution_updates_persistence(self, configured_state, sample_config, mock_persistence):
         """Test complete_execution updates persistence."""
         configured_state.start_execution(sample_config)
         configured_state.complete_execution()
         
-        # Should have called save again (to update status)
-        assert mock_persistence.save_execution.call_count >= 2
+        # Session 11: Uses save_run (new API), called at start and complete
+        assert mock_persistence.save_run.call_count >= 2
 
 
 @pytest.mark.unit
@@ -199,9 +214,9 @@ class TestMatchTracking:
         
         configured_state.complete_match(0)
         
-        # Match should be marked complete (status is an enum)
+        # Session 11: Use status.state (not status) for enum comparison
         match = configured_state._matches.get(0)
-        assert match.status == ExecutionStatus.COMPLETED
+        assert match.status.state == StateEnum.COMPLETED
     
     def test_complete_match_emits_event(self, configured_state, sample_config, mock_event_bus):
         """Test completing match emits event."""
@@ -279,7 +294,7 @@ class TestTaskResults:
         configured_state.register_match(0, "/path/to/file.mkv")
         
         task_result = {
-            "task_name": "print_info",
+            "name": "print_info",  # Session 11: 'name' not 'task_name'
             "type": "print",
             "success": True,
             "output": "Rendered output"
@@ -287,21 +302,23 @@ class TestTaskResults:
         
         configured_state.add_task_result(0, task_result)
         
+        # Session 11: tasks stored in output.data['tasks']
         match = configured_state._matches.get(0)
-        assert len(match.tasks) >= 1
+        assert 'tasks' in match.output.data
+        assert len(match.output.data['tasks']) >= 1
 
 
 @pytest.mark.unit
-class TestAPIResponseBuilding:
-    """Tests for API response building from state."""
+class TestTemplateContextBuilding:
+    """Tests for template context building from state."""
     
-    def test_build_api_response(self, configured_state, sample_config):
-        """Test building API response from state."""
+    def test_build_template_context(self, configured_state, sample_config):
+        """Test building template context from state."""
         configured_state.start_execution(sample_config)
         configured_state.register_match(0, "/path/to/file.mkv")
         
+        # Session 11: PluginResult uses Pydantic model without plugin_name
         plugin_result = PluginResult(
-            plugin_name="renamer",
             success=True,
             started_at=datetime.now(),
             finished_at=datetime.now(),
@@ -310,49 +327,51 @@ class TestAPIResponseBuilding:
         configured_state.update_plugin_result(0, "renamer", plugin_result)
         configured_state.complete_match(0)
         
-        response = configured_state.build_api_response_for_templates()
+        # Session 11: Use build_template_context instead of build_api_response_for_templates
+        context = configured_state.build_template_context(0)
         
-        assert response is not None
-        assert "matches" in response or "items" in response
+        assert context is not None
+        assert "job" in context
+        assert "run" in context
     
-    def test_api_response_includes_all_matches(self, configured_state, sample_config):
-        """Test API response includes all processed matches."""
+    def test_template_context_includes_job_data(self, configured_state, sample_config):
+        """Test template context includes job data."""
         configured_state.start_execution(sample_config)
         
-        for i in range(5):
+        for i in range(3):
             configured_state.register_match(i, f"/path/file{i}.mkv")
             configured_state.complete_match(i)
         
-        response = configured_state.build_api_response_for_templates()
+        # Session 11: build_template_context returns context for specific job
+        context = configured_state.build_template_context(0)
         
-        matches_key = "matches" if "matches" in response else "items"
-        assert len(response.get(matches_key, [])) == 5
+        assert "jobs" in context
+        assert len(context["jobs"]) == 3
 
 
 # ==================== DATA MODEL TESTS ====================
 
 @pytest.mark.unit
 class TestPluginResultModel:
-    """Tests for PluginResult dataclass."""
+    """Tests for PluginResult Pydantic model."""
     
     def test_create_plugin_result(self):
         """Test creating PluginResult."""
+        # Session 11: PluginResult is Pydantic model without plugin_name field
         result = PluginResult(
-            plugin_name="tmdb",
             success=True,
             started_at=datetime.now(),
             finished_at=datetime.now(),
             data={"movie": {"id": 123}}
         )
         
-        assert result.plugin_name == "tmdb"
         assert result.success is True
         assert result.data["movie"]["id"] == 123
+        assert result.duration_ms >= 0  # Computed property
     
     def test_plugin_result_with_error(self):
         """Test PluginResult with error."""
         result = PluginResult(
-            plugin_name="tvdb",
             success=False,
             started_at=datetime.now(),
             finished_at=datetime.now(),
@@ -362,35 +381,79 @@ class TestPluginResultModel:
         
         assert result.success is False
         assert result.error is not None
+    
+    def test_plugin_result_factory_methods(self):
+        """Test PluginResult factory methods."""
+        # success_result factory
+        result = PluginResult.success_result(data={"movie": {"title": "Test"}})
+        assert result.success is True
+        
+        # error_result factory
+        error_result = PluginResult.error_result("Connection failed")
+        assert error_result.success is False
+        assert error_result.error == "Connection failed"
 
 
 @pytest.mark.unit
-class TestMatchStateModel:
-    """Tests for MatchState dataclass."""
+class TestJobStateModel:
+    """Tests for JobState dataclass (Session 11: replaces MatchState)."""
     
-    def test_create_match_state(self):
-        """Test creating MatchState."""
-        state = MatchState(
+    def test_create_job_state(self):
+        """Test creating JobState."""
+        # Session 11: JobState uses InputData, not input_path
+        from archiverr.state import InputData
+        
+        state = JobState(
             index=0,
-            input_path="/path/to/file.mkv",
-            execution_id="test_exec"
+            run_id="test_run",
+            input=InputData(value="/path/to/file.mkv")
         )
         
         assert state.index == 0
-        assert state.status == ExecutionStatus.PENDING
+        assert state.status.state == StateEnum.PENDING
         assert state.plugins == {}
+        assert state.input.value == "/path/to/file.mkv"
     
-    def test_match_state_defaults(self):
-        """Test MatchState default values."""
-        state = MatchState(
+    def test_job_state_defaults(self):
+        """Test JobState default values."""
+        from archiverr.state import InputData
+        
+        state = JobState(
             index=0,
-            input_path="/path/file.mkv",
-            execution_id="test_exec"
+            run_id="test_run",
+            input=InputData(value="/path/file.mkv")
         )
         
-        assert state.status == ExecutionStatus.PENDING
+        assert state.status.state == StateEnum.PENDING
         assert state.plugins == {}
-        assert state.tasks == []
+        assert state.output.values == []  # Session 11: tasks replaced by output.data
+        assert state.output.data == {}
+    
+    def test_job_state_auto_id(self):
+        """Test JobState auto-generates ID."""
+        from archiverr.state import InputData
+        
+        state = JobState(
+            index=5,
+            run_id="abc123",
+            input=InputData(value="/path/file.mkv")
+        )
+        
+        assert state.id == "job_abc123_5"
+    
+    def test_job_state_legacy_properties(self):
+        """Test JobState legacy compatibility properties."""
+        from archiverr.state import InputData
+        
+        state = JobState(
+            index=0,
+            run_id="test_run",
+            input=InputData(value="/path/to/file.mkv")
+        )
+        
+        # Legacy properties should still work
+        assert state.input_path == "/path/to/file.mkv"
+        assert state.execution_id == "test_run"
 
 
 # ==================== EDGE CASE TESTS ====================

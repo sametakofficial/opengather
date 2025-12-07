@@ -20,6 +20,7 @@ from .protocols import (
     LoggerService,
     ConfigService,
     TemplateService,
+    ProvidesService,
 )
 
 # Service implementations
@@ -27,12 +28,14 @@ from .state_service import StateServiceImpl
 from .event_service import EventServiceImpl
 from .logger_service import LoggerServiceImpl
 from .config_service import ConfigServiceImpl
+from .provides_service import ProvidesServiceImpl
 
 if TYPE_CHECKING:
     from archiverr.state.manager import StateManager
     from archiverr.events import EventBus
     from archiverr.utils.debug import Debugger
     from archiverr.infrastructure.database.interface import PersistenceInterface
+    from archiverr.core.provides_registry import ProvidesRegistry
 
 
 @dataclass
@@ -47,6 +50,10 @@ class PluginServices:
         def execute(self, job: JobState, services: PluginServices) -> PluginResult:
             services.logger.info("Starting execution...")
             parsed = services.state.get_plugin_data(job.id, "renamer")
+            
+            # Mark provide as completed early
+            services.provides.complete("http.request")
+            
             services.events.emit("plugin.completed", {"plugin": self.name})
             return PluginResult.success({"movie": movie_data})
     """
@@ -54,6 +61,7 @@ class PluginServices:
     events: EventService
     logger: LoggerService
     config: ConfigService
+    provides: ProvidesService
 
 
 def create_plugin_services(
@@ -62,7 +70,8 @@ def create_plugin_services(
     debugger: 'Debugger',
     config: Dict[str, Any],
     plugin_name: str = "plugin",
-    persistence: Optional['PersistenceInterface'] = None
+    persistence: Optional['PersistenceInterface'] = None,
+    provides_registry: Optional['ProvidesRegistry'] = None
 ) -> PluginServices:
     """
     Factory function to create PluginServices.
@@ -74,15 +83,21 @@ def create_plugin_services(
         config: Full config dictionary
         plugin_name: Plugin name for logging context
         persistence: Optional persistence layer for plugin data
+        provides_registry: Optional provides registry for early completion
         
     Returns:
         PluginServices instance with all services configured
     """
+    from archiverr.core.provides_registry import get_provides_registry
+    
+    registry = provides_registry or get_provides_registry()
+    
     return PluginServices(
         state=StateServiceImpl(state_manager, persistence),
         events=EventServiceImpl(event_bus, source=plugin_name),
         logger=LoggerServiceImpl(debugger, plugin_name),
-        config=ConfigServiceImpl(config)
+        config=ConfigServiceImpl(config),
+        provides=ProvidesServiceImpl(registry, plugin_name)
     )
 
 
@@ -100,12 +115,16 @@ def services_from_context(context, state_manager: 'StateManager') -> PluginServi
         PluginServices instance
     """
     from archiverr.utils.debug import get_debugger
+    from archiverr.core.provides_registry import get_provides_registry
+    
+    registry = get_provides_registry()
     
     return PluginServices(
         state=StateServiceImpl(state_manager),
         events=EventServiceImpl(context.event_bus, source="plugin"),
         logger=LoggerServiceImpl(get_debugger(), "plugin"),
-        config=ConfigServiceImpl(context.config)
+        config=ConfigServiceImpl(context.config),
+        provides=ProvidesServiceImpl(registry, "plugin")
     )
 
 
@@ -121,12 +140,14 @@ __all__ = [
     'LoggerService',
     'ConfigService',
     'TemplateService',
+    'ProvidesService',
     
     # Implementations
     'StateServiceImpl',
     'EventServiceImpl',
     'LoggerServiceImpl',
     'ConfigServiceImpl',
+    'ProvidesServiceImpl',
     
     # PluginServices
     'PluginServices',

@@ -44,73 +44,70 @@ class TestPluginAgnosticExecution:
         from datetime import datetime
         now = datetime.now()
         
+        # Session 11: PluginResult without plugin_name and duration_ms in constructor
         input_result = PluginResult(
-            plugin_name=mock_input_plugin["name"],
             success=True,
             started_at=now,
             finished_at=now,
-            duration_ms=10,
             data={"matches": ["/path/test.mkv"]}
         )
         state.update_plugin_result(0, mock_input_plugin["name"], input_result)
         
         output_result = PluginResult(
-            plugin_name=mock_output_plugin["name"],
             success=True,
             started_at=now,
             finished_at=now,
-            duration_ms=50,
             data={"processed": True}
         )
         state.update_plugin_result(0, mock_output_plugin["name"], output_result)
         
         # Complete
         state.complete_match(0)
-        execution = state.complete_execution()
+        run_state = state.complete_execution()
         
-        # Verify using generic assertions (no plugin-specific checks)
-        assert execution.total_matches == 1
-        assert execution.completed_matches == 1
+        # Session 11: Use run.status.total_jobs instead of execution.total_matches
+        assert run_state.status.total_jobs == 1
+        assert run_state.status.completed == 1
     
     def test_plugin_result_generic_structure(self, mock_output_plugin):
         """Test PluginResult works with any plugin data."""
         from archiverr.state import PluginResult
-        from datetime import datetime
+        from datetime import datetime, timedelta
         
-        now = datetime.now()
+        start = datetime.now()
+        finish = start + timedelta(milliseconds=100)
         
-        # Plugin-agnostic: use data from fixture, not hardcoded
+        # Session 11: PluginResult without plugin_name, duration_ms is computed
         result = PluginResult(
-            plugin_name=mock_output_plugin["name"],
             success=True,
-            started_at=now,
-            finished_at=now,
-            duration_ms=100,
+            started_at=start,
+            finished_at=finish,
             data=mock_output_plugin["execute_result"]["data"]
         )
         
         assert result.success is True
-        assert result.duration_ms == 100
+        assert result.duration_ms >= 100  # Computed property
         assert "title" in result.data
     
     def test_match_state_plugins_are_generic(self, mock_match_data):
-        """Test MatchState plugins dict is plugin-agnostic."""
-        from archiverr.state.models import MatchState
+        """Test JobState plugins dict is plugin-agnostic."""
+        # Session 11: Use JobState from archiverr.state (not MatchState from models)
+        from archiverr.state import JobState, InputData
         
-        match = MatchState(
+        job = JobState(
             index=mock_match_data["index"],
-            input_path=mock_match_data["input_path"],
-            execution_id="test-123"
+            run_id="test-123",
+            input=InputData(value=mock_match_data["input_path"])
         )
         
         # Add plugins using generic names from fixture
         for plugin_name, plugin_data in mock_match_data["plugins"].items():
-            match.plugins[plugin_name] = plugin_data
+            job.plugins[plugin_name] = plugin_data
         
         # Verify generically
-        assert len(match.plugins) == 2
+        assert len(job.plugins) == 2
         for plugin_name in mock_match_data["plugins"]:
-            assert plugin_name in match.plugins
+            assert plugin_name in job.plugins
 
 
 class TestPluginAgnosticConfiguration:

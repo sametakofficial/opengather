@@ -70,24 +70,32 @@ class TMDbPlugin(OutputPlugin):
         )
         self._initialized = True
     
-    def execute(self, match_data: Dict[str, Any]) -> PluginResult:
+    def execute(self, job: Any, services: Any) -> PluginResult:
         """
-        Fetch metadata from TMDb
+        Fetch metadata from TMDb (Session 11 signature).
         
         Args:
-            match_data: Must contain 'renamer.parsed' with show or movie info
+            job: JobState with plugins.renamer.parsed
+            services: PluginServices
             
         Returns:
             PluginResult with movie/show/episode/season/extras/normalized data
         """
         started_at = datetime.now()
-        # Ensure components are initialized (backwards compat if setup() not called)
+        
         if not self._initialized:
             self._sync_setup()
         
-        # Get parsed data
-        renamer_data = match_data.get('renamer', {})
-        parsed_data = renamer_data.get('parsed', {})
+        # Get parsed data from job.plugins or services.state
+        parsed_data = {}
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            renamer_data = job.plugins.get('renamer', {})
+            parsed_data = renamer_data.get('parsed', {})
+        
+        # Fallback: try services.state
+        if not parsed_data and hasattr(services, 'state'):
+            renamer_data = services.state.get_plugin_data(job.id, 'renamer')
+            parsed_data = renamer_data.get('parsed', {})
         
         if not parsed_data:
             return PluginResult.error_result("No parsed data available", started_at=started_at)
@@ -114,7 +122,13 @@ class TMDbPlugin(OutputPlugin):
             
             # Add validation if result successful
             if result and result.get('status', {}).get('success'):
-                result['validation'] = self._perform_validation(match_data, result)
+                # Get ffprobe data for validation
+                ffprobe_data = {}
+                if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+                    ffprobe_data = job.plugins.get('ffprobe', {})
+                elif hasattr(services, 'state'):
+                    ffprobe_data = services.state.get_plugin_data(job.id, 'ffprobe')
+                result['validation'] = self._perform_validation(ffprobe_data, result)
                 
                 # Emit task example - notify about found metadata
                 if result.get('movie'):
@@ -157,10 +171,14 @@ class TMDbPlugin(OutputPlugin):
             self.error("Execution failed", error=str(e))
             return PluginResult.error_result(str(e), started_at=started_at)
     
-    def _perform_validation(self, match_data: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
+    def _perform_validation(self, ffprobe_data: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform validation tests (e.g., duration matching)
         
+        Args:
+            ffprobe_data: FFProbe plugin result data
+            result: TMDb fetch result
+            
         Returns:
             {tests_passed, tests_total, details}
         """
@@ -169,7 +187,6 @@ class TMDbPlugin(OutputPlugin):
         tests_total = 0
         
         # Duration validation (for movies and episodes)
-        ffprobe_data = match_data.get('ffprobe', {})
         container = ffprobe_data.get('container', {})
         ffprobe_duration = container.get('duration', 0)
         

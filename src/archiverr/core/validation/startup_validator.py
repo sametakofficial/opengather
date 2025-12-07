@@ -7,7 +7,8 @@ Combines:
 1. Config validation (schema, semantic, security)
 2. Manifest validation (fields, stages, provides)
 3. Dependency validation (circular, missing)
-4. Additional startup checks (input plugins)
+4. Provides conflict detection (lockable provides)
+5. Additional startup checks (input plugins)
 """
 
 from typing import Dict, Any, List, Optional
@@ -17,6 +18,8 @@ from .config_validator import ConfigValidator
 from .manifest_validator import ManifestValidator
 from .dependency_validator import DependencyValidator
 from .error_codes import W004
+
+from archiverr.core.provides_registry import ProvidesRegistry, LOCKABLE_PROVIDES
 
 
 class StartupValidator:
@@ -98,9 +101,63 @@ class StartupValidator:
         dep_result = self._dependency_validator.validate(filtered_manifests)
         result.merge(dep_result)
         
-        # 5. Additional startup checks
+        # 5. Provides conflict detection
+        conflict_result = self._detect_provides_conflicts(filtered_manifests)
+        result.merge(conflict_result)
+        
+        # 6. Additional startup checks
         additional_result = self._additional_checks(config, filtered_manifests)
         result.merge(additional_result)
+        
+        return result
+    
+    def _detect_provides_conflicts(
+        self,
+        manifests: Dict[str, Dict]
+    ) -> ValidationResult:
+        """
+        Detect conflicts in lockable provides.
+        
+        Lockable provides (fs.write, fs.delete, etc.) with the same path
+        constraint cannot be used by multiple plugins simultaneously.
+        
+        Args:
+            manifests: Dict of {plugin_name: manifest}
+            
+        Returns:
+            ValidationResult with conflict errors
+        """
+        result = ValidationResult.ok()
+        
+        # Build temporary registry for conflict detection
+        registry = ProvidesRegistry()
+        
+        for plugin_name, manifest in manifests.items():
+            provides = manifest.get('provides', [])
+            registry.register_from_manifest(plugin_name, provides)
+        
+        # Detect conflicts
+        conflicts = registry.detect_conflicts()
+        
+        for conflict in conflicts:
+            severity = conflict.get('severity', 'error')
+            provide = conflict.get('provide', 'unknown')
+            plugins = conflict.get('plugins', [])
+            path = conflict.get('path', '*')
+            
+            if severity == 'error':
+                result.add_error(
+                    "E020",  # Provides conflict
+                    f"Lockable provide conflict: '{provide}' at path '{path}' "
+                    f"is provided by multiple plugins: {', '.join(plugins)}. "
+                    f"Use path constraints (e.g., fs.write:/specific/path) to resolve."
+                )
+            else:
+                conflict_type = conflict.get('conflict_type', 'unknown')
+                result.add_warning(
+                    "W020",
+                    f"Potential provides conflict: {conflict_type} for '{provide}'"
+                )
         
         return result
     

@@ -52,6 +52,61 @@ class StateServiceImpl:
         """
         self._current_job_id = job_id
     
+    def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
+        """
+        Create a new job for the current run (Session 11).
+        
+        Called by INPUT stage plugins (scanner, file-reader).
+        
+        Args:
+            input_value: Job input path or identifier
+            input_data: Additional input metadata
+            
+        Returns:
+            Created job ID
+        """
+        from archiverr.state.models import JobState, InputData
+        
+        # Get current run ID
+        run_id = ""
+        try:
+            run = self.get_run()
+            run_id = getattr(run, 'id', '') or getattr(run, 'execution_id', '')
+        except RuntimeError:
+            pass
+        
+        # Get next job index
+        jobs = self.get_all_jobs()
+        next_index = len(jobs)
+        
+        # Create job with proper input structure
+        job = JobState(
+            index=next_index,
+            run_id=run_id,
+            input=InputData(
+                value=input_value,
+                data=input_data or {}
+            )
+        )
+        
+        # Register job in manager - prefer new create_job method
+        if hasattr(self._manager, 'create_job'):
+            # New API: use create_job
+            created_job = self._manager.create_job(input_value, input_data)
+            return created_job.id if hasattr(created_job, 'id') else job.id
+        elif hasattr(self._manager, 'register_match'):
+            # Legacy fallback: use register_match
+            self._manager.register_match(next_index, input_value)
+            
+            # Also update the match with input.data
+            if hasattr(self._manager, '_matches'):
+                match = self._manager._matches.get(next_index)
+                if match:
+                    if not hasattr(match, 'input_data'):
+                        match.input_data = input_data or {}
+        
+        return job.id
+    
     def get_current_job(self) -> 'JobState':
         """Get currently executing job."""
         from archiverr.state.models import JobState

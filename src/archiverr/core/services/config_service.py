@@ -91,6 +91,17 @@ class ConfigServiceImpl:
         """
         return self._config.get('aliases', {}).get(alias, '')
     
+    def get_all(self) -> Dict[str, Any]:
+        """
+        Get full config dict.
+        
+        Called by plugins that need access to entire config.
+        
+        Returns:
+            Full config dictionary (read-only copy)
+        """
+        return self._config.copy()
+    
     @property
     def config(self) -> Dict[str, Any]:
         """Get full config dict (read-only copy)."""

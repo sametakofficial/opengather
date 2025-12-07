@@ -1,36 +1,47 @@
-"""FFProbe Plugin - Extract media file metadata"""
+"""
+FFProbe Plugin - Extract media file metadata
+
+Session 11 - Stage: DATA, Mode: per_job
+"""
 import subprocess
 import json
 from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
-from archiverr.core.plugins.sdk import OutputPlugin
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 from .utils.parsers import parse_fps, parse_duration, parse_bitrate, parse_int_safe
 
 
 class FFProbePlugin(OutputPlugin):
-    """Output plugin that extracts media metadata using ffprobe"""
+    """
+    DATA stage plugin - extracts media metadata using ffprobe.
+    
+    Provides:
+    - job.plugins.ffprobe.video
+    - job.plugins.ffprobe.audio
+    - job.plugins.ffprobe.container
+    """
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.name = "ffprobe"
     
-    def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, job: Any, services: Any) -> PluginResult:
         """
-        Extract media metadata using ffprobe.
+        Extract media metadata using ffprobe (Session 11 signature).
         
         Args:
-            match_data: Must contain 'input' with path and virtual flag
+            job: JobState with input.value
+            services: PluginServices
             
         Returns:
-            {status, video, audio, container} or not_supported for virtual paths
+            PluginResult with video, audio, container data
         """
-        start_time = datetime.now()
+        started_at = datetime.now()
         
-        # Get input metadata from match globals
-        input_metadata = match_data.get('input', {})
-        input_path = input_metadata.get('path')
-        is_virtual = input_metadata.get('virtual', False)
+        # Get input path from job
+        input_path = job.input.value if hasattr(job.input, 'value') else str(job.input)
+        is_virtual = job.input.data.get('source') == 'virtual' if hasattr(job.input, 'data') else False
         
         # Skip virtual paths - ffprobe cannot analyze non-existent files
         if is_virtual:
@@ -119,60 +130,31 @@ class FFProbePlugin(OutputPlugin):
             self.debug("Audio streams", count=len(audio))
             self.debug("Container format", format=container.get('format'))
             
-            end_time = datetime.now()
-            return {
-                'status': {
-                    'success': True,
-                    'started_at': start_time.isoformat(),
-                    'finished_at': end_time.isoformat(),
-                    'duration_ms': int((end_time - start_time).total_seconds() * 1000)
-                },
+            result_data = {
                 'video': video,
                 'audio': audio,
                 'container': container
             }
             
+            # Save to job state
+            if hasattr(services, 'state'):
+                services.state.save_plugin_data(
+                    job_id=job.id,
+                    plugin_name='ffprobe',
+                    stage='data',
+                    data=result_data
+                )
+            
+            return PluginResult.success_result(data=result_data, started_at=started_at)
+            
         except Exception as e:
-            end_time = datetime.now()
-            return {
-                'status': {
-                    'success': False,
-                    'started_at': start_time.isoformat(),
-                    'finished_at': end_time.isoformat(),
-                    'duration_ms': int((end_time - start_time).total_seconds() * 1000)
-                },
-                'video': {},
-                'audio': [],
-                'container': {}
-            }
+            self.error("FFProbe failed", error=str(e))
+            return PluginResult.error_result(str(e), started_at=started_at)
     
-    def _error_result(self) -> Dict[str, Any]:
+    def _error_result(self) -> PluginResult:
         """Return error result"""
-        now = datetime.now()
-        return {
-            'status': {
-                'success': False,
-                'started_at': now.isoformat(),
-                'finished_at': now.isoformat(),
-                'duration_ms': 0
-            },
-            'video': {},
-            'audio': [],
-            'container': {}
-        }
+        return PluginResult.error_result("Input path invalid", started_at=datetime.now())
     
-    def _not_supported_result(self) -> Dict[str, Any]:
-        """Return not supported result for virtual paths"""
-        now = datetime.now()
-        return {
-            'status': {
-                'success': False,
-                'not_supported': True,
-                'started_at': now.isoformat(),
-                'finished_at': now.isoformat(),
-                'duration_ms': 0
-            },
-            'video': {},
-            'audio': [],
-            'container': {}
-        }
+    def _not_supported_result(self) -> PluginResult:
+        """Return skipped result for virtual paths"""
+        return PluginResult.skipped_result("Virtual path not supported", started_at=datetime.now())

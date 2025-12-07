@@ -247,3 +247,62 @@ class TemplateService(Protocol):
             Template context dict
         """
         ...
+
+
+@runtime_checkable
+class ProvidesService(Protocol):
+    """
+    Provides completion service protocol.
+    
+    Allows plugins to mark individual provides as completed early.
+    This enables downstream plugins to start execution before the
+    current plugin fully completes.
+    
+    Example:
+        def execute(self, job, services):
+            response = self.fetch_metadata(job)
+            
+            # http.request is done, downstream can start
+            services.provides.complete("http.request")
+            
+            # Still doing slow work
+            self.download_artwork(response)
+            
+            # fs.write is done
+            services.provides.complete("fs.write")
+            
+            return PluginResult.success(response)
+    """
+    
+    def complete(self, provide: str) -> None:
+        """
+        Mark a provide as completed early.
+        
+        Args:
+            provide: Provide value (e.g., "http.request", "fs.write")
+        """
+        ...
+    
+    def is_completed(self, provide: str) -> bool:
+        """
+        Check if a provide is completed (by any plugin).
+        
+        Args:
+            provide: Provide value
+            
+        Returns:
+            True if provide is completed
+        """
+        ...
+    
+    def get_status(self, provide: str) -> Dict[str, str]:
+        """
+        Get status of a provide from all plugins.
+        
+        Args:
+            provide: Provide value
+            
+        Returns:
+            Dict of plugin_name -> status
+        """
+        ...

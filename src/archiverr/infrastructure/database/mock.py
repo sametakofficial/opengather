@@ -466,6 +466,15 @@ class MockPersistence(PersistenceInterface):
             if p.get("run_id") == run_id
         ]
     
+    def save_plugin_data(self, plugin_data) -> None:
+        """
+        Save plugin data to plugins collection (Session 11 API).
+        
+        Args:
+            plugin_data: PluginData object or dict
+        """
+        self.save_plugin(plugin_data)
+    
     def delete_run(self, run_id: str) -> bool:
         """
         Delete run and all related data (jobs, plugins).

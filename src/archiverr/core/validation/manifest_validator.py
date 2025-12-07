@@ -15,6 +15,7 @@ from typing import Dict, Any, List, Set, Optional
 
 from .result import ValidationResult, ValidationLevel
 from .error_codes import E011, E012, E013, E016, E017, W001
+from archiverr.core.provides_registry import LOCKABLE_PROVIDES
 
 
 # Valid stage values
@@ -164,6 +165,14 @@ class ManifestValidator:
             
             for prov in provides:
                 if not isinstance(prov, str):
+                    continue
+                
+                # P0.3: Only check lockable provides for conflicts
+                # Extract base provide (remove path constraint)
+                base_prov = prov.split(':')[0] if ':' in prov else prov
+                
+                # Non-lockable provides (like state.update) can be shared
+                if base_prov not in LOCKABLE_PROVIDES:
                     continue
                 
                 if prov in provides_map:

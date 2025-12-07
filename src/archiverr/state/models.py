@@ -1,8 +1,17 @@
 """
-State Models
+State Models - Session 12 Refactored
 
-Dataclasses for state management.
-Flat structure - inspired by feature/mongodb-implementation branch.
+Models:
+- StateEnum
+- InputData, OutputData
+- JobStatus, RunStatus
+- JobState, RunState
+- PluginStatus, PluginState (Session 12)
+
+Session 12 Changes:
+- Plugin data structure: plugin.{name}.data.*
+- PluginStatus with success flag
+- JobState.plugins now has status + data separation
 """
 
 from dataclasses import dataclass, field
@@ -11,24 +20,9 @@ from typing import Dict, Any, List, Optional
 from enum import Enum
 
 
-class ExecutionStatus(Enum):
-    """Execution status enum (DEPRECATED - use StateEnum)"""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-# =============================================================================
-# NEW STATE MODELS (Session 11 - FINAL_DATASETS.yml compliant)
-# =============================================================================
-
 class StateEnum(Enum):
     """
     Unified state enum for Run and Job states.
-    
-    Replaces ExecutionStatus with cleaner naming.
-    Used by: RunStatus.state, JobStatus.state
     """
     PENDING = "pending"
     RUNNING = "running"
@@ -42,16 +36,13 @@ class InputData:
     Job input data container.
     
     Attributes:
-        value: Input path or virtual identifier (e.g., "/path/file.mkv" or "tmdb://movie/603")
-        data: Additional metadata (filename, extension, size_bytes, modified_at, source)
-    
-    Source types: filesystem | api | manual
+        value: Input path or virtual identifier
+        data: Additional metadata (filename, extension, size_bytes, etc.)
     """
     value: str
     data: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
         return {
             "value": self.value,
             "data": self.data
@@ -71,7 +62,6 @@ class OutputData:
     data: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
         return {
             "values": self.values,
             "data": self.data
@@ -82,9 +72,6 @@ class OutputData:
 class JobStatus:
     """
     Job execution status.
-    
-    Tracks plugin execution results and timing.
-    Uses 'skipped' instead of 'not_supported' for clarity.
     """
     state: StateEnum = StateEnum.PENDING
     success: bool = True
@@ -96,7 +83,6 @@ class JobStatus:
     duration_ms: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
         return {
             "state": self.state.value,
             "success": self.success,
@@ -113,9 +99,6 @@ class JobStatus:
 class RunStatus:
     """
     Run execution status.
-    
-    Tracks overall job statistics and timing.
-    Uses 'total_jobs' instead of 'total_matches'.
     """
     state: StateEnum = StateEnum.PENDING
     success: bool = True
@@ -127,7 +110,6 @@ class RunStatus:
     duration_ms: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
         return {
             "state": self.state.value,
             "success": self.success,
@@ -143,12 +125,13 @@ class RunStatus:
 @dataclass
 class JobState:
     """
-    Per-job state (replaces MatchState).
+    Per-job state.
     
-    IMPORTANT: plugins are stored in separate MongoDB collection!
-    - Plugins NOT stored here (memory management - hot/cold tiering)
-    - Access via: services.state.get_plugin_data(job.id, "plugin_name")
-    - Template context injects 'plugins' alias for {{ job.plugins.tmdb.movie.title }}
+    Session 11 structure:
+    - input: InputData with value and data
+    - output: OutputData with values and data
+    - plugins: Dict for runtime plugin data access
+    - status: JobStatus with executed/failed/skipped lists
     
     ID Format: job_{run_id}_{index}
     """
@@ -158,30 +141,30 @@ class JobState:
     input: InputData = field(default_factory=lambda: InputData(""))
     output: OutputData = field(default_factory=OutputData)
     status: JobStatus = field(default_factory=JobStatus)
+    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Generate job ID if not provided"""
         if not self.id:
             self.id = f"job_{self.run_id}_{self.index}"
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for MongoDB/API serialization"""
         return {
             "id": self.id,
             "index": self.index,
             "run_id": self.run_id,
             "input": self.input.to_dict(),
             "output": self.output.to_dict(),
-            "status": self.status.to_dict()
+            "status": self.status.to_dict(),
+            "plugins": self.plugins
         }
     
     def start(self):
-        """Mark job as started"""
+        """Mark job as started."""
         self.status.state = StateEnum.RUNNING
         self.status.started_at = datetime.now()
     
     def complete(self, success: bool = True):
-        """Mark job as completed"""
+        """Mark job as completed."""
         self.status.finished_at = datetime.now()
         if self.status.started_at:
             delta = self.status.finished_at - self.status.started_at
@@ -190,29 +173,52 @@ class JobState:
         self.status.state = StateEnum.COMPLETED if success else StateEnum.FAILED
     
     def add_executed(self, plugin_name: str):
-        """Mark plugin as successfully executed"""
+        """Mark plugin as successfully executed."""
         if plugin_name not in self.status.executed:
             self.status.executed.append(plugin_name)
     
     def add_failed(self, plugin_name: str):
-        """Mark plugin as failed"""
+        """Mark plugin as failed."""
         if plugin_name not in self.status.failed:
             self.status.failed.append(plugin_name)
             self.status.success = False
     
     def add_skipped(self, plugin_name: str):
-        """Mark plugin as skipped (not supported/conditions not met)"""
+        """Mark plugin as skipped."""
         if plugin_name not in self.status.skipped:
             self.status.skipped.append(plugin_name)
+    
+    # Legacy compatibility properties
+    @property
+    def input_path(self) -> str:
+        """Legacy: Get input path."""
+        return self.input.value
+    
+    @property
+    def execution_id(self) -> str:
+        """Legacy: Get run ID."""
+        return self.run_id
+    
+    @property
+    def executed_plugins(self) -> List[str]:
+        """Legacy: Get executed plugins."""
+        return self.status.executed
+    
+    @property
+    def failed_plugins(self) -> List[str]:
+        """Legacy: Get failed plugins."""
+        return self.status.failed
+    
+    @property
+    def not_supported_plugins(self) -> List[str]:
+        """Legacy: Get skipped plugins."""
+        return self.status.skipped
 
 
 @dataclass
 class RunState:
     """
-    Execution-level state (replaces ExecutionState).
-    
-    Represents a single Archiverr run.
-    Jobs stored in separate MongoDB collection.
+    Execution-level state.
     
     ID Format: run_{uuid8}
     """
@@ -221,7 +227,6 @@ class RunState:
     config: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for MongoDB/API serialization"""
         return {
             "id": self.id,
             "status": self.status.to_dict(),
@@ -229,12 +234,12 @@ class RunState:
         }
     
     def start(self):
-        """Mark run as started"""
+        """Mark run as started."""
         self.status.state = StateEnum.RUNNING
         self.status.started_at = datetime.now()
     
     def complete(self):
-        """Mark run as completed"""
+        """Mark run as completed."""
         self.status.finished_at = datetime.now()
         if self.status.started_at:
             delta = self.status.finished_at - self.status.started_at
@@ -243,45 +248,84 @@ class RunState:
         self.status.state = StateEnum.COMPLETED if self.status.success else StateEnum.FAILED
     
     def increment_jobs(self):
-        """Increment total job count"""
+        """Increment total job count."""
         self.status.total_jobs += 1
     
     def increment_completed(self):
-        """Increment completed job count"""
+        """Increment completed job count."""
         self.status.completed += 1
     
     def increment_failed(self):
-        """Increment failed job count"""
+        """Increment failed job count."""
         self.status.failed += 1
+
+
+@dataclass
+class PluginStatus:
+    """
+    Plugin execution status (Session 12).
+    
+    Tracks plugin execution state and success.
+    """
+    state: StateEnum = StateEnum.PENDING
+    success: bool = False
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: int = 0
+    error: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "state": self.state.value,
+            "success": self.success,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "duration_ms": self.duration_ms,
+            "error": self.error
+        }
+
+
+@dataclass
+class PluginState:
+    """
+    Session 12 plugin state structure.
+    
+    Structure:
+        plugin.{name}:
+            status: PluginStatus
+            data: Dict (plugin's own data)
+    """
+    status: PluginStatus = field(default_factory=PluginStatus)
+    data: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status.to_dict(),
+            "data": self.data
+        }
 
 
 @dataclass
 class PluginData:
     """
-    Plugin execution data (stored in separate MongoDB collection).
+    Plugin execution data (stored in MongoDB).
     
-    Separated from JobState for memory management:
-    - Large plugin data (100+ MB per run possible)
-    - Hot/cold tiering: active in RAM, completed in MongoDB
-    - Lazy loading on demand
-    
+    Session 12: Separates status and data.
     ID Format: plugin_{job_id}_{plugin_name}
     """
     job_id: str
     run_id: str
     job_index: int
     plugin_name: str
-    stage: str  # input | parse | data | output
-    status: Dict[str, Any] = field(default_factory=dict)
+    stage: str  # parse | data | output (no input)
+    status: PluginStatus = field(default_factory=PluginStatus)
     data: Dict[str, Any] = field(default_factory=dict)
     
     @property
     def id(self) -> str:
-        """Generate unique plugin data ID"""
         return f"plugin_{self.job_id}_{self.plugin_name}"
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for MongoDB serialization"""
         return {
             "id": self.id,
             "job_id": self.job_id,
@@ -289,170 +333,14 @@ class PluginData:
             "job_index": self.job_index,
             "plugin_name": self.plugin_name,
             "stage": self.stage,
-            "status": self.status,
+            "status": self.status.to_dict(),
             "data": self.data
         }
 
 
-@dataclass
-class ExecutionState:
-    """
-    Execution-level state.
-    
-    Represents a single run of Archiverr.
-    """
-    id: str
-    started_at: datetime
-    finished_at: Optional[datetime] = None
-    duration_ms: int = 0
-    success: bool = True
-    status: ExecutionStatus = ExecutionStatus.PENDING
-    
-    # Summary stats
-    total_matches: int = 0
-    completed_matches: int = 0
-    failed_matches: int = 0
-    
-    # Config snapshot (opaque to core)
-    config_snapshot: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for persistence"""
-        return {
-            "_id": f"exec_{self.id}",
-            "id": self.id,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration_ms": self.duration_ms,
-            "success": self.success,
-            "status": self.status.value,
-            "summary": {
-                "total_matches": self.total_matches,
-                "completed_matches": self.completed_matches,
-                "failed_matches": self.failed_matches
-            },
-            "config_snapshot": self.config_snapshot
-        }
-
-
-@dataclass
-class PluginResult:
-    """
-    Single plugin execution result.
-    
-    Core doesn't know plugin internals - just stores as Dict[str, Any].
-    """
-    plugin_name: str
-    success: bool
-    started_at: datetime
-    finished_at: Optional[datetime] = None
-    duration_ms: int = 0
-    data: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for persistence"""
-        return {
-            "status": {
-                "success": self.success,
-                "started_at": self.started_at.isoformat() if self.started_at else None,
-                "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-                "duration_ms": self.duration_ms,
-                "error": self.error
-            },
-            **self.data  # Spread plugin data at root level
-        }
-
-
-@dataclass
-class MatchState:
-    """
-    Per-match state.
-    
-    Flat structure - no nested globals wrapper.
-    Plugin data stored in plugins dict, keyed by plugin name.
-    """
-    index: int
-    input_path: str
-    execution_id: str
-    
-    # Status
-    success: bool = True
-    status: ExecutionStatus = ExecutionStatus.PENDING
-    
-    # Plugin tracking
-    executed_plugins: List[str] = field(default_factory=list)
-    failed_plugins: List[str] = field(default_factory=list)
-    not_supported_plugins: List[str] = field(default_factory=list)
-    
-    # Timing
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    duration_ms: int = 0
-    
-    # Task results
-    tasks: List[Dict[str, Any]] = field(default_factory=list)
-    
-    # Plugin data (flat - no wrapper)
-    # Core doesn't know plugin internals, just stores Dict[str, Any]
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for persistence"""
-        return {
-            "_id": f"match_{self.index}_{self.execution_id}",
-            "execution_id": f"exec_{self.execution_id}",
-            "index": self.index,
-            "input_path": self.input_path,
-            "success": self.success,
-            "status": self.status.value,
-            "executed_plugins": self.executed_plugins,
-            "failed_plugins": self.failed_plugins,
-            "not_supported_plugins": self.not_supported_plugins,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration_ms": self.duration_ms,
-            "tasks": self.tasks
-        }
-    
-    def add_plugin_result(self, plugin_name: str, result: PluginResult):
-        """Add plugin result to match"""
-        self.plugins[plugin_name] = result.to_dict()
-        
-        if result.success:
-            if plugin_name not in self.executed_plugins:
-                self.executed_plugins.append(plugin_name)
-        else:
-            if plugin_name not in self.failed_plugins:
-                self.failed_plugins.append(plugin_name)
-                self.success = False
-    
-    def add_not_supported(self, plugin_name: str):
-        """Mark plugin as not supported for this match"""
-        if plugin_name not in self.not_supported_plugins:
-            self.not_supported_plugins.append(plugin_name)
-    
-    def add_task_result(self, task_result: Dict[str, Any]):
-        """Add task execution result"""
-        self.tasks.append(task_result)
-    
-    def complete(self):
-        """Mark match as completed"""
-        self.finished_at = datetime.now()
-        if self.started_at:
-            self.duration_ms = int((self.finished_at - self.started_at).total_seconds() * 1000)
-        self.status = ExecutionStatus.COMPLETED if self.success else ExecutionStatus.FAILED
-
-
-# =============================================================================
-# BACKWARD COMPATIBILITY ALIASES (DEPRECATED - will be removed in v1.0)
-# =============================================================================
-# These aliases allow existing code to continue working during migration.
-# New code should use: StateEnum, RunState, JobState, PluginData
-
-# Enum alias
-# ExecutionStatus = StateEnum  # Already defined above, kept for backward compat
-
-# Class aliases - old names point to new implementations
-# Note: These are TYPE aliases, not class aliases
-# For now, we keep old classes intact; full migration happens in Phase 2+
+# NOTE: Legacy aliases (ExecutionStatus, MatchState, ExecutionState, PluginResult)
+# are now defined in __init__.py for cleaner module structure.
+# Direct imports from models.py should use the new names:
+#   - StateEnum (not ExecutionStatus)
+#   - JobState (not MatchState)
+#   - RunState (not ExecutionState)

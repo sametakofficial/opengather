@@ -11,9 +11,21 @@ from archiverr.utils.debug import get_debugger
 class TaskManager:
     """Executes tasks (print, save) defined in config"""
     
-    def __init__(self, config: Dict[str, Any], template_manager: TemplateManager = None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        template_manager: TemplateManager = None,
+        provides_registry: Any = None,
+        event_bus: Any = None
+    ):
         self.config = config
-        self.template_manager = template_manager or TemplateManager()
+        # Pass config, provides_registry, and event_bus to TemplateManager
+        # for {{ config.* }}, {{ provides.* }}, {{ events.* }} alias support
+        self.template_manager = template_manager or TemplateManager(
+            config=config,
+            provides_registry=provides_registry,
+            event_bus=event_bus
+        )
         self.tasks = config.get('tasks', [])
         self.debugger = get_debugger()
     

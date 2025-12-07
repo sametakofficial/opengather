@@ -283,3 +283,40 @@ class EventBus:
             if event_name:
                 return {event_name: len(self._handlers.get(event_name, []))}
             return {name: len(handlers) for name, handlers in self._handlers.items()}
+    
+    def get_history_dict(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get event history as dict grouped by event type.
+        
+        For template context injection ({{ events }}).
+        
+        Returns:
+            Dict structure: {event_type: [{data}, ...], ...}
+            Example: {'plugin.completed': [{'plugin_name': 'tmdb'}, ...]}
+        """
+        with self._lock:
+            result: Dict[str, List[Dict[str, Any]]] = {}
+            for event in self._history:
+                if event.name not in result:
+                    result[event.name] = []
+                result[event.name].append({
+                    'data': event.data,
+                    'timestamp': event.timestamp.isoformat(),
+                    'source': event.source,
+                })
+            return result
+    
+    def has_fired(self, event_name: str) -> bool:
+        """
+        Check if an event has been fired.
+        
+        Used for requires validation (events.* prefix).
+        
+        Args:
+            event_name: Event name to check
+            
+        Returns:
+            True if event has been fired at least once
+        """
+        with self._lock:
+            return any(e.name == event_name for e in self._history)

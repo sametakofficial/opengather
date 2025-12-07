@@ -15,7 +15,7 @@ This reduces __main__.py from ~400 lines to ~50 lines.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any, Optional, List
 
 from archiverr.state.models import RunState, JobState, StateEnum
 from archiverr.state.manager import GlobalStateManager
@@ -252,6 +252,12 @@ class Orchestrator:
             "plugins": self._plugin_registry.enabled_plugins
         })
         
+        # Register provides from all plugins at startup
+        self._register_all_provides()
+        
+        # P2.2: Track reactive plugins for future implementation
+        self._reactive_plugins = self._identify_reactive_plugins()
+        
         # Register event handlers for persistence
         self._register_event_handlers()
     
@@ -344,16 +350,19 @@ class Orchestrator:
     def _register_event_handlers(self) -> None:
         """Register event handlers for persistence and logging."""
         
-        def on_job_completed(data: Dict):
+        def on_job_completed(event):
             """Persist job on completion"""
+            data = event.data if hasattr(event, 'data') else event
             job_id = data.get("job_id")
             if job_id and self._persistence:
-                # Get job from state and persist
-                # This will be implemented properly with new state
+                # Persist job state
                 pass
         
-        def on_plugin_completed(data: Dict):
+        def on_plugin_completed(event):
             """Persist plugin data on completion"""
+            # Handle both Event object and dict
+            data = event.data if hasattr(event, 'data') else event
+            
             if self._persistence:
                 job_id = data.get("job_id")
                 plugin_name = data.get("plugin_name")

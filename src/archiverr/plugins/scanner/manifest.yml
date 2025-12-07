@@ -1,15 +1,21 @@
 # Scanner Plugin - File discovery input plugin
-# Clean manifest with validation rules
+# Session 11 - Stage-based format
 
 name: scanner
 version: 1.0.0
 description: Scans directories and files for media content
-category: input
+stage: input
 class_name: ScannerPlugin
+entry_point: client.py
 
 # Input plugins have no dependencies
-depends_on: []
-expects: []
+requires: []
+
+# Provides filesystem read capability
+provides:
+  - fs.read
+
+trigger_rule: all_success
 
 # Supports all media types (empty = all)
 categories: []
@@ -21,13 +27,23 @@ config_schema:
     required: true
     min_length: 1
     description: List of files or directories to scan
-  
+
   recursive:
     type: boolean
     default: false
     description: Scan directories recursively
-  
+
   allow_virtual_paths:
     type: boolean
     default: false
     description: Allow non-existent paths (for testing)
+
+  extensions:
+    type: list
+    default: [mkv, mp4, avi]
+    description: File extensions to scan
+
+  min_size_mb:
+    type: integer
+    default: 0
+    description: Minimum file size in MB

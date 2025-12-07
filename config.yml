@@ -1,150 +1,142 @@
 # ============================================================
-# Archiverr Configuration
+# Archiverr Configuration - Session 11 Format
+# ============================================================
+# FlexGet-style: Each plugin is a top-level key
+# New terminology: run (execution), job (match)
 # ============================================================
 
-# Aliases - Define shortcuts for template access
-# These can be used in task templates: {{ m.index }}, {{ g.status.matches }}
-aliases:
-  # Default shortcuts
-  e: "execution"           # {{ e.id }}, {{ e.success }}
-  m: "match"               # {{ m.index }}, {{ m.input_path }}
-  g: "globals"             # {{ g.status.matches }}, {{ g.summary }}
-  
-  # Plugin shortcuts (current match context)
-  movie: "renamer.parsed.movie"     # {{ movie.name }}, {{ movie.year }}
-  show: "renamer.parsed.show"       # {{ show.name }}, {{ show.season }}
-  
-  # API shortcuts
-  tmdb_movie: "tmdb.movie"          # {{ tmdb_movie.title }}
-  tmdb_show: "tmdb.show"            # {{ tmdb_show.name }}
-
+# Global options
 options:
   debug: true
   dry_run: true
   hardlink: true
-plugins:
-  ffprobe:
-    enabled: true
-    timeout: 15
-  file-reader:
-    allow_virtual_paths: true
-    enabled: false
-    targets:
-    - /media/shows/Breaking Bad S01E01.mkv
-  mock-test:
-    enabled: false
-  omdb:
-    api_key: ${OMDB_API_KEY}
-    enabled: false
-    include-raw: true
-  renamer:
-    enabled: true
-    media_type: auto
-  scanner:
-    enabled: true
-    recursive: false
-    targets:
+  memory:
+    max_plugins_mb: 500
+    flush_threshold: 0.8
+    eviction_policy: completed_first
+
+# Aliases - Define shortcuts for template access
+# New terminology: run, job instead of execution, match
+aliases:
+  # System shortcuts
+  r: "run" # {{ r.id }}, {{ r.success }}
+  j: "job" # {{ j.index }}, {{ j.input.value }}
+
+  # Plugin shortcuts (current job context)
+  p: "job.plugins.renamer.parsed" # {{ p.movie.name }}
+  movie: "job.plugins.renamer.parsed.movie"
+  show: "job.plugins.renamer.parsed.show"
+
+  # Metadata shortcuts
+  m: "job.plugins.tmdb.movie" # {{ m.title }}
+  s: "job.plugins.tmdb.show" # {{ s.name }}
+
+  # Technical data
+  video: "job.plugins.ffprobe.video"
+  audio: "job.plugins.ffprobe.audio"
+
+# ============================================================
+# PLUGINS (FlexGet-style: each plugin is a top-level key)
+# ============================================================
+
+# INPUT STAGE: File discovery
+scanner:
+  enabled: true
+  recursive: false
+  targets:
     - /home/samet/torrents/Mr. & Mrs. Smith (2005) BluRay 1080p DDP5.1 H.265 TSRG.mkv
-  tmdb:
-    api_key: ${TMDB_API_KEY}
-    enabled: true
-    extras:
-      movie_credits: true
-      movie_images: true
-      movie_keywords: true
-      movie_videos: true
-      tv_credits: true
-      tv_episode_credits: true
-      tv_episode_images: true
-      tv_images: true
-      tv_keywords: true
-      tv_season_images: true
-      tv_videos: true
-    include-raw: true
-    language: tr-TR
-  tvdb:
-    api_key: ${TVDB_API_KEY}
-    enabled: false
-    extras:
-      episodes_extended: true
-      movies_extended: true
-      seasons_extended: true
-      series_artworks: true
-      series_extended: true
-      tags_options: true
-    include-raw: true
-  tvmaze:
-    enabled: false
-    extras:
-      episodes_guestcast: true
-      episodes_guestcrew: true
-      episodes_single: true
-      shows_cast: true
-      shows_crew: true
-      shows_episodes: true
-      shows_images: true
-      shows_seasons: true
-    include-raw: true
-tasks:
-- name: print_match_header
-  template: '
 
-    ========== MATCH {{ index }} ==========
+# PARSE STAGE: Filename parsing
+renamer:
+  enabled: true
+  media_type: auto
 
-    '
-  type: print
+# DATA STAGE: Metadata fetching
+tmdb:
+  enabled: true
+  api_key: ${TMDB_API_KEY}
+  language: tr-TR
+  region: TR
+  include-raw: true
+  extras:
+    movie_credits: true
+    movie_images: true
+    movie_keywords: true
+    movie_videos: true
+    tv_credits: true
+    tv_episode_credits: true
+    tv_episode_images: true
+    tv_images: true
+    tv_keywords: true
+    tv_season_images: true
+    tv_videos: true
 
-# NEW: Alias test task
-- name: alias_test
-  type: print
-  template: |
-    --- Alias Test ---
-    {{ m.index }}: {{ m.input_path | truncate(50) }}
-    {% if movie %}Movie: {{ movie.name }} ({{ movie.year }}){% endif %}
-    {% if show %}Show: {{ show.name }} S{{ '%02d' | format(show.season) }}E{{ '%02d' | format(show.episode) }}{% endif %}
-    {% if tmdb_movie %}TMDb: {{ tmdb_movie.title.primary }}{% endif %}
-    {% if tmdb_show %}TMDb Show: {{ tmdb_show.title.primary }}{% endif %}
-    Globals: {{ g.status.matches }} matches
-    --- End Alias ---
+ffprobe:
+  enabled: true
+  timeout: 15
 
-- name: print_input
-  template: '{% if match_globals and match_globals.input %}Input: {{ match_globals.input.path
-    }}{% if match_globals.input.virtual %} (virtual){% endif %} [{{ match_globals.input.category|upper
-    }}]{% endif %}
+# Disabled plugins
+tvdb:
+  enabled: false
+  api_key: ${TVDB_API_KEY}
 
-    '
-  type: print
-- name: print_renamer
-  template: '{% if renamer and renamer.category == ''movie'' %}MOVIE: {{ renamer.parsed.movie.name
-    }} ({{ renamer.parsed.movie.year }}){% elif renamer and renamer.category == ''show''
-    %}SHOW: {{ renamer.parsed.show.name }} S{{ ''%02d'' | format(renamer.parsed.show.season)
-    }}E{{ ''%02d'' | format(renamer.parsed.show.episode) }}{% endif %}
+omdb:
+  enabled: false
+  api_key: ${OMDB_API_KEY}
 
-    '
-  type: print
-- external: true
+tvmaze:
+  enabled: false
 
-  name: detailed_metadata_check
-  path: tasks/metadata-checker.yml
-- external: true
+file-reader:
+  enabled: false
 
-  name: dump_api_response
-  path: tasks/api-response-dump.yml
-- condition: '{{ index: == (count:matches - 1) }}'
-  name: print_summary
-  template: '
+mock-test:
+  enabled: false
 
-    ============================================================
+# ============================================================
+# OUTPUT STAGE: Task execution (replaces tasks: section)
+# ============================================================
+tasker:
+  enabled: true
+  provides:
+    - fs.write:/srv/media
+  tasks:
+    # Print job info
+    - name: print_job_header
+      type: print
+      template: |
 
-    ENDPOINT TEST SUMMARY
+        ========== JOB {{ index }} {{config.ffprobe.timeout}} ========== 
 
-    ============================================================
+    # Print parsed info
+    - name: print_parsed
+      type: print
+      template: |
+        {% if p.movie %}MOVIE: {{ p.movie.name }} ({{ p.movie.year }}){% endif %}
+        {% if p.show %}SHOW: {{ p.show.name }} S{{ '%02d' | format(p.show.season) }}E{{ '%02d' | format(p.show.episode) }}{% endif %}
 
-    Total Matches: {{ globals.status.matches }}
+    # Print metadata
+    - name: print_metadata
+      type: print
+      template: |
+        {% if m %}TMDb: {{ m.title.primary if m.title is mapping else m.title }} ({{ m.release.year if m.release is mapping else (m.release_date[:4] if m.release_date else 'N/A') }}){% endif %}
+        {% if s %}TMDb Show: {{ s.name.primary if s.name is mapping else s.name }}{% endif %}
 
-    Success Rate: {{ globals.status.success }}
+    # Save movie task (example)
+    - name: save_movie
+      type: save
+      path: "{% if p.movie %}/srv/archive/{{ (m.title.primary if m.title is mapping else m.title) if m else p.movie.name }} ({{ (m.release.year if m.release is mapping else m.release_date[:4]) if m and (m.release or m.release_date) else p.movie.year }})/{{ (m.title.primary if m.title is mapping else m.title) if m else p.movie.name }}.mkv{% endif %}"
 
-    ============================================================
+    # Save show task (example)
+    - name: save_show
+      type: save
+      path: "{% if p.show %}/srv/archive/{{ s.name if s else p.show.name }}/Season {{ p.show.season }}/{{ s.name if s else p.show.name }} S{{ '%02d' | format(p.show.season) }}E{{ '%02d' | format(p.show.episode) }}.mkv{% endif %}"
 
-    '
-  type: print
+    # External tasks - disabled for now (verbose output)
+    # - name: detailed_metadata_check
+    #   external: true
+    #   path: tasks/metadata-checker.yml
+
+    # - name: dump_api_response
+    #   external: true
+    #   path: tasks/api-response-dump.yml

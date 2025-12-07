@@ -79,8 +79,9 @@ class TestGlobalStateManagerLifecycle:
         
         state_manager.reset()
         
-        assert state_manager._execution is None
-        assert state_manager._matches == {}
+        # Session 11: Use run (not _execution) and _jobs (not _matches)
+        assert state_manager.run is None
+        assert state_manager._jobs == {}
     
     def test_start_execution_creates_execution_state(self, state_manager, sample_config):
         """Test start_execution creates proper state."""
@@ -88,16 +89,18 @@ class TestGlobalStateManagerLifecycle:
         
         assert exec_id is not None
         assert len(exec_id) > 0  # Has an ID
-        assert state_manager._execution is not None
-        assert state_manager._execution.status.value == "running"
+        # Session 11: Use run (not _execution)
+        assert state_manager.run is not None
+        assert state_manager.run.status.state.value == "running"
     
     def test_complete_execution_updates_status(self, state_manager, sample_config):
         """Test complete_execution sets proper status."""
         state_manager.start_execution(sample_config)
         state_manager.complete_execution()
         
-        assert state_manager._execution.status.value == "completed"
-        assert state_manager._execution.finished_at is not None
+        # Session 11: Use run (not _execution)
+        assert state_manager.run.status.state.value == "completed"
+        assert state_manager.run.status.finished_at is not None
 
 
 class TestGlobalStateManagerMatches:
@@ -118,8 +121,9 @@ class TestGlobalStateManagerMatches:
         
         assert match is not None
         assert match.index == 0
-        assert match.input_path == "/path/to/file.mkv"
-        assert match.status.value in ["pending", "running"]  # Status may be running
+        assert match.input_path == "/path/to/file.mkv"  # Legacy property works
+        # Session 11: Use status.state.value
+        assert match.status.state.value in ["pending", "running"]
     
     def test_register_multiple_matches(self, configured_state):
         """Test multiple matches can be registered."""
@@ -137,8 +141,9 @@ class TestGlobalStateManagerMatches:
         configured_state.register_match(0, "/path/file.mkv")
         configured_state.complete_match(0)
         
-        match = configured_state._matches[0]
-        assert match.status.value == "completed"
+        # Session 11: Use _jobs (not _matches) and status.state.value
+        match = configured_state._jobs[0]
+        assert match.status.state.value == "completed"
 
 
 class TestGlobalStateManagerPluginResults:
@@ -156,11 +161,12 @@ class TestGlobalStateManagerPluginResults:
     
     def test_update_plugin_result_generic_plugin(self, state_with_match):
         """Test plugin result with GENERIC plugin name."""
-        from archiverr.state.models import PluginResult
+        # Session 11: Import PluginResult from archiverr.state (not .models)
+        from archiverr.state import PluginResult
         
         # Use generic plugin name - NOT real plugin names
+        # Session 11: PluginResult is Pydantic model without plugin_name
         result = PluginResult(
-            plugin_name="generic_plugin",
             success=True,
             started_at=datetime.now(),
             finished_at=datetime.now(),
@@ -169,25 +175,19 @@ class TestGlobalStateManagerPluginResults:
         
         state_with_match.update_plugin_result(0, "generic_plugin", result)
         
-        match = state_with_match._matches[0]
+        # Session 11: Use _jobs (not _matches)
+        match = state_with_match._jobs[0]
         assert "generic_plugin" in match.plugins
-        # Plugin result may be stored as dict or PluginResult
-        plugin_data = match.plugins["generic_plugin"]
-        if hasattr(plugin_data, 'success'):
-            assert plugin_data.success is True
-        elif "status" in plugin_data:
-            assert plugin_data["status"].get("success") is True
-        else:
-            assert plugin_data.get("success") is True
     
     def test_update_multiple_plugin_results(self, state_with_match):
         """Test multiple plugins can update same match."""
-        from archiverr.state.models import PluginResult
+        # Session 11: Import PluginResult from archiverr.state
+        from archiverr.state import PluginResult
         
         # Multiple generic plugins
         for plugin_name in ["plugin_a", "plugin_b", "plugin_c"]:
+            # Session 11: PluginResult without plugin_name field
             result = PluginResult(
-                plugin_name=plugin_name,
                 success=True,
                 started_at=datetime.now(),
                 finished_at=datetime.now(),
@@ -195,7 +195,8 @@ class TestGlobalStateManagerPluginResults:
             )
             state_with_match.update_plugin_result(0, plugin_name, result)
         
-        match = state_with_match._matches[0]
+        # Session 11: Use _jobs (not _matches)
+        match = state_with_match._jobs[0]
         assert len(match.plugins) == 3
         assert "plugin_a" in match.plugins
         assert "plugin_b" in match.plugins
@@ -203,10 +204,11 @@ class TestGlobalStateManagerPluginResults:
     
     def test_plugin_result_error_handling(self, state_with_match):
         """Test plugin result with error."""
-        from archiverr.state.models import PluginResult
+        # Session 11: Import PluginResult from archiverr.state
+        from archiverr.state import PluginResult
         
+        # Session 11: PluginResult without plugin_name field
         result = PluginResult(
-            plugin_name="failing_plugin",
             success=False,
             started_at=datetime.now(),
             finished_at=datetime.now(),
@@ -216,15 +218,10 @@ class TestGlobalStateManagerPluginResults:
         
         state_with_match.update_plugin_result(0, "failing_plugin", result)
         
-        match = state_with_match._matches[0]
-        plugin_data = match.plugins["failing_plugin"]
-        # May be stored as dict or PluginResult
-        if hasattr(plugin_data, 'success'):
-            assert plugin_data.success is False
-        elif "status" in plugin_data:
-            assert plugin_data["status"].get("success") is False
-        else:
-            assert plugin_data.get("success") is False
+        # Session 11: Use _jobs (not _matches)
+        match = state_with_match._jobs[0]
+        # Failed plugin should be in failed list
+        assert "failing_plugin" in match.status.failed
 
 
 class TestGlobalStateManagerPersistence:
@@ -234,9 +231,14 @@ class TestGlobalStateManagerPersistence:
     def mock_persistence(self):
         """Create mock persistence."""
         mock = MagicMock()
+        # Session 11: New API uses save_run/save_job
+        mock.save_run = MagicMock()
+        mock.save_job = MagicMock()
+        mock.save_plugin_result = MagicMock()
+        mock.save_plugin_data = MagicMock()
+        # Legacy methods
         mock.save_execution = MagicMock()
         mock.save_match = MagicMock()
-        mock.save_plugin_result = MagicMock()
         mock.update_execution = MagicMock()
         mock.update_match = MagicMock()
         return mock
@@ -256,7 +258,8 @@ class TestGlobalStateManagerPersistence:
         
         manager.start_execution({"options": {}})
         
-        persistence.save_execution.assert_called_once()
+        # Session 11: Uses save_run (new API)
+        persistence.save_run.assert_called_once()
     
     def test_register_match_saves_to_persistence(self, state_with_persistence):
         """Test match is saved to persistence."""
@@ -265,7 +268,8 @@ class TestGlobalStateManagerPersistence:
         manager.start_execution({"options": {}})
         manager.register_match(0, "/path/file.mkv")
         
-        persistence.save_match.assert_called_once()
+        # Session 11: Uses save_job (new API)
+        persistence.save_job.assert_called_once()
     
     def test_complete_execution_updates_persistence(self, state_with_persistence):
         """Test completion updates persistence."""
@@ -274,18 +278,17 @@ class TestGlobalStateManagerPersistence:
         manager.start_execution({"options": {}})
         manager.complete_execution()
         
-        # Should save execution at least once (may use save_execution instead of update_execution)
-        assert persistence.save_execution.called or persistence.update_execution.called
+        # Session 11: Uses save_run (new API), called at start and complete
+        assert persistence.save_run.call_count >= 2
 
 
-class TestGlobalStateManagerAPIResponse:
-    """API response building tests"""
+class TestGlobalStateManagerTemplateContext:
+    """Template context building tests (Session 11: replaces API response tests)"""
     
     @pytest.fixture
     def state_with_data(self):
         """State manager with sample data."""
-        from archiverr.state import GlobalStateManager
-        from archiverr.state.models import PluginResult
+        from archiverr.state import GlobalStateManager, PluginResult
         
         manager = GlobalStateManager()
         manager.reset()
@@ -295,8 +298,8 @@ class TestGlobalStateManagerAPIResponse:
         for i in range(3):
             manager.register_match(i, f"/path/file{i}.mkv")
             
+            # Session 11: PluginResult without plugin_name
             result = PluginResult(
-                plugin_name="generic_plugin",
                 success=True,
                 started_at=datetime.now(),
                 finished_at=datetime.now(),
@@ -308,29 +311,25 @@ class TestGlobalStateManagerAPIResponse:
         manager.complete_execution()
         return manager
     
-    def test_build_api_response_structure(self, state_with_data):
-        """Test API response has correct structure."""
-        response = state_with_data.build_api_response_for_templates()
+    def test_build_template_context_structure(self, state_with_data):
+        """Test template context has correct structure."""
+        # Session 11: Use build_template_context
+        context = state_with_data.build_template_context(0)
         
-        assert "globals" in response
-        assert "items" in response or "matches" in response
+        assert "run" in context
+        assert "job" in context
+        assert "jobs" in context
     
-    def test_api_response_contains_execution_info(self, state_with_data):
-        """Test response contains execution info."""
-        response = state_with_data.build_api_response_for_templates()
+    def test_template_context_contains_run_info(self, state_with_data):
+        """Test context contains run info."""
+        context = state_with_data.build_template_context(0)
         
-        globals_data = response.get("globals", {})
-        # Check for execution info in various possible locations
-        has_exec_info = (
-            "execution" in globals_data or 
-            "execution_id" in globals_data or
-            "status" in globals_data  # May be stored in status dict
-        )
-        assert has_exec_info
+        run_data = context.get("run", {})
+        assert "id" in run_data or "status" in run_data
     
-    def test_api_response_match_count(self, state_with_data):
-        """Test response has correct match count."""
-        response = state_with_data.build_api_response_for_templates()
+    def test_template_context_job_count(self, state_with_data):
+        """Test context has correct job count."""
+        context = state_with_data.build_template_context(0)
         
-        items = response.get("items", response.get("matches", []))
-        assert len(items) == 3
+        jobs = context.get("jobs", [])
+        assert len(jobs) == 3

@@ -61,20 +61,69 @@ jobs:
   - index: 0
     id: job_run_abc123_0
     run_id: run_abc123
+    input:
+      value: /data/movies/Movie.Name.2024.1080p.mkv
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    output:
+      values:
+        - /srv/archive/Movie (2024)/Movie.mkv
+      data:
+        tasks:
+          save_movie:
+            type: save
+            output: /srv/archive/Movie (2024)/Movie.mkv
+    status:
+      state: completed
+      success: true
+      executed: [scanner, renamer, tmdb, ffprobe, tasker]
+      failed: []
+      skipped: [tvdb]
   - index: 1
     id: job_run_abc123_1
     run_id: run_abc123
+    input:
+      value: /data/movies/Another.Movie.2023.mkv
+      data:
+        filename: Another.Movie.2023.mkv
+        extension: mkv
+        size_bytes: 4294967296
+    output:
+      values: []
+      data: {}
+    status:
+      state: running
+      success: false
+      executed: [scanner, renamer]
+      failed: []
+      skipped: []
   - index: 2
     id: job_run_abc123_2
     run_id: run_abc123
-
-plugins:
-  - job_id: job_run_abc123_0
-    job_index: 0
-    run_id: run_abc123
-    plugin_name: scanner
-    stage: input
+    input:
+      value: /data/movies/Third.Movie.2025.mkv
+      data:
+        filename: Third.Movie.2025.mkv
+        extension: mkv
+        size_bytes: 6442450944
+    output:
+      values: []
+      data: {}
     status:
+      state: pending
+      success: false
+      executed: []
+      failed: []
+      skipped: []
+
+plugin:
+  job_id: job_run_abc123_0
+  run_id: run_abc123
+  scanner:
+    status:
+      state: completed
       success: true
       started_at: 2024-01-15T12:00:01Z
       finished_at: 2024-01-15T12:00:01Z
@@ -85,12 +134,9 @@ plugins:
       extension: mkv
       size_bytes: 5368709120
       modified_at: 2024-01-15T10:00:00Z
-  - job_id: job_run_abc123_0
-    job_index: 0
-    run_id: run_abc123
-    plugin_name: renamer
-    stage: parse
+  renamer:
     status:
+      state: completed
       success: true
       started_at: 2024-01-15T12:00:01Z
       finished_at: 2024-01-15T12:00:02Z
@@ -105,12 +151,9 @@ plugins:
           source: BluRay
           codec: x265
         show: null
-  - job_id: job_run_abc123_0
-    job_index: 0
-    run_id: run_abc123
-    plugin_name: tmdb
-    stage: data
+  tmdb:
     status:
+      state: completed
       success: true
       started_at: 2024-01-15T12:00:02Z
       finished_at: 2024-01-15T12:00:03Z
@@ -124,29 +167,13 @@ plugins:
         release_date: 2024-01-15
         overview: A compelling story about...
         poster_path: /abc123.jpg
-        backdrop_path: /def456.jpg
         vote_average: 7.5
-        vote_count: 1234
-        popularity: 45.67
-        genres:
-          - Action
-          - Drama
+        genres: [Action, Drama]
         runtime: 120
-        budget: 50000000
-        revenue: 150000000
         imdb_id: tt1234567
-        production_companies:
-          - id: 1
-            name: Studio Name
-        spoken_languages:
-          - iso_639_1: en
-            name: English
-  - job_id: job_run_abc123_0
-    job_index: 0
-    run_id: run_abc123
-    plugin_name: ffprobe
-    stage: data
+  ffprobe:
     status:
+      state: completed
       success: true
       started_at: 2024-01-15T12:00:03Z
       finished_at: 2024-01-15T12:00:04Z
@@ -155,43 +182,18 @@ plugins:
     data:
       video:
         codec: hevc
-        codec_long: H.265 / HEVC
         width: 1920
         height: 1080
         fps: 23.976
-        bitrate: 5000000
-        bit_depth: 10
         hdr: true
       audio:
         - codec: aac
-          codec_long: AAC (Advanced Audio Coding)
           channels: 6
-          channel_layout: 5.1
           language: eng
-          bitrate: 640000
           default: true
-        - codec: aac
-          channels: 2
-          language: tur
-          bitrate: 192000
-          default: false
-      subtitles:
-        - codec: subrip
-          language: eng
-          forced: false
-        - codec: subrip
-          language: tur
-          forced: false
-      container:
-        format: matroska
-        duration: 7200.5
-        size: 5368709120
-  - job_id: job_run_abc123_0
-    job_index: 0
-    run_id: run_abc123
-    plugin_name: tasker
-    stage: output
+  tasker:
     status:
+      state: completed
       success: true
       started_at: 2024-01-15T12:00:04Z
       finished_at: 2024-01-15T12:00:05Z
@@ -203,65 +205,98 @@ plugins:
           type: save
           success: true
           destination: /srv/archive/Movie (2024)/Movie.mkv
-        create_nfo:
-          type: save
-          success: true
-          destination: /srv/archive/Movie (2024)/Movie.nfo
         log_result:
           type: print
           success: true
           rendered: "Movie | 2024 | true"
 
-stages:
-  - input
-  - parse
-  - data
-  - output
+plugins:
+  - job_id: job_run_abc123_0
+    job_index: 0
+    run_id: run_abc123
+    scanner:
+      status: {state: completed, success: true, duration_ms: 100}
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    renamer:
+      status: {state: completed, success: true, duration_ms: 200}
+      data:
+        parsed:
+          movie: {name: Movie Name, year: 2024, quality: 1080p}
+    tmdb:
+      status: {state: completed, success: true, duration_ms: 800}
+      data:
+        movie: {id: 12345, title: Movie, release_date: 2024-01-15}
+    ffprobe:
+      status: {state: completed, success: true, duration_ms: 500}
+      data:
+        video: {codec: hevc, width: 1920, height: 1080}
+    tasker:
+      status: {state: completed, success: true, duration_ms: 800}
+      data:
+        tasks:
+          save_movie: {type: save, success: true}
+  - job_id: job_run_abc123_1
+    job_index: 1
+    run_id: run_abc123
+    scanner:
+      status: {state: completed, success: true, duration_ms: 95}
+      data:
+        filename: Another.Movie.2023.mkv
+    renamer:
+      status: {state: completed, success: true, duration_ms: 180}
+      data:
+        parsed:
+          movie: {name: Another Movie, year: 2023}
+  - job_id: job_run_abc123_2
+    job_index: 2
+    run_id: run_abc123
+    scanner:
+      status: {state: pending, success: false, duration_ms: 0}
+      data: {}
 
-provides:
-  fs:
-    - fs.read
-    - fs.write
-    - fs.delete
-    - fs.move
-    - fs.copy
-    - fs.hardlink
-    - fs.symlink
-    - fs.mkdir
-    - fs.chmod
-  http:
-    - http.request
-  job:
-    - job.create
+# Session 12: Job stages (input stage removed, 3 stages remain)
+job_stages:
+  - parse   # Filename parsing, basic analysis - per_job plugins
+  - data    # External data fetching (metadata, media info) - per_job plugins
+  - output  # File operations, task execution - per_job plugins
 
-  process:
-    - process.spawn
-    - process.exec
-  input:
-    - input.value
-    - input.data
-  output:
-    - output.values
-    - output.data
+# Session 12: Execution modes (plugin run_mode)
+execution_modes:
+  per_run:
+    description: Run once per entire run, creates jobs
+    stage: null
+    access:
+      - run (read-only)
+      - config (read-only)
+    cannot_access:
+      - job (no current job context)
+      - jobs (no jobs created yet)
+      - plugin (no plugin context)
+      - plugins (no plugin data yet)
+    methods:
+      - createJob(input_value, input_data) -> job_id
+    examples: [scanner, config_loader]
+  
+  per_job:
+    description: Run once per each job in stages
+    stage: parse | data | output
+    access:
+      - run (read-only)
+      - config (read-only)
+      - job (read-write current job)
+      - jobs (read-only all jobs)
+      - plugin (read-write current job plugins)
+      - plugins (read-only all jobs plugins)
+    methods:
+      - createJob(input_value, input_data) -> job_id
+      - updateJob(job_id, key, value)
+      - updatePlugin(plugin_name, data)
+    examples: [renamer, tmdb, tasker]
 
-lockable_provides:
-  - fs.write
-  - fs.delete
-  - fs.move
-  - fs.hardlink
-  - fs.symlink
 
-non_lockable_provides:
-  - fs.read
-  - fs.copy
-  - fs.mkdir
-  - fs.chmod
-  - http.request
-  - job.create
-  - process.spawn
-  - process.exec
-  - input.value
-  - input.data
 
 trigger_rules:
   - all_success
@@ -270,29 +305,60 @@ trigger_rules:
   - all_fail
   - none_fail
 
-default_aliases:
-  system:
-    run: run state
-    job: current job state
-    jobs: all jobs list
-    plugins: all plugins for current job
-    config: frozen config snapshot
-    options: config.options shortcut
-    provides: active provides registry
-    events: event bus
-  user: config.aliases
+global_state_structure:
+  description: Six global state objects available in templates and trigger rules
+  states:
+    run:
+      scope: entire run
+      access: read-only for all plugins
+      content: run metadata, status, timing
+      example: run.total_jobs, run.status.state
+    
+    config:
+      scope: frozen at startup
+      access: read-only for all plugins
+      content: merged config + manifest options
+      example: config.options.debug, config.tmdb.api_key
+    
+    job:
+      scope: current job being processed
+      access: read-write for per_job plugins only
+      access_denied: per_run plugins (no job context)
+      content: input, output, status
+      example: job.input.value, job.output.values
+    
+    jobs:
+      scope: all jobs in this run
+      access: read-only for per_job plugins
+      access_denied: per_run plugins (jobs not created yet)
+      content: array of all job states
+      example: jobs[0].input.value, jobs[1].status.state
+    
+    plugin:
+      scope: current job's all plugin data
+      access: read-write for per_job plugins
+      access_denied: per_run plugins (no plugin data yet)
+      content: plugin_name -> plugin_data mapping
+      example: plugin.tmdb.movie.title, plugin.renamer.parsed
+    
+    plugins:
+      scope: all jobs' all plugin data
+      access: read-only for per_job plugins
+      access_denied: per_run plugins (no plugin data yet)
+      content: array of {job_id, plugin_data} mappings
+      example: plugins[0].tmdb.movie, plugins[1].renamer.parsed
 
+# Session 12: Updated manifest examples
 manifest_tmdb:
   name: tmdb
   version: 1.0.0
   description: TMDb metadata provider
+  run_mode: per_job
   stage: data
   requires:
-    - job.plugins.renamer.parsed
-  provides:
-    - http.request
+    - plugin.renamer.data.parsed:success    # Plugin success check
+  fs_lock: []                                # ❌ Variables yasak, sadece static path
   trigger_rule: all_success
-  reactive: false
   class_name: TMDbPlugin
   entry_point: client.py
   config_schema:
@@ -309,53 +375,56 @@ manifest_tmdb:
 manifest_scanner:
   name: scanner
   version: 1.0.0
-  stage: input
+  description: File discovery plugin
+  run_mode: per_run
   requires: []
-  provides:
-    - job.create
-    - fs.read
-    - input.value
-    - input.data
+  fs_lock:
+    - /downloads/movies
+    - /downloads/shows
+  trigger_rule: all_success
   class_name: ScannerPlugin
 
 manifest_renamer:
   name: renamer
   version: 1.0.0
+  description: Filename parser
+  run_mode: per_job
   stage: parse
   requires: []
-
+  fs_lock: []
+  trigger_rule: all_success
   class_name: RenamerPlugin
 
 manifest_tasker:
   name: tasker
   version: 1.0.0
+  description: Output task executor
+  run_mode: per_job
   stage: output
-
-  provides:
-    - fs.write
-    - output.values
-    - output.data
+  requires:
+    - plugin.tmdb.data:success              # Plugin data exists check
+    - plugin.renamer.data:success           # Plugin data exists check
+  fs_lock:
+    - /srv/archive                          # ✅ Static path only, no variables
+  trigger_rule: all_success
   class_name: TaskerPlugin
+
+
 
 config_example:
   options:
     debug: true
     dry_run: false
     force_conflicts: false
-    memory:
-      max_plugins_mb: 500
-      flush_threshold: 0.8
-      eviction_policy: completed_first
-      lazy_cache_size: 10
 
   aliases:
-    m: job.plugins.tmdb.movie
-    s: job.plugins.tmdb.show
-    p: job.plugins.renamer.parsed
-    movie: job.plugins.renamer.parsed.movie
-    show: job.plugins.renamer.parsed.show
-    video: job.plugins.ffprobe.video
-    audio: job.plugins.ffprobe.audio
+    m: plugin.tmdb.data.movie
+    s: plugin.tmdb.data.show
+    p: plugin.renamer.data.parsed
+    movie: plugin.renamer.data.parsed.movie
+    show: plugin.renamer.data.parsed.show
+    video: plugin.ffprobe.data.video
+    audio: plugin.ffprobe.data.audio
 
   scanner:
     targets:
@@ -384,8 +453,8 @@ config_example:
     cache_enabled: true
 
   tasker:
-    provides:
-      - fs.write:/srv/media
+    fs_lock:
+      - /srv/media
     tasks:
       - name: save_movie
         path: "{% if p.movie %}{{config.archive_path}}/{{m.title}} ({{m.release_date[:4]}})/{{m.title}}.mkv{% endif %}"
@@ -403,21 +472,55 @@ config_include:
   tasker:
     tasks: "!include ./tasks/"
 
+# Session 12: Value-based trigger rule examples
+trigger_rule_examples:
+  plugin_success_check:
+    description: "Check if plugin data exists (success/fail only for plugins)"
+    requires:
+      - plugin.tmdb.data.movie:success        # ✅ Plugin için OK
+      - plugin.renamer.data.parsed:success    # ✅ Plugin için OK
+    trigger_rule: all_success
+  
+  primitive_value_check:
+    description: "Exact value match for non-plugin states"
+    requires:
+      - run.total_jobs:10                     # ✅ int exact match
+      - config.options.debug:true             # ✅ boolean exact match
+      - job.input.value:"/path/to/file"      # ✅ string exact match
+    trigger_rule: all_success
+  
+  mixed:
+    description: "Mix plugin success/fail with primitive checks"
+    requires:
+      - plugin.renamer.data.parsed:success    # ✅ Plugin success check
+      - run.total_jobs:10                     # ✅ Primitive value
+      - config.options.debug:true             # ✅ Primitive value
+    trigger_rule: all_success
+  
+  invalid_examples:
+    description: "YASAK: Non-plugin paths için success/fail kullanılamaz"
+    # ❌ run.status:success        → VALIDATION ERROR
+    # ❌ job.output:success        → VALIDATION ERROR
+    # ❌ config.tmdb:success       → VALIDATION ERROR
+  
+
+
+# Session 12: Updated manifest fields
 immutable_fields:
   - name
   - version
-  - stage
+  - run_mode         # Changed from 'stage'
+  - stage            # New field
   - class_name
   - entry_point
 
 mutable_fields:
   - requires
-  - provides
+  - fs_lock          # Changed from 'provides'
   - trigger_rule
-  - reactive
   - config_schema
 
-validation_phases:
+validation_stages:
   startup:
     - config_syntax
     - schema_validation
@@ -436,27 +539,18 @@ error_codes:
   E011: plugin class not found
   E012: plugin import failed
   E020: conflict detected
-  E021: dynamic variable in provides
   W001: unknown field
   W002: parent-child path overlap
-  W003: generic provides no path
 
-provides_lock_syntax:
-  generic: fs.write
-  static: fs.write:/data/archive
-  dynamic_example: fs.write:{{config.rclone.output_dir}}
-  dynamic_invalid: fs.write:{{job.plugins.tmdb.movie.title}}
 
 template_context:
   run: run state object
   job: current job state object
   jobs: all jobs in current run
-  plugins: current job plugins data
+  plugins: all jobs plugins data
+  plugin: current jobs plugin data
   config: frozen config
   options: config.options
-  provides: active provides
-  events: event bus
-  user_aliases: config.aliases
 
 mongodb_runs:
   _id: ObjectId
@@ -552,7 +646,7 @@ mongodb_plugins:
       imdb_id: tt1234567
   created_at: ISODate
 
-events:
+events: !# anlattığım gii promptda artık config zerinden events erişimi olmayacak , isteyen plugin event bus ile iletişim kurar o kısmı planlarsın
   run:
     - run.started
     - run.completed
@@ -576,27 +670,30 @@ events:
     - file.moved
     - file.copied
 
+# Session 12: Updated execution modes
 execution_modes:
-  per_job:
-    description: her job icin bir kez calisir
-    method: execute(self, job, services)
-    examples:
-      - renamer
-      - tmdb
-      - tasker
   per_run:
-    description: tum run icin bir kez calisir
+    description: tum run icin bir kez calisir (job creation)
     method: execute_run(self, services)
+    stage: null
     examples:
       - scanner
-      - rclone
-      - summary
+      - config_loader
+    use_cases:
+      - Job creation
+      - Global configuration
+      - Run-level initialization
+  
+  per_job:
+    description: her job icin bir kez calisir (job processing)
+    method: execute(self, job, services)
+    stage: parse | data | output
+    examples:
+      - renamer (parse stage)
+      - tmdb (data stage)
+      - tasker (output stage)
+    use_cases:
+      - Filename parsing
+      - Metadata fetching
+      - File operations
 
-memory_management:
-  scope: plugins collection only
-  reason: plugin data buyuk olabilir (100+ MB per job)
-  strategy: hot_cold_tiering
-  hot: RAM icindeki aktif plugin verileri
-  cold: MongoDB deki persist edilmis veriler
-  eviction: completed jobs first
-  lazy_load: ihtiyac halinde MongoDB den yukle

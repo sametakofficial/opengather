@@ -98,28 +98,24 @@ class DependencyValidator:
         - job.plugins.renamer.parsed → renamer
         - job.plugins.tmdb.movie.title → tmdb
         - renamer.parsed → renamer (legacy)
-        - job.input.path → None (not a plugin dependency)
-        - run.config.option → None (not a plugin dependency)
+        - provides.state.update → None (not a plugin dependency)
         """
+        # Skip provides-based requires
+        if req.startswith('provides.'):
+            return None
+        
+        # New format: job.plugins.{plugin}.{path}
+        if req.startswith('job.plugins.'):
+            parts = req.split('.')
+            if len(parts) >= 3:
+                return parts[2]  # The plugin name
+        
+        # Legacy format: {plugin}.{path}
         parts = req.split('.')
+        if len(parts) >= 2:
+            return parts[0]
         
-        if len(parts) < 2:
-            return None
-        
-        # New format: job.plugins.{name}.{path}
-        if parts[0] == 'job' and parts[1] == 'plugins' and len(parts) >= 3:
-            return parts[2]
-        
-        # job.input.* or job.output.* - not a plugin dependency
-        if parts[0] == 'job' and parts[1] in ('input', 'output', 'status'):
-            return None
-        
-        # run.* - not a plugin dependency
-        if parts[0] == 'run':
-            return None
-        
-        # Legacy format: {plugin_name}.{path}
-        return parts[0]
+        return None
     
     def _check_missing_deps(
         self,
@@ -134,8 +130,8 @@ class DependencyValidator:
                 if dep not in available:
                     result.add_error(
                         E014,
-                        f"Plugin '{plugin}' depends on unknown plugin '{dep}'",
-                        path=f"{plugin}.requires"
+                        f"Plugin '{plugin}' requires '{dep}' which is not available",
+                        level=ValidationLevel.WARNING
                     )
         
         return result
@@ -221,14 +217,15 @@ class DependencyValidator:
         available = set(manifests.keys())
         
         # Calculate in-degrees
+        # in_degree[X] = number of dependencies X must wait for
+        # If A requires B, then in_degree[A] += 1 (A must wait for B)
         in_degree: Dict[str, int] = {node: 0 for node in available}
         
-        for deps in graph.values():
-            for dep in deps:
-                if dep in in_degree:
-                    in_degree[dep] += 1
+        for node, deps in graph.items():
+            # node requires each dep, so node must wait for len(deps) plugins
+            in_degree[node] = len([d for d in deps if d in available])
         
-        # Start with nodes that have no incoming edges (no dependencies)
+        # Start with nodes that have no dependencies (in_degree == 0)
         # These are the "root" plugins that can run first
         queue = [n for n in available if in_degree[n] == 0]
         order: List[str] = []

@@ -1,38 +1,47 @@
-"""Renamer Plugin - Parse filenames and extract metadata"""
+"""
+Renamer Plugin - Parse filenames and extract metadata
+
+Session 11 - Stage: PARSE, Mode: per_job
+"""
 from typing import Dict, Any
 from datetime import datetime
 from pathlib import Path
-import re
-from .parser import sanitize_string, parse_show_name, parse_movie_name
-from archiverr.core.plugins.sdk import OutputPlugin
+from .parser import parse_show_name, parse_movie_name
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 
 class RenamerPlugin(OutputPlugin):
-    """Output plugin that parses filenames to extract show/movie metadata"""
+    """
+    PARSE stage plugin - extracts show/movie metadata from filenames.
+    
+    Provides:
+    - job.plugins.renamer.parsed
+    - job.plugins.renamer.category
+    """
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.name = "renamer"
         self.media_type = config.get('media_type', 'auto')
     
-    def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, job: Any, services: Any) -> PluginResult:
         """
-        Parse filename and extract metadata.
+        Parse filename and extract metadata (Session 11 signature).
         
         Args:
-            match_data: Must contain 'input' with path
+            job: JobState with input.value
+            services: PluginServices
             
         Returns:
-            {status, parsed: {show: {...}, movie: {...}}, category}
+            PluginResult with parsed data
         """
-        start_time = datetime.now()
+        started_at = datetime.now()
         
-        # Get input metadata from match
-        input_metadata = match_data.get('input', {})
-        input_path = input_metadata.get('path')
+        # Get input path from job
+        input_path = job.input.value if hasattr(job.input, 'value') else str(job.input)
         
         if not input_path:
-            return self._error_result()
+            return PluginResult.error_result("No input path", started_at=started_at)
         
         filename = Path(input_path).stem
         
@@ -43,18 +52,13 @@ class RenamerPlugin(OutputPlugin):
         movie_match = None
         
         if self.media_type == 'auto':
-            # Try movie first (year is strong indicator)
             movie_match = self._parse_movie(filename)
-            
-            # Only try show if NO movie with year found
             if not (movie_match and movie_match.get('year')):
                 show_match = self._parse_show(filename)
-                movie_match = None  # Clear movie if we're treating as show
+                movie_match = None
         elif self.media_type == 'show':
-            # Only parse as TV show
             show_match = self._parse_show(filename)
         elif self.media_type == 'movie':
-            # Only parse as movie
             movie_match = self._parse_movie(filename)
         
         # Determine category
@@ -65,27 +69,29 @@ class RenamerPlugin(OutputPlugin):
         elif show_match and show_match.get('name'):
             category = 'show'
             self.info("Detected show", name=show_match['name'], 
-                             season=show_match.get('season'), episode=show_match.get('episode'))
+                     season=show_match.get('season'), episode=show_match.get('episode'))
         else:
             self.warn("Could not detect category", filename=filename)
         
-        # Calculate duration
-        end_time = datetime.now()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-        
-        return {
-            'status': {
-                'success': True,
-                'started_at': start_time.isoformat(),
-                'finished_at': end_time.isoformat(),
-                'duration_ms': duration_ms
-            },
+        # Save to job plugins via services
+        result_data = {
             'parsed': {
                 'show': show_match,
                 'movie': movie_match
             },
             'category': category
         }
+        
+        # Update job state
+        if hasattr(services, 'state'):
+            services.state.save_plugin_data(
+                job_id=job.id,
+                plugin_name='renamer',
+                stage='parse',
+                data=result_data
+            )
+        
+        return PluginResult.success_result(data=result_data, started_at=started_at)
     
     def _parse_show(self, filename: str) -> Dict[str, Any]:
         """Parse TV show format using parser.py"""

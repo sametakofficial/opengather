@@ -33,9 +33,12 @@ class PluginLoader:
             self.debugger.debug("loader", f"Plugin not found in metadata", plugin=plugin_name)
             return None
         
-        # Check if enabled in config
-        plugin_config = self.config.get('plugins', {}).get(plugin_name, {})
-        if not plugin_config.get('enabled', False):
+        # Check if enabled in config - support both formats
+        # 1. Normalized format: _plugins (from config_normalizer)
+        # 2. Legacy format: plugins wrapper
+        # 3. FlexGet format: top-level key
+        plugin_config = self._get_plugin_config(plugin_name)
+        if not self._is_plugin_enabled(plugin_name, plugin_config):
             self.debugger.debug("loader", f"Plugin disabled", plugin=plugin_name)
             return None
         
@@ -62,8 +65,13 @@ class PluginLoader:
         try:
             self.debugger.debug("loader", f"Loading plugin", plugin=plugin_name)
             
+            # Get entry_point from metadata (default: client.py)
+            entry_point = metadata.get('entry_point', 'client.py')
+            # Remove .py extension to get module name
+            module_name = entry_point.replace('.py', '')
+            
             # Import plugin module
-            module_path = f"archiverr.plugins.{plugin_name}.client"
+            module_path = f"archiverr.plugins.{plugin_name}.{module_name}"
             module = importlib.import_module(module_path)
             
             # Get class name from metadata or use convention
@@ -113,11 +121,47 @@ class PluginLoader:
         return plugins
     
     def load_by_category(self, category: str) -> Dict[str, Any]:
-        """Load all plugins of a specific category"""
+        """
+        Load all plugins of a specific category.
+        
+        Supports legacy category → stage mapping:
+        - 'input' → input stage
+        - 'output' → parse, data, output stages (backward compat)
+        """
+        plugins = {}
+        
+        # Map legacy categories to new stages
+        stage_groups = {
+            'input': ['input'],
+            'output': ['parse', 'data', 'output'],  # All non-input stages
+        }
+        
+        target_stages = stage_groups.get(category, [category])
+        
+        for plugin_name, metadata in self.plugin_metadata.items():
+            # Get stage (prefer stage over category)
+            plugin_stage = metadata.get('stage') or metadata.get('category', 'output')
+            
+            # Map legacy category to stage if needed
+            if plugin_stage == 'output' and metadata.get('stage') is None:
+                # Legacy output plugin - determine actual stage from manifest normalizer map
+                from archiverr.core.plugins.manifest_normalizer import PLUGIN_STAGE_MAP
+                plugin_stage = PLUGIN_STAGE_MAP.get(plugin_name, 'data')
+            
+            if plugin_stage in target_stages:
+                plugin = self.load_plugin(plugin_name)
+                if plugin:
+                    plugins[plugin_name] = plugin
+        
+        return plugins
+    
+    def load_by_stage(self, stage: str) -> Dict[str, Any]:
+        """Load all plugins of a specific stage (new system)"""
         plugins = {}
         
         for plugin_name, metadata in self.plugin_metadata.items():
-            if metadata.get('category') != category:
+            plugin_stage = metadata.get('stage') or metadata.get('category')
+            if plugin_stage != stage:
                 continue
             
             plugin = self.load_plugin(plugin_name)
@@ -125,3 +169,63 @@ class PluginLoader:
                 plugins[plugin_name] = plugin
         
         return plugins
+    
+    def _get_plugin_config(self, plugin_name: str) -> Dict[str, Any]:
+        """
+        Get plugin config from config - supports all formats.
+        
+        Priority:
+        1. Normalized _plugins (from config_normalizer)
+        2. Legacy plugins: wrapper
+        3. FlexGet top-level key
+        """
+        # 1. Check normalized format
+        if '_plugins' in self.config:
+            plugin_conf = self.config['_plugins'].get(plugin_name, {})
+            # Return config without internal keys
+            return {k: v for k, v in plugin_conf.items() if not k.startswith('_')}
+        
+        # 2. Check legacy format
+        if 'plugins' in self.config:
+            plugin_conf = self.config['plugins'].get(plugin_name, {})
+            if isinstance(plugin_conf, dict):
+                return plugin_conf
+            return {}
+        
+        # 3. Check FlexGet format (top-level key)
+        plugin_conf = self.config.get(plugin_name, {})
+        if isinstance(plugin_conf, dict):
+            return plugin_conf
+        
+        return {}
+    
+    def _is_plugin_enabled(self, plugin_name: str, plugin_config: Dict[str, Any]) -> bool:
+        """
+        Check if plugin is enabled - supports all formats.
+        """
+        # 1. Check normalized _enabled_plugins list
+        if '_enabled_plugins' in self.config:
+            return plugin_name in self.config['_enabled_plugins']
+        
+        # 2. Check normalized _plugins _enabled flag
+        if '_plugins' in self.config:
+            plugin_conf = self.config['_plugins'].get(plugin_name, {})
+            return plugin_conf.get('_enabled', False)
+        
+        # 3. Check legacy format
+        if 'plugins' in self.config:
+            plugin_conf = self.config['plugins'].get(plugin_name)
+            if plugin_conf is False:
+                return False
+            if isinstance(plugin_conf, dict):
+                return plugin_conf.get('enabled', False)
+            return bool(plugin_conf)
+        
+        # 4. Check FlexGet format
+        plugin_conf = self.config.get(plugin_name)
+        if plugin_conf is False:
+            return False
+        if isinstance(plugin_conf, dict):
+            return plugin_conf.get('enabled', True)  # Default enabled if config exists
+        
+        return False
