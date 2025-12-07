@@ -22,11 +22,10 @@ from archiverr.state.models import RunState, JobState, StateEnum
 from archiverr.state.manager import GlobalStateManager
 from archiverr.events import EventBus
 from archiverr.utils.debug import Debugger, get_debugger
-
-from .plugins.registry import PluginRegistry, Stage
-from .plugins.stage_executor import StageExecutor
-from .exceptions import CriticalError, StageError, PluginError
-from .validation import validate_at_startup, ValidationResult
+from archiverr.core.plugins.registry import PluginRegistry, Stage
+from archiverr.core.plugins.stage_executor import StageExecutor
+from archiverr.core.exceptions import CriticalError, StageError
+from archiverr.core.locking import FSLockManager
 
 
 @dataclass
@@ -123,6 +122,9 @@ class Orchestrator:
         self._config = config
         self._debugger = debugger or get_debugger()
         
+        # Session 12: FS Lock Manager
+        self._fs_lock_manager = FSLockManager()
+        
         # Runtime state (set during run)
         self._run_id: Optional[str] = None
         self._start_time: Optional[datetime] = None
@@ -201,33 +203,23 @@ class Orchestrator:
                 {"discovered": discovered_count, "enabled": 0}
             )
         
-        # Run startup validation
+        # Session 12: Validate fs_lock paths (static paths only)
         manifests = self._plugin_registry.get_all_manifests()
-        enabled_plugins = self._plugin_registry.enabled_plugins
+        is_valid, fs_errors = self._fs_lock_manager.validate_all_manifests(manifests)
         
-        validation_result = validate_at_startup(
-            config=self._config,
-            manifests=manifests,
-            enabled_plugins=enabled_plugins
-        )
+        if not is_valid:
+            for error in fs_errors:
+                self._log("error", f"FS Lock validation: {error}")
+            raise CriticalError(
+                "FS Lock validation failed: paths must be static (no variables)",
+                {"errors": fs_errors}
+            )
         
-        # Log warnings
-        for warning in validation_result.warnings:
-            self._log("warn", str(warning))
-        
-        # Check for errors
-        if not validation_result.valid:
-            for error in validation_result.errors:
-                self._log("error", str(error))
-            
-            if validation_result.has_fatal():
-                raise CriticalError(
-                    "Startup validation failed with fatal errors",
-                    {"error_count": validation_result.error_count()}
-                )
-            else:
-                # Non-fatal errors: log and continue (best effort)
-                self._log("warn", f"Startup validation found {validation_result.error_count()} errors, continuing...")
+        # Check for fs_lock conflicts
+        conflicts = self._fs_lock_manager.detect_conflicts(manifests)
+        if conflicts:
+            for conflict in conflicts:
+                self._log("warn", f"FS Lock conflict: {conflict}")
         
         # Legacy dependency validation (will be removed after full migration)
         dep_errors = self._plugin_registry.validate_dependencies()
