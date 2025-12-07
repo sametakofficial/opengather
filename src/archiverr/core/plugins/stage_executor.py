@@ -22,9 +22,9 @@ from archiverr.events import EventBus
 from archiverr.utils.debug import Debugger, get_debugger
 from archiverr.core.exceptions import StageError, PluginError
 from archiverr.core.services import PluginServices, create_plugin_services
+from archiverr.core.triggers import TriggerRuleManager
 
 from .registry import PluginRegistry, Stage
-from .requires_validator import RequiresValidator, RequiresResult
 
 
 class ExecutionMode(Enum):
@@ -113,11 +113,8 @@ class StageExecutor:
         # Plugin data cache: {job_id: {plugin_name: data}}
         self._plugin_data_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
         
-        # Session 12: Provides registry removed
-        # RequiresValidator now validates plugin data dependencies
-        self._requires_validator = RequiresValidator(
-            event_bus=self._event_bus
-        )
+        # Session 12: Trigger rule manager for dependency resolution
+        self._trigger_manager = TriggerRuleManager()
     
     def execute_stage(self, stage: Stage) -> None:
         """
@@ -287,20 +284,22 @@ class StageExecutor:
         if not requires:
             requires = manifest.get('expects', []) if manifest else []
         
-        # Validate requires (P1.1: with trigger_rule support)
+        # Session 12: Validate requires with trigger rules
         if requires:
-            plugin_cache = self._plugin_data_cache.get(job.id, {})
-            validation = self._requires_validator.validate(job, requires, plugin_cache)
+            # Build global state for trigger evaluation
+            global_state = self._build_global_state(job)
             
-            # P1.1: Check trigger_rule instead of simple satisfied check
-            should_run = validation.check_trigger_rule(trigger_rule)
+            # Check if plugin should execute
+            should_run, reason = self._trigger_manager.should_execute(
+                trigger_rule=trigger_rule,
+                requirements=requires,
+                state=global_state
+            )
             
             if not should_run:
                 self._log("debug", 
                          f"Skipping {plugin_name} for job {job.id}: "
-                         f"trigger_rule={trigger_rule} not satisfied "
-                         f"(success={validation.success_count}/{validation.total_count}, "
-                         f"failed={validation.failed_count})")
+                         f"trigger_rule={trigger_rule} - {reason}")
                 
                 # Mark as skipped
                 self._mark_skipped(job, plugin_name)
@@ -310,7 +309,7 @@ class StageExecutor:
                     success=True,
                     data={},
                     skipped=True,
-                    skip_reason=f"Trigger rule '{trigger_rule}' not satisfied: {', '.join(validation.missing)}"
+                    skip_reason=f"Trigger rule '{trigger_rule}': {reason}"
                 )
         
         try:
@@ -770,5 +769,50 @@ class StageExecutor:
     def clear_cache(self) -> None:
         """Clear plugin data cache"""
         self._plugin_data_cache.clear()
+    
+    def _build_global_state(self, job: JobState) -> Dict[str, Any]:
+        """
+        Build global state dict for trigger evaluation (Session 12).
+        
+        Args:
+            job: Current job state
+            
+        Returns:
+            Global state dict with run, config, job, plugin structure
+        """
+        # Get run state
+        run_state = self._state.run
+        
+        # Build global state structure
+        global_state = {
+            'run': {
+                'id': run_state.id if run_state else '',
+                'status': run_state.status.to_dict() if run_state else {}
+            },
+            'config': self._config,
+            'job': {
+                'id': job.id,
+                'index': job.index,
+                'input': {
+                    'value': job.input.value,
+                    'data': job.input.data
+                },
+                'output': {
+                    'values': job.output.values,
+                    'data': job.output.data
+                },
+                'status': job.status.to_dict(),
+                'plugins': job.plugins  # Legacy access
+            },
+            'plugin': {}  # Current job's plugins
+        }
+        
+        # Add plugin data from job.plugins
+        # Session 12 format: plugin.{name}.status and plugin.{name}.data
+        for plugin_name, plugin_data in job.plugins.items():
+            if isinstance(plugin_data, dict):
+                global_state['plugin'][plugin_name] = plugin_data
+        
+        return global_state
     
     # Session 12: Provides registry methods removed
