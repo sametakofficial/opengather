@@ -64,6 +64,7 @@ class PluginManifest(BaseModel):
     
     # NEW: Stage-based system (Session 11)
     stage: Optional[VALID_STAGES] = Field(None, description="Execution stage (input, parse, data, output)")
+    run_mode: Optional[Literal["per_run", "per_job"]] = Field(None, description="Session 12: Plugin execution mode")
     requires: List[str] = Field(default_factory=list, description="Required data paths (job.plugins.X.field)")
     trigger_rule: Optional[VALID_TRIGGER_RULES] = Field(default="all_success", description="When to run")
     reactive: bool = Field(default=False, description="Whether plugin reacts to events")
@@ -86,6 +87,9 @@ class PluginManifest(BaseModel):
     
     # Config schema
     config_schema: Optional[Dict[str, Any]] = Field(None, description="Configuration schema")
+    
+    # Session 12: FS lock system
+    fs_lock: List[str] = Field(default_factory=list, description="Static file paths to lock (no variables)")
     
     class Config:
         """Pydantic config"""

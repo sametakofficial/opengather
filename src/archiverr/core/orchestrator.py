@@ -275,6 +275,7 @@ class Orchestrator:
         
         for plugin_name, plugin_instance in all_plugins.items():
             manifest = self._plugin_registry.get_manifest(plugin_name)
+            self._log("debug", f"Checking {plugin_name}: run_mode={manifest.get('run_mode') if manifest else 'NO_MANIFEST'}, stage={manifest.get('stage') if manifest else 'NO_STAGE'}")
             if manifest and manifest.get('run_mode') == 'per_run':
                 per_run_plugins.append((plugin_name, plugin_instance))
         
