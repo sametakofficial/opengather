@@ -21,7 +21,7 @@ from archiverr.state.models import JobState, RunState
 from archiverr.events import EventBus
 from archiverr.utils.debug import Debugger, get_debugger
 from archiverr.core.exceptions import StageError, PluginError
-from archiverr.core.services import PluginServices, create_plugin_services
+from archiverr.core.services.plugin_services import PluginServices
 from archiverr.core.triggers import TriggerRuleManager
 
 from .registry import PluginRegistry, Stage
@@ -315,12 +315,8 @@ class StageExecutor:
         try:
             self._log("debug", f"Executing {plugin_name} for job {job.id}")
             
-            # Create services
-            services = self._create_services(plugin_name)
-            
-            # Set current job in state service if supported
-            if hasattr(services.state, 'set_current_job'):
-                services.state.set_current_job(job.id)
+            # Session 12: Create services with job context
+            services = self._create_services(plugin_name, job_id=job.id)
             
             # Execute plugin - try new signature first, then legacy
             if hasattr(plugin, 'execute'):
@@ -363,24 +359,32 @@ class StageExecutor:
             elif isinstance(result, dict):
                 result_data = result
             
-            # Cache plugin data for downstream plugins
+            # Determine success status
+            success = True
+            if hasattr(result, 'status'):
+                success = result.status.value == "success" if hasattr(result.status, 'value') else bool(result.status)
+            
+            # Session 12: Store plugin data in plugin.{name}.data.* format
             if result_data:
+                # Cache for trigger evaluation
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
                 
-                # Also update job.plugins dict for template access
+                # Update job.plugins with Session 12 structure
                 if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                    job.plugins[plugin_name] = result_data
+                    # Session 12: plugin.{name}.status and plugin.{name}.data
+                    job.plugins[plugin_name] = {
+                        'status': {
+                            'state': 'completed',
+                            'success': success
+                        },
+                        'data': result_data
+                    }
                 elif hasattr(job, 'plugins'):
-                    # MatchState uses plugins dict
+                    # Legacy MatchState
                     try:
                         job.plugins[plugin_name] = result_data
                     except (TypeError, AttributeError):
                         pass
-            
-            # Update job status
-            success = True
-            if hasattr(result, 'status'):
-                success = result.status.value == "success" if hasattr(result.status, 'value') else bool(result.status)
             
             self._mark_executed(job, plugin_name, success)
             
@@ -600,15 +604,32 @@ class StageExecutor:
         
         return results
     
-    def _create_services(self, plugin_name: str) -> PluginServices:
-        """Create PluginServices for a plugin"""
-        return create_plugin_services(
-            state_manager=self._state,
+    def _create_services(self, plugin_name: str, job_id: str = None) -> PluginServices:
+        """
+        Create PluginServices for a plugin (Session 12).
+        
+        Args:
+            plugin_name: Plugin name
+            job_id: Current job ID (for per_job plugins)
+            
+        Returns:
+            PluginServices instance with context set
+        """
+        # Determine mode based on job_id
+        mode = "per_job" if job_id else "per_run"
+        
+        # Create services with context
+        services = PluginServices(
+            state=self._state,
             event_bus=self._event_bus,
-            debugger=self._debugger,
+            logger=self._debugger,
             config=self._config,
-            plugin_name=plugin_name
+            mode=mode,
+            current_job_id=job_id,
+            current_plugin_name=plugin_name
         )
+        
+        return services
     
     def _create_jobs_from_matches(self, matches: List[Dict]) -> Any:
         """

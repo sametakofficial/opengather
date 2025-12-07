@@ -73,7 +73,7 @@ class RenamerPlugin(OutputPlugin):
         else:
             self.warn("Could not detect category", filename=filename)
         
-        # Save to job plugins via services
+        # Session 12: Save to plugin.renamer.data.*
         result_data = {
             'parsed': {
                 'show': show_match,
@@ -82,8 +82,11 @@ class RenamerPlugin(OutputPlugin):
             'category': category
         }
         
-        # Update job state
-        if hasattr(services, 'state'):
+        # Update plugin state via services (Session 12)
+        if hasattr(services, 'updatePlugin'):
+            services.updatePlugin(data=result_data)
+        elif hasattr(services, 'state'):
+            # Fallback for legacy
             services.state.save_plugin_data(
                 job_id=job.id,
                 plugin_name='renamer',

@@ -1,5 +1,5 @@
 # Session 12 Test Config
-# Test basic plugin execution flow
+# Full integration test with real file
 
 options:
   debug: true
@@ -8,9 +8,10 @@ options:
 scanner:
   enabled: true
   targets:
-    - "/tmp/test_movies/Movie.2024.1080p.mkv"
-  allow_virtual_paths: true
+    - "/tmp/test_movies/The.Matrix.1999.1080p.mkv"
+  allow_virtual_paths: false
   extensions: [mkv, mp4]
+  recursive: false
 
 renamer:
   enabled: true
@@ -27,4 +28,4 @@ tasker:
   dry_run: true
   tasks:
     - type: print
-      template: "Test: {{ plugin.tmdb.data.movie.title }}"
+      template: "Movie: {{ job.input.value }}"
