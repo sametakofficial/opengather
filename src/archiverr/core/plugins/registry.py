@@ -61,9 +61,9 @@ class Stage(Enum):
 
 @dataclass
 class PluginInfo:
-    """Cached plugin information"""
+    """Cached plugin information (Session 12)"""
     name: str
-    stage: Stage
+    stage: Optional[Stage]  # None for per_run plugins
     manifest: Dict[str, Any]
     instance: Optional[Any] = None
     requires: List[str] = field(default_factory=list)
@@ -155,18 +155,21 @@ class PluginRegistry:
         # Store all loaded plugins
         self._all_plugins = {**input_plugins, **output_plugins}
         
-        # Organize by stage
+        # Session 12: Organize by stage (INPUT removed, per_run mode)
+        # Input plugins are per_run mode, not assigned to a stage
         for name, instance in input_plugins.items():
             manifest = self._all_manifests.get(name, {})
-            self._plugins_by_stage[Stage.INPUT][name] = instance
-            self._build_plugin_info(name, Stage.INPUT, manifest, instance)
+            # Input plugins don't have a stage in Session 12
+            # They run as per_run before stages
+            self._build_plugin_info(name, None, manifest, instance)
         
         for name, instance in output_plugins.items():
             manifest = self._all_manifests.get(name, {})
-            # Determine stage from manifest (default to OUTPUT)
+            # Determine stage from manifest (PARSE, DATA, or OUTPUT)
             stage = self._determine_stage(manifest)
-            self._plugins_by_stage[stage][name] = instance
-            self._build_plugin_info(name, stage, manifest, instance)
+            if stage:  # Only add if stage is defined
+                self._plugins_by_stage[stage][name] = instance
+                self._build_plugin_info(name, stage, manifest, instance)
         
         self._loaded = True
         
@@ -195,18 +198,18 @@ class PluginRegistry:
             except ValueError:
                 pass
         
-        # Legacy: map from category
-        category = manifest.get('category', 'output')
-        return Stage.from_category(category)
+        # Legacy: Default to PARSE if not specified
+        # Session 12: All plugins should have explicit stage in manifest
+        return Stage.PARSE
     
     def _build_plugin_info(
         self,
         name: str,
-        stage: Stage,
+        stage: Optional[Stage],  # None for per_run plugins
         manifest: Dict[str, Any],
         instance: Optional[Any]
     ) -> None:
-        """Build and cache PluginInfo for a plugin."""
+        """Build and cache PluginInfo for a plugin (Session 12)."""
         # Extract requires (supports both old and new formats)
         requires = manifest.get('requires', [])
         if not requires:
