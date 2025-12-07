@@ -1,16 +1,17 @@
 """
 Orchestrator - Main execution coordinator
 
-Session 11 - Phase 4: Central coordinator that replaces __main__.py logic.
+Session 12: Central coordinator for plugin execution.
 
 Responsibilities:
 - Run lifecycle management (start → execute → finalize)
-- 4-stage execution (input → parse → data → output)
+- 3-stage execution (parse → data → output)
+- Per-run plugin execution (outside stages)
 - Error handling and recovery
 - Event emission for observability
 - Persistence coordination
 
-This reduces __main__.py from ~400 lines to ~50 lines.
+Note: INPUT stage removed. Input plugins run as per_run mode.
 """
 
 from dataclasses import dataclass, field
@@ -92,8 +93,8 @@ class Orchestrator:
         5. RunResult is returned
     """
     
-    # Stage execution order
-    STAGES = [Stage.INPUT, Stage.PARSE, Stage.DATA, Stage.OUTPUT]
+    # Stage execution order (Session 12: 3 stages only)
+    STAGES = [Stage.PARSE, Stage.DATA, Stage.OUTPUT]
     
     def __init__(
         self,

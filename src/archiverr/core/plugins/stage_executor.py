@@ -29,17 +29,16 @@ from .requires_validator import RequiresValidator, RequiresResult
 
 
 class ExecutionMode(Enum):
-    """Plugin execution mode"""
-    PER_RUN = "per_run"   # Execute once per run (INPUT stage)
-    PER_JOB = "per_job"   # Execute for each job (PARSE, DATA, OUTPUT)
+    """Plugin execution mode (Session 12)"""
+    PER_RUN = "per_run"   # Execute once per run (outside stages)
+    PER_JOB = "per_job"   # Execute for each job (PARSE, DATA, OUTPUT stages)
 
 
-# Default execution mode by stage
+# Default execution mode by stage (Session 12: 3 stages only)
 STAGE_MODES: Dict[Stage, ExecutionMode] = {
-    Stage.INPUT: ExecutionMode.PER_RUN,
     Stage.PARSE: ExecutionMode.PER_JOB,
     Stage.DATA: ExecutionMode.PER_JOB,
-    Stage.OUTPUT: ExecutionMode.PER_JOB,  # Mixed, but default per_job
+    Stage.OUTPUT: ExecutionMode.PER_JOB,
 }
 
 
@@ -57,13 +56,14 @@ class PluginExecutionResult:
 
 class StageExecutor:
     """
-    4-stage plugin execution engine.
+    Session 12: 3-stage plugin execution engine.
     
-    Orchestrates plugin execution across the 4 stages:
-    1. INPUT: Discover files/items, create jobs (per_run)
-    2. PARSE: Parse filenames, extract metadata (per_job)
-    3. DATA: Fetch external data like TMDB/TVDB (per_job)
-    4. OUTPUT: Execute tasks, write files (mixed)
+    Orchestrates plugin execution across 3 stages:
+    1. PARSE: Parse filenames, extract metadata (per_job)
+    2. DATA: Fetch external data like TMDB/TVDB (per_job)
+    3. OUTPUT: Execute tasks, write files (per_job)
+    
+    Note: INPUT stage removed. Input plugins run as per_run outside stages.
     
     Features:
     - Requires validation before plugin execution

@@ -22,39 +22,41 @@ from .loader import PluginLoader
 
 class Stage(Enum):
     """
-    Plugin execution stages.
+    Session 12: Plugin execution stages (3 stages only).
     
     Order matters - stages execute in this sequence:
-    1. INPUT: File discovery (scanner)
-    2. PARSE: Filename parsing (renamer)
-    3. DATA: External data fetching (tmdb, tvdb)
-    4. OUTPUT: Output generation (tasker, reporter)
+    1. PARSE: Filename parsing (renamer)
+    2. DATA: External data fetching (tmdb, tvdb)
+    3. OUTPUT: Output generation (tasker, reporter)
     
-    Temporary mapping from legacy 'category':
-    - category: input → stage: input
-    - category: output → stage: output (will be refined to parse/data/output)
+    Note: INPUT stage removed in Session 12.
+    Input plugins (scanner) now run as per_run mode outside stages.
     """
-    INPUT = "input"
     PARSE = "parse"
     DATA = "data"
     OUTPUT = "output"
     
     @classmethod
-    def from_category(cls, category: str) -> 'Stage':
+    def from_string(cls, stage_str: str) -> 'Stage':
         """
-        Map legacy category to stage.
+        Get Stage from string.
         
-        This is a temporary migration helper.
-        After Phase 6, plugins will have explicit stage in manifest.
+        Args:
+            stage_str: Stage name ("parse", "data", or "output")
+            
+        Returns:
+            Stage enum
+            
+        Raises:
+            ValueError: If stage_str is invalid
         """
-        if category == "input":
-            return cls.INPUT
-        elif category == "output":
-            # For now, all output plugins are OUTPUT stage
-            # Will be refined when manifest has 'stage' field
-            return cls.OUTPUT
-        else:
-            return cls.OUTPUT  # Default to OUTPUT for unknown
+        try:
+            return cls(stage_str.lower())
+        except ValueError:
+            raise ValueError(
+                f"Invalid stage: {stage_str}. "
+                f"Valid stages: parse, data, output"
+            )
 
 
 @dataclass
