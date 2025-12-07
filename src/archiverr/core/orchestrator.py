@@ -289,19 +289,32 @@ class Orchestrator:
             try:
                 self._log("debug", f"Executing per_run plugin: {plugin_name}")
                 
+                # Create PluginServices for per_run plugin
+                from archiverr.core.services.plugin_services import PluginServices
+                services = PluginServices(
+                    state=self._state,
+                    event_bus=self._event_bus,
+                    logger=self._debugger,
+                    config=self._config,
+                    mode="per_run"
+                )
+                
                 # Execute plugin (scanner creates jobs via services.createJob)
                 if hasattr(plugin_instance, 'execute_run'):
-                    plugin_instance.execute_run(self._stage_executor._state)
+                    result = plugin_instance.execute_run(services)
+                    self._log("info", f"{plugin_name} completed: {result.get('data', {}).get('count', 0)} jobs created")
                 elif hasattr(plugin_instance, 'get_matches'):
                     # Legacy: scanner uses get_matches
                     matches = plugin_instance.get_matches()
+                    self._log("debug", f"{plugin_name} returned {len(matches)} matches")
+                    
                     # Create jobs from matches
                     for match in matches:
                         job_id = self._state.create_job(
                             input_value=match.get('path', match.get('value', '')),
                             input_data=match
                         )
-                        self._log("debug", f"Created job: {job_id} from {plugin_name}")
+                        self._log("info", f"Created job: {job_id} from {plugin_name}")
                 
                 self._log("info", f"Per_run plugin {plugin_name} completed")
                 

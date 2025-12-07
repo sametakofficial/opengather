@@ -99,15 +99,20 @@ class ScannerPlugin(InputPlugin):
             'source': 'filesystem'
         }
         
-        # Create job via state service
-        if hasattr(services, 'state') and hasattr(services.state, 'create_job'):
+        # Session 12: Create job via PluginServices
+        if hasattr(services, 'createJob'):
+            services.createJob(
+                input_value=str(file_path),
+                input_data=input_data
+            )
+        elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
+            # Legacy fallback
             services.state.create_job(
                 input_value=str(file_path),
                 input_data=input_data
             )
         else:
-            # Fallback for legacy state manager
-            self.debug("Using legacy job creation", path=str(file_path))
+            self.debug("No job creation method available", path=str(file_path))
     
     def _create_job_for_virtual(self, services: Any, path: str) -> None:
         """Create a job for a virtual path."""
@@ -119,7 +124,14 @@ class ScannerPlugin(InputPlugin):
             'source': 'virtual'
         }
         
-        if hasattr(services, 'state') and hasattr(services.state, 'create_job'):
+        # Session 12: Create job via PluginServices
+        if hasattr(services, 'createJob'):
+            services.createJob(
+                input_value=path,
+                input_data=input_data
+            )
+        elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
+            # Legacy fallback
             services.state.create_job(
                 input_value=path,
                 input_data=input_data
