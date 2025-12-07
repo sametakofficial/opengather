@@ -723,10 +723,7 @@ class StageExecutor:
         duration_ms: int,
         job_id: str = None
     ) -> None:
-        """Emit plugin.completed event and update provides registry."""
-        # Mark provides as completed
-        self._complete_plugin_provides(plugin_name, success=success)
-        
+        """Emit plugin.completed event (Session 12: provides removed)."""
         event_data = {
             "plugin_name": plugin_name,
             "stage": stage.value,
@@ -748,10 +745,7 @@ class StageExecutor:
         duration_ms: int,
         job_id: str = None
     ) -> None:
-        """Emit plugin.failed event and update provides registry."""
-        # Mark provides as failed
-        self._complete_plugin_provides(plugin_name, success=False)
-        
+        """Emit plugin.failed event (Session 12: provides removed)."""
         event_data = {
             "plugin_name": plugin_name,
             "stage": stage.value,
