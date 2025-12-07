@@ -1,19 +1,18 @@
 # Scanner Plugin - File discovery input plugin
-# Session 11 - Stage-based format
+# Session 12 - Per-run mode (no stage)
 
 name: scanner
 version: 1.0.0
 description: Scans directories and files for media content
-stage: input
+run_mode: per_run
 class_name: ScannerPlugin
 entry_point: client.py
 
 # Input plugins have no dependencies
 requires: []
 
-# Provides filesystem read capability
-provides:
-  - fs.read
+# FS lock for static paths only (no variables allowed)
+fs_lock: []
 
 trigger_rule: all_success
 

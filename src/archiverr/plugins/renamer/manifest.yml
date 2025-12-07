@@ -1,19 +1,19 @@
 # Renamer Plugin - Parses media file names
-# Session 11 - Stage-based format
+# Session 12 - Per-job mode, parse stage
 
 name: renamer
 version: 1.0.0
 description: Parses media file names to extract movie/show metadata
+run_mode: per_job
 stage: parse
 class_name: RenamerPlugin
 entry_point: client.py
 
-# No dependencies - runs first after input
+# No dependencies - runs first in parse stage
 requires: []
 
-# Provides state update (parsed metadata)
-provides:
-  - state.update
+# FS lock for static paths only
+fs_lock: []
 
 trigger_rule: all_success
 

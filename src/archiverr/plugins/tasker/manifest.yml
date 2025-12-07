@@ -1,26 +1,24 @@
-# Tasker Plugin - Task execution plugin (replaces core/tasks)
-# Session 11 - New stage-based format
+# Tasker Plugin - Task execution plugin
+# Session 12 - Per-job mode, output stage
 
 name: tasker
 version: 1.0.0
 description: Executes output tasks (print, save, etc.) for each job
+run_mode: per_job
 stage: output
 class_name: TaskerPlugin
 entry_point: plugin.py
 
-# Requires: Wait for DATA stage plugins to complete
-# provides.state.update = tmdb, ffprobe, etc. have finished updating state
+# Session 12: Plugin data dependencies (wait for data stage)
 requires:
-  - provides.state.update
+  - plugin.tmdb.data:success
+  - plugin.renamer.data:success
 
-# Provides output capabilities
-provides:
-  - fs.write
-  - output.values
-  - output.data
-  - output.render
+# FS lock for static paths only
+fs_lock:
+  - /srv/archive
 
-trigger_rule: all_done # Run even if some data plugins failed
+trigger_rule: all_done
 
 # Supported media types (all)
 categories: []

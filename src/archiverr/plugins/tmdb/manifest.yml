@@ -1,24 +1,22 @@
 # TMDb Plugin - The Movie Database metadata provider
-# Session 11 - Stage-based format
+# Session 12 - Per-job mode with plugin data dependencies
 
 name: tmdb
 version: 1.0.0
 description: Fetches movie and TV show metadata from TMDb API
+run_mode: per_job
 stage: data
 class_name: TMDbPlugin
 entry_point: client.py
 
-# Requires parsed data from renamer
+# Requires parsed data from renamer (Session 12: plugin.{name}.data.* format)
 requires:
-  - job.plugins.renamer.parsed
+  - plugin.renamer.data.parsed:success
 
-# Provides HTTP requests and state updates
-provides:
-  - http.request
-  - state.update
+# FS lock for static paths only (no variables allowed)
+fs_lock: []
 
 trigger_rule: all_success
-reactive: false
 
 # Supported media types
 categories:
