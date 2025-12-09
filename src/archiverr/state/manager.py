@@ -264,28 +264,43 @@ class GlobalStateManager:
     
     # ==================== JOBS (was MATCHES) ====================
     
-    def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
+    def create_job(
+        self,
+        input_value: str,
+        input_data: Dict[str, Any] = None,
+        input_metadata: Dict[str, Any] = None,
+        filled_by: str = None
+    ) -> str:
         """
-        Create new job (Session 12).
+        create new job (session 14).
         
-        Args:
-            input_value: Input path or virtual identifier
-            input_data: Additional input metadata
+        args:
+            input_value: input path or virtual identifier (plugin sets)
+            input_data: plugin-specific input data (plugin sets)
+            input_metadata: system metadata (source, modified_at, size_bytes, etc.)
+            filled_by: plugin name that created this job
             
-        Returns:
-            Job ID (string)
+        returns:
+            job id (string)
         """
         if not self._run:
             raise RuntimeError("no active run")
         
         index = len(self._context._jobs)
         
+        # prepare metadata with system info + filled_by
+        from datetime import datetime
+        metadata = input_metadata or {}
+        metadata['filled_by'] = filled_by or 'unknown'
+        metadata['filled_at'] = datetime.utcnow().isoformat()
+        
         job = JobState(
             index=index,
             run_id=self._run.id,
             input=InputData(
                 value=input_value,
-                data=input_data or {}
+                data=input_data or {},
+                metadata=metadata
             )
         )
         job.start()

@@ -93,15 +93,16 @@ class ScannerPlugin(InputPlugin):
     
     def _create_job_for_file(self, services: Any, file_path: Path) -> None:
         """
-        Create a job for a file with proper input.value and input.data.
+        create a job for a file with proper input.value and input.metadata.
         
-        Session 11 format:
-        - input.value: Full file path
-        - input.data: {filename, extension, size_bytes, modified_at, source}
+        session 14 format:
+        - input.value: full file path (plugin)
+        - input.data: {} (plugin-specific, empty for scanner)
+        - input.metadata: {filename, extension, size_bytes, modified_at, source, filled_by, filled_at} (system)
         """
-        # Build input.data with file metadata
+        # build input.metadata with file system info
         stat = file_path.stat()
-        input_data = {
+        input_metadata = {
             'filename': file_path.name,
             'extension': file_path.suffix.lstrip('.'),
             'size_bytes': stat.st_size,
@@ -109,24 +110,27 @@ class ScannerPlugin(InputPlugin):
             'source': 'filesystem'
         }
         
-        # Session 12: Create job via PluginServices
+        # session 14: create job via pluginservices
         if hasattr(services, 'createJob'):
             services.createJob(
                 input_value=str(file_path),
-                input_data=input_data
+                input_data={},  # scanner has no plugin-specific data
+                input_metadata=input_metadata
             )
         elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
-            # Legacy fallback
+            # legacy fallback
             services.state.create_job(
                 input_value=str(file_path),
-                input_data=input_data
+                input_data={},
+                input_metadata=input_metadata,
+                filled_by='scanner'
             )
         else:
-            self.debug("No job creation method available", path=str(file_path))
+            self.debug("no job creation method available", path=str(file_path))
     
     def _create_job_for_virtual(self, services: Any, path: str) -> None:
-        """Create a job for a virtual path."""
-        input_data = {
+        """create a job for a virtual path."""
+        input_metadata = {
             'filename': Path(path).name,
             'extension': Path(path).suffix.lstrip('.') if '.' in path else '',
             'size_bytes': 0,
@@ -134,18 +138,23 @@ class ScannerPlugin(InputPlugin):
             'source': 'virtual'
         }
         
-        # Session 12: Create job via PluginServices
+        # session 14: create job via pluginservices
         if hasattr(services, 'createJob'):
             services.createJob(
                 input_value=path,
-                input_data=input_data
+                input_data={},
+                input_metadata=input_metadata
             )
         elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
-            # Legacy fallback
+            # legacy fallback
             services.state.create_job(
                 input_value=path,
-                input_data=input_data
+                input_data={},
+                input_metadata=input_metadata,
+                filled_by='scanner'
             )
+        else:
+            self.debug("no job creation method available", path=path)
     
     def execute(self, match_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
@@ -191,14 +200,15 @@ class ScannerPlugin(InputPlugin):
         return results
     
     def _build_match(self, file_path: Path) -> Dict[str, Any]:
-        """Build match dict with Session 11 input format."""
+        """build match dict with session 14 input format."""
         stat = file_path.stat()
         return {
             'status': {'success': True},
             'input': {
-                'value': str(file_path),  # Session 11: value instead of path
-                'path': str(file_path),   # Legacy: keep for backward compat
-                'data': {
+                'value': str(file_path),
+                'path': str(file_path),  # legacy
+                'data': {},  # plugin-specific (empty for scanner)
+                'metadata': {
                     'filename': file_path.name,
                     'extension': file_path.suffix.lstrip('.'),
                     'size_bytes': stat.st_size,
@@ -209,13 +219,14 @@ class ScannerPlugin(InputPlugin):
         }
     
     def _build_virtual_match(self, path: str) -> Dict[str, Any]:
-        """Build match dict for virtual path."""
+        """build match dict for virtual path."""
         return {
             'status': {'success': True},
             'input': {
                 'value': path,
-                'path': path,
-                'data': {
+                'path': path,  # legacy
+                'data': {},  # plugin-specific (empty for scanner)
+                'metadata': {
                     'filename': Path(path).name,
                     'extension': Path(path).suffix.lstrip('.') if '.' in path else '',
                     'size_bytes': 0,

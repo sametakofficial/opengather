@@ -1,9 +1,9 @@
 {
-  "run_id": "0938a3b1",
-  "timestamp": "2025-12-09T23:32:38.385354",
+  "run_id": "8945a631",
+  "timestamp": "2025-12-10T01:45:21.224524",
   "jobs": [
     {
-      "job_id": "job_0938a3b1_0",
+      "job_id": "job_8945a631_0",
       "index": 0,
       "input": {
         "value": "/tmp/friends/friends s01/friends s01 e02.mkv",
@@ -596,7 +596,7 @@
         }
       },
       "success": true,
-      "timestamp": "2025-12-09T23:32:38.383451"
+      "timestamp": "2025-12-10T01:45:21.223093"
     }
   ],
   "total_jobs": 1

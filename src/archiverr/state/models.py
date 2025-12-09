@@ -40,13 +40,13 @@ class InputData:
     job input data container.
     
     attributes:
-        value: input path or virtual identifier
-        data: additional metadata (filename, extension, size_bytes, etc.)
-        metadata: tracking info (filled_by, filled_at)
+        value: input path or virtual identifier (plugin sets this)
+        data: plugin-specific input data (plugin sets this)
+        metadata: system metadata (source, modified_at, size_bytes, filled_by, filled_at)
     """
     value: str
-    data: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)  # filled_by, filled_at
+    data: Dict[str, Any] = field(default_factory=dict)  # plugin data
+    metadata: Dict[str, Any] = field(default_factory=dict)  # system: source, modified_at, size_bytes, filled_by, filled_at
     
     def to_dict(self) -> Dict[str, Any]:
         return {
