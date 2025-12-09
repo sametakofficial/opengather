@@ -62,14 +62,13 @@ class PyMongoPersistence(PersistenceInterface):
     For API (async context), use Motor directly via get_database dependency.
     """
     
-    # Collection names (Session 12 - CLEAN!)
+    # Collection names (Session 14 - CLEAN!)
     RUNS = "runs"
     JOBS = "jobs"
-    PLUGINS = "plugins"  # ALL plugin data here!
+    PLUGINS = "plugins"
     BRANCHES = "branches"
-    COMMITS = "commits"
     
-    # Legacy collection names (for backward compatibility)
+    # Legacy collection names (DEPRECATED - will be dropped)
     EXECUTIONS = "executions"
     MATCHES = "matches"
     PLUGIN_RESULTS = "plugin_results"
@@ -166,11 +165,6 @@ class PyMongoPersistence(PersistenceInterface):
         # Branches indexes
         self._db[self.BRANCHES].create_index("name", unique=True)
         self._db[self.BRANCHES].create_index("is_default")
-        
-        # Commits indexes
-        self._db[self.COMMITS].create_index("branch_id")
-        self._db[self.COMMITS].create_index("execution_id")
-        self._db[self.COMMITS].create_index([("branch_id", 1), ("created_at", -1)])
         
         # Create new collection indexes (Session 11)
         self._create_new_indexes()
@@ -529,7 +523,7 @@ class PyMongoPersistence(PersistenceInterface):
         return list(cursor)
     
     def delete_branch(self, branch_id: str) -> bool:
-        """Delete a branch and its commits."""
+        """Delete a branch."""
         branch = self._db[self.BRANCHES].find_one({"_id": branch_id})
         if not branch:
             return False
@@ -537,126 +531,6 @@ class PyMongoPersistence(PersistenceInterface):
         if branch.get("is_default"):
             raise ValueError("Cannot delete default branch")
         
-        # Delete all commits on this branch
-        self._db[self.COMMITS].delete_many({"branch_id": branch_id})
-        
         # Delete branch
         result = self._db[self.BRANCHES].delete_one({"_id": branch_id})
         return result.deleted_count > 0
-    
-    def create_commit(
-        self,
-        execution_id: str,
-        branch_id: str = None,
-        message: str = "",
-        metadata: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Create a commit linking an execution to a branch."""
-        # Get branch (default if not specified)
-        if branch_id:
-            branch = self._db[self.BRANCHES].find_one({"_id": branch_id})
-        else:
-            branch = self._db[self.BRANCHES].find_one({"is_default": True})
-        
-        if not branch:
-            raise ValueError("No branch found. Create a branch first.")
-        
-        branch_id = branch["_id"]
-        parent_commit_id = branch.get("head_commit_id")
-        
-        # Normalize execution ID
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
-        # Verify execution exists
-        execution = self._db[self.EXECUTIONS].find_one({"_id": exec_id})
-        if not execution:
-            raise ValueError(f"Execution {execution_id} not found")
-        
-        commit_id = f"commit_{str(uuid4())[:8]}"
-        now = datetime.utcnow()
-        
-        commit_doc = {
-            "_id": commit_id,
-            "branch_id": branch_id,
-            "execution_id": exec_id,
-            "parent_commit_id": parent_commit_id,
-            "message": message or f"Execution {execution_id}",
-            "metadata": metadata or {},
-            "created_at": now,
-            "execution_summary": {
-                "status": execution.get("status"),
-                "success": execution.get("success"),
-                "total_matches": execution.get("summary", {}).get("total_matches", 0),
-                "completed_matches": execution.get("summary", {}).get("completed_matches", 0),
-                "failed_matches": execution.get("summary", {}).get("failed_matches", 0)
-            }
-        }
-        
-        self._db[self.COMMITS].insert_one(commit_doc)
-        
-        # Update branch head
-        self._db[self.BRANCHES].update_one(
-            {"_id": branch_id},
-            {
-                "$set": {
-                    "head_commit_id": commit_id,
-                    "updated_at": now
-                }
-            }
-        )
-        
-        return commit_doc
-    
-    def get_commit(self, commit_id: str) -> Optional[Dict[str, Any]]:
-        """Get commit by ID."""
-        return self._db[self.COMMITS].find_one({"_id": commit_id})
-    
-    def list_commits(
-        self,
-        branch_id: str = None,
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """List commits for a branch."""
-        query = {}
-        if branch_id:
-            query["branch_id"] = branch_id
-        
-        cursor = self._db[self.COMMITS].find(query).sort("created_at", -1).limit(limit)
-        return list(cursor)
-    
-    def get_commit_history(
-        self,
-        commit_id: str,
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """Get commit history (ancestors)."""
-        history = []
-        current_id = commit_id
-        
-        while current_id and len(history) < limit:
-            commit = self._db[self.COMMITS].find_one({"_id": current_id})
-            if not commit:
-                break
-            history.append(commit)
-            current_id = commit.get("parent_commit_id")
-        
-        return history
-    
-    def checkout_commit(self, commit_id: str) -> Dict[str, Any]:
-        """Get full execution data for a commit."""
-        commit = self._db[self.COMMITS].find_one({"_id": commit_id})
-        if not commit:
-            raise ValueError(f"Commit {commit_id} not found")
-        
-        exec_id = commit["execution_id"]
-        
-        execution = self._db[self.EXECUTIONS].find_one({"_id": exec_id})
-        matches = list(self._db[self.MATCHES].find({"execution_id": exec_id}))
-        plugin_results = list(self._db[self.PLUGIN_RESULTS].find({"execution_id": exec_id}))
-        
-        return {
-            "commit": commit,
-            "execution": execution,
-            "matches": matches,
-            "plugin_results": plugin_results
-        }

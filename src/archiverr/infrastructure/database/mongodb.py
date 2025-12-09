@@ -96,9 +96,8 @@ class MongoDBPersistence(PersistenceInterface):
     MATCHES = "matches"
     PLUGIN_RESULTS = "plugin_results"
     
-    # Git-like versioning collections
+    # Branch metadata
     BRANCHES = "branches"
-    COMMITS = "commits"
     
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
@@ -257,12 +256,6 @@ class MongoDBPersistence(PersistenceInterface):
         await self._db[self.BRANCHES].create_index("name", unique=True)
         await self._db[self.BRANCHES].create_index("created_at")
         await self._db[self.BRANCHES].create_index("is_default")
-        
-        # Commits
-        await self._db[self.COMMITS].create_index("branch_id")
-        await self._db[self.COMMITS].create_index("execution_id")
-        await self._db[self.COMMITS].create_index([("branch_id", 1), ("created_at", -1)])
-        await self._db[self.COMMITS].create_index("parent_commit_id")
     
     async def _save_execution_async(self, execution) -> None:
         """Async save execution with error handling. Accepts dict or object with to_dict()."""
@@ -558,172 +551,6 @@ class MongoDBPersistence(PersistenceInterface):
         if branch.get("is_default"):
             raise ValueError("Cannot delete default branch")
         
-        # Delete all commits on this branch
-        await self._db[self.COMMITS].delete_many({"branch_id": branch_id})
-        
         # Delete branch
         result = await self._db[self.BRANCHES].delete_one({"_id": branch_id})
         return result.deleted_count > 0
-    
-    def create_commit(
-        self, 
-        execution_id: str, 
-        branch_id: str = None,
-        message: str = "",
-        metadata: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Create a commit linking an execution to a branch"""
-        return self._run_async(
-            self._create_commit_async(execution_id, branch_id, message, metadata)
-        )
-    
-    async def _create_commit_async(
-        self, 
-        execution_id: str, 
-        branch_id: str = None,
-        message: str = "",
-        metadata: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Async create commit"""
-        from uuid import uuid4
-        
-        # Get branch (default if not specified)
-        if branch_id:
-            branch = await self._db[self.BRANCHES].find_one({"_id": branch_id})
-        else:
-            branch = await self._db[self.BRANCHES].find_one({"is_default": True})
-        
-        if not branch:
-            raise ValueError("No branch found. Create a branch first.")
-        
-        branch_id = branch["_id"]
-        parent_commit_id = branch.get("head_commit_id")
-        
-        # Normalize execution ID
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
-        # Verify execution exists
-        execution = await self._db[self.EXECUTIONS].find_one({"_id": exec_id})
-        if not execution:
-            raise ValueError(f"Execution {execution_id} not found")
-        
-        commit_id = f"commit_{str(uuid4())[:8]}"
-        now = datetime.utcnow()
-        
-        commit_doc = {
-            "_id": commit_id,
-            "branch_id": branch_id,
-            "execution_id": exec_id,
-            "parent_commit_id": parent_commit_id,
-            "message": message or f"Execution {execution_id}",
-            "metadata": metadata or {},
-            "created_at": now,
-            # Snapshot of execution summary
-            "execution_summary": {
-                "status": execution.get("status"),
-                "success": execution.get("success"),
-                "total_matches": execution.get("summary", {}).get("total_matches", 0),
-                "completed_matches": execution.get("summary", {}).get("completed_matches", 0),
-                "failed_matches": execution.get("summary", {}).get("failed_matches", 0)
-            }
-        }
-        
-        await self._db[self.COMMITS].insert_one(commit_doc)
-        
-        # Update branch head
-        await self._db[self.BRANCHES].update_one(
-            {"_id": branch_id},
-            {
-                "$set": {
-                    "head_commit_id": commit_id,
-                    "updated_at": now
-                }
-            }
-        )
-        
-        return commit_doc
-    
-    def get_commit(self, commit_id: str) -> Optional[Dict[str, Any]]:
-        """Get commit by ID"""
-        return self._run_async(self._get_commit_async(commit_id))
-    
-    async def _get_commit_async(self, commit_id: str) -> Optional[Dict[str, Any]]:
-        """Async get commit"""
-        return await self._db[self.COMMITS].find_one({"_id": commit_id})
-    
-    def list_commits(
-        self, 
-        branch_id: str = None, 
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """List commits for a branch"""
-        return self._run_async(self._list_commits_async(branch_id, limit))
-    
-    async def _list_commits_async(
-        self, 
-        branch_id: str = None, 
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """Async list commits"""
-        query = {}
-        if branch_id:
-            query["branch_id"] = branch_id
-        
-        cursor = self._db[self.COMMITS].find(query).sort("created_at", -1).limit(limit)
-        return await cursor.to_list(length=limit)
-    
-    def get_commit_history(
-        self, 
-        commit_id: str, 
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """Get commit history (ancestors)"""
-        return self._run_async(self._get_commit_history_async(commit_id, limit))
-    
-    async def _get_commit_history_async(
-        self, 
-        commit_id: str, 
-        limit: int = 50
-    ) -> List[Dict[str, Any]]:
-        """Async get commit history by traversing parent links"""
-        history = []
-        current_id = commit_id
-        
-        while current_id and len(history) < limit:
-            commit = await self._db[self.COMMITS].find_one({"_id": current_id})
-            if not commit:
-                break
-            history.append(commit)
-            current_id = commit.get("parent_commit_id")
-        
-        return history
-    
-    def checkout_commit(self, commit_id: str) -> Dict[str, Any]:
-        """Get full execution data for a commit"""
-        return self._run_async(self._checkout_commit_async(commit_id))
-    
-    async def _checkout_commit_async(self, commit_id: str) -> Dict[str, Any]:
-        """Async checkout commit - returns full execution data"""
-        commit = await self._db[self.COMMITS].find_one({"_id": commit_id})
-        if not commit:
-            raise ValueError(f"Commit {commit_id} not found")
-        
-        exec_id = commit["execution_id"]
-        
-        # Get execution
-        execution = await self._db[self.EXECUTIONS].find_one({"_id": exec_id})
-        
-        # Get matches
-        cursor = self._db[self.MATCHES].find({"execution_id": exec_id})
-        matches = await cursor.to_list(length=None)
-        
-        # Get plugin results
-        cursor = self._db[self.PLUGIN_RESULTS].find({"execution_id": exec_id})
-        plugin_results = await cursor.to_list(length=None)
-        
-        return {
-            "commit": commit,
-            "execution": execution,
-            "matches": matches,
-            "plugin_results": plugin_results
-        }
