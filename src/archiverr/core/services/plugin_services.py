@@ -231,6 +231,74 @@ class PluginServices:
             mode=self._mode
         )
     
+    # ==================== PLUGIN STATUS REPORTING ====================
+    
+    def update_status(
+        self,
+        state: str,
+        success: bool,
+        message: str = "",
+        error: Optional[str] = None
+    ) -> None:
+        """
+        plugin reports its own status (session 14 - plugin autonomy).
+        
+        args:
+            state: plugin state (pending | running | completed | failed | skipped)
+            success: whether plugin succeeded
+            message: human-readable status message
+            error: error message if failed
+        
+        example:
+            services.update_status(
+                state="completed",
+                success=True,
+                message="fetched 10 movies from tmdb"
+            )
+        """
+        if not self._current_plugin_name:
+            raise RuntimeError("update_status() requires plugin context")
+        
+        from datetime import datetime
+        
+        status_data = {
+            "state": state,
+            "success": success,
+            "message": message,
+            "error": error,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        # update plugin status in state
+        if self._current_job_id:
+            # per_job plugin - update job's plugin status
+            job = self._state.get_job_by_id(self._current_job_id)
+            if job:
+                # add to executed/failed/skipped lists
+                if state == "completed" and self._current_plugin_name not in job.status.executed:
+                    job.status.executed.append(self._current_plugin_name)
+                elif state == "failed" and self._current_plugin_name not in job.status.failed:
+                    job.status.failed.append(self._current_plugin_name)
+                elif state == "skipped" and self._current_plugin_name not in job.status.skipped:
+                    job.status.skipped.append(self._current_plugin_name)
+        
+        # emit status event
+        self._event_bus.emit(f"plugin.{state}", {
+            "plugin": self._current_plugin_name,
+            "job_id": self._current_job_id,
+            "success": success,
+            "message": message,
+            "error": error
+        }, source="plugin")
+        
+        self._logger.info(
+            "plugin_services",
+            f"plugin status updated: {state}",
+            plugin=self._current_plugin_name,
+            success=success,
+            message=message
+        )
+    
     # ==================== ACCESS CONTROL ====================
     
     def _check_per_job_access(self, method_name: str) -> None:
