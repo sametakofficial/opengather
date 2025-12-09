@@ -154,8 +154,12 @@ class ExecutionService:
         
         # Override targets if provided
         if targets:
-            # Find the enabled input plugin and override its targets
-            for plugin_name in ['scanner', 'file-reader', 'file_reader']:
+            # Find enabled input plugins dynamically (NO HARDCODING)
+            from archiverr.core.plugins.registry import PluginRegistry
+            registry = PluginRegistry(config)
+            input_plugin_names = registry.get_input_plugin_names()
+            
+            for plugin_name in input_plugin_names:
                 if plugin_name in config.get('plugins', {}):
                     config['plugins'][plugin_name]['targets'] = targets
         

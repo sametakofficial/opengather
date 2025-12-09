@@ -42,8 +42,8 @@ class InputData(BaseModel):
 
 
 class OutputData(BaseModel):
-    """Output data structure"""
-    values: Dict[str, str] = Field(default_factory=dict)
+    """Output data structure (aligned with state models)"""
+    values: List[str] = Field(default_factory=list)  # Fixed: was Dict, now List to match state
     data: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}

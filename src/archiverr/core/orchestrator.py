@@ -259,7 +259,7 @@ class Orchestrator:
         Execute per_run plugins (Session 12).
         
         Per_run plugins execute once per run, before stages.
-        They typically create jobs (e.g., scanner plugin).
+        They typically create jobs (e.g., input/discovery plugins).
         """
         # Get all loaded plugins and filter for run_mode: per_run
         all_plugins = self._plugin_registry.get_all_plugins()
@@ -291,12 +291,12 @@ class Orchestrator:
                     mode="per_run"
                 )
                 
-                # Execute plugin (scanner creates jobs via services.createJob)
+                # Execute plugin (input plugins create jobs via services.createJob)
                 if hasattr(plugin_instance, 'execute_run'):
                     result = plugin_instance.execute_run(services)
                     self._log("info", f"{plugin_name} completed: {result.get('data', {}).get('count', 0)} jobs created")
                 elif hasattr(plugin_instance, 'get_matches'):
-                    # Legacy: scanner uses get_matches
+                    # Legacy: some input plugins use get_matches
                     matches = plugin_instance.get_matches()
                     self._log("debug", f"{plugin_name} returned {len(matches)} matches")
                     
@@ -381,9 +381,20 @@ class Orchestrator:
         
         - Completes run in state manager
         - Persists final state to database
+        - Saves JSON output (Session 12)
         - Emits run.completed event
         """
         self._log("info", f"Finalizing run (success={success})")
+        
+        # Session 12: Save JSON output via tasker plugin
+        try:
+            tasker_plugin = self._plugin_registry.get_plugin('tasker')
+            if tasker_plugin and hasattr(tasker_plugin, 'save_run_output'):
+                output_path = tasker_plugin.save_run_output(self._run_id)
+                if output_path:
+                    self._log("debug", f"Run output saved: {output_path}")
+        except Exception as e:
+            self._log("warn", f"Failed to save run output: {e}")
         
         # Complete run in state
         self._state.complete_execution()
@@ -530,10 +541,14 @@ def build_orchestrator(
     state = GlobalStateManager()
     state.reset()
     
-    # Create persistence if not provided
+    # Create persistence if not provided (optional)
     if persistence is None:
-        db_connection = DatabaseConnection.from_env()
-        persistence = db_connection.connect()
+        try:
+            db_connection = DatabaseConnection.from_env()
+            persistence = db_connection.connect()
+        except (ImportError, Exception) as e:
+            debugger.warn("orchestrator", f"Persistence unavailable: {e}")
+            persistence = None
     
     # Configure state with persistence
     state.configure(

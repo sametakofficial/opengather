@@ -24,12 +24,22 @@ from pathlib import Path
 import json
 
 
+# Log level constants (Python standard)
+class LogLevel:
+    DEBUG = 10
+    INFO = 20
+    WARNING = 30
+    ERROR = 40
+    CRITICAL = 50
+    NOTSET = 0
+
 class DebugSystem:
     """
     Professional debug system with live output and optional MongoDB persistence.
     
     Features:
-    - Config-driven (enabled/disabled via options.debug)
+    - Config-driven log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    - Level-based filtering
     - Live output (immediate stderr flush)
     - Plugin-agnostic (any component can log)
     - Structured context fields
@@ -37,8 +47,10 @@ class DebugSystem:
     - Optional MongoDB diagnostics logging
     """
     
-    def __init__(self, enabled: bool = False, diagnostics_logger = None):
+    def __init__(self, enabled: bool = False, level: int = None, diagnostics_logger = None):
         self.enabled = enabled
+        # If level not specified, use DEBUG if enabled, else WARNING
+        self.level = level if level is not None else (LogLevel.DEBUG if enabled else LogLevel.WARNING)
         self.log_buffer: List[Dict[str, Any]] = []  # Always collect logs, regardless of debug mode
         self._diagnostics_logger = diagnostics_logger
         self._execution_id: Optional[str] = None
@@ -55,16 +67,45 @@ class DebugSystem:
         """ISO8601 timestamp with timezone"""
         return datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')
     
+    def _should_log(self, level_num: int) -> bool:
+        """Check if message should be logged based on level threshold."""
+        return level_num >= self.level
+    
+    def _get_level_num(self, level: str) -> int:
+        """Convert level name to numeric value."""
+        level_map = {
+            'DEBUG': LogLevel.DEBUG,
+            'INFO': LogLevel.INFO,
+            'WARNING': LogLevel.WARNING,
+            'ERROR': LogLevel.ERROR,
+            'CRITICAL': LogLevel.CRITICAL
+        }
+        return level_map.get(level, LogLevel.INFO)
+    
     def _log(self, level: str, component: str, message: str, **fields):
         """
         Emit structured debug line immediately to stderr and save to buffer.
         
         Args:
-            level: Log level (DEBUG, INFO, WARN, ERROR)
+            level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
             component: Component name (plugin name or system component)
             message: Log message
             **fields: Additional context fields
         """
+        level_num = self._get_level_num(level)
+        
+        # Skip if below threshold
+        if not self._should_log(level_num):
+            # Still buffer it for export
+            self.log_buffer.append({
+                "timestamp": self._timestamp(),
+                "level": level,
+                "level_num": level_num,
+                "component": component,
+                "message": message,
+                "fields": {k: v for k, v in fields.items() if v is not None}
+            })
+            return
         ts = self._timestamp()
         
         # Always save to buffer (regardless of debug mode)
@@ -109,16 +150,24 @@ class DebugSystem:
         self._log("DEBUG", component, message, **fields)
     
     def info(self, component: str, message: str, **fields):
-        """INFO level - General informational messages"""
+        """INFO level - Confirmation that things are working as expected"""
         self._log("INFO", component, message, **fields)
     
+    def warning(self, component: str, message: str, **fields):
+        """WARNING level - An indication that something unexpected happened"""
+        self._log("WARNING", component, message, **fields)
+    
     def warn(self, component: str, message: str, **fields):
-        """WARN level - Warning messages"""
-        self._log("WARN", component, message, **fields)
+        """WARN level - Alias for warning() (deprecated, use warning())"""
+        self.warning(component, message, **fields)
     
     def error(self, component: str, message: str, **fields):
-        """ERROR level - Error messages"""
+        """ERROR level - Due to a more serious problem, software cannot perform function"""
         self._log("ERROR", component, message, **fields)
+    
+    def critical(self, component: str, message: str, **fields):
+        """CRITICAL level - A serious error indicating the program may be unable to continue"""
+        self._log("CRITICAL", component, message, **fields)
     
     def get_logs(self) -> List[Dict[str, Any]]:
         """Get all collected logs"""
@@ -166,18 +215,33 @@ class DebugSystem:
 _debugger: Optional[DebugSystem] = None
 
 
-def init_debugger(enabled: bool = False) -> DebugSystem:
+def init_debugger(enabled: bool = False, level: str = None) -> DebugSystem:
     """
     Initialize global debug system.
     
     Args:
-        enabled: Whether debug mode is enabled
+        enabled: Whether debug mode is enabled (legacy, use level instead)
+        level: Log level name (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         
     Returns:
         Initialized debugger instance
     """
     global _debugger
-    _debugger = DebugSystem(enabled=enabled)
+    
+    # Convert level string to numeric
+    level_num = None
+    if level:
+        level_map = {
+            'DEBUG': LogLevel.DEBUG,
+            'INFO': LogLevel.INFO,
+            'WARNING': LogLevel.WARNING,
+            'WARN': LogLevel.WARNING,  # Alias
+            'ERROR': LogLevel.ERROR,
+            'CRITICAL': LogLevel.CRITICAL
+        }
+        level_num = level_map.get(level.upper(), LogLevel.INFO)
+    
+    _debugger = DebugSystem(enabled=enabled, level=level_num)
     return _debugger
 
 

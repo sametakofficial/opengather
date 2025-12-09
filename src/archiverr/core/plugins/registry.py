@@ -302,6 +302,30 @@ class PluginRegistry:
             self.discover_and_load()
         return self._all_plugins.copy()
     
+    def get_input_plugin_names(self) -> List[str]:
+        """
+        Get names of all input plugins (per_run mode, no stage).
+        
+        Returns list of plugin names that are input plugins.
+        Replaces hardcoded ['scanner', 'file-reader', ...] lists.
+        
+        Returns:
+            List of input plugin names
+        """
+        if not self._loaded:
+            self.discover_and_load()
+        
+        input_plugins = []
+        for name, info in self._plugin_info.items():
+            # Input plugins have no stage (per_run mode)
+            if info.stage is None:
+                input_plugins.append(name)
+            # Also check manifest for run_mode
+            elif info.manifest.get('run_mode') == 'per_run':
+                input_plugins.append(name)
+        
+        return input_plugins
+    
     def get_all_manifests(self) -> Dict[str, Dict[str, Any]]:
         """Get all discovered manifests."""
         if not self._loaded:

@@ -1,15 +1,27 @@
-# Session 12 Test Config
-# Full integration test with real file
+# Archiverr Configuration - Session 12
+# Full featured config with aliases, conditions, and metadata extraction
+
+# Aliases - Shortcuts for templates
+aliases:
+  e: "execution"
+  m: "match"
+  g: "globals"
+  movie: "renamer.parsed.movie"
+  show: "renamer.parsed.show"
+  tmdb_movie: "tmdb.movie"
+  tmdb_show: "tmdb.show"
 
 options:
   debug: true
   dry_run: true
-  
+  hardlink: true
+
 scanner:
   enabled: true
   targets:
     - "/tmp/test_movies/The.Matrix.1999.1080p.mkv"
-  allow_virtual_paths: false
+    - "/tmp/friends/friends s01/friends s01 e02.mkv"
+  allow_virtual_paths: true
   extensions: [mkv, mp4]
   recursive: false
 
@@ -20,12 +32,86 @@ renamer:
 tmdb:
   enabled: true
   api_key: "${TMDB_API_KEY}"
-  language: en-US
-  region: US
+  language: tr-TR
+  region: TR
+  extras:
+    movie_credits: true
+    movie_images: true
+    movie_keywords: true
+    movie_videos: true
+    tv_credits: true
+    tv_episode_credits: true
+    tv_episode_images: true
+    tv_images: true
+    tv_keywords: true
+    tv_season_images: true
+    tv_videos: true
 
 tasker:
   enabled: true
   dry_run: true
+  save_output: true
+  output_dir: "output"
   tasks:
-    - type: print
-      template: "Movie: {{ job.input.value }}"
+    # Header
+    - name: print_header
+      type: print
+      template: |
+
+        ========== JOB {{ index }} ==========
+
+    # Input info
+    - name: print_input
+      type: print
+      template: |
+        Input: {{ job.input.value }}
+
+    # Renamer output
+    - name: print_renamer
+      type: print
+      template: |
+        {% if movie %}MOVIE: {{ movie.name }} ({{ movie.year }}){% elif show %}SHOW: {{ show.name }} S{{ '%02d' | format(show.season) }}E{{ '%02d' | format(show.episode) }}{% endif %}
+
+    # TMDb metadata (Session 12 format)
+    - name: print_tmdb
+      type: print
+      template: |
+        {% if plugin.tmdb.data.movie %}TMDb Movie: {{ plugin.tmdb.data.movie.title.primary }} ({{ plugin.tmdb.data.movie.release.year }})
+        TMDb ID: {{ plugin.tmdb.data.movie.identifiers.tmdb_id }}
+        Overview: {{ plugin.tmdb.data.movie.overview | truncate(100) }}{% elif plugin.tmdb.data.show %}TMDb Show: {{ plugin.tmdb.data.show.title.primary }} ({{ plugin.tmdb.data.show.air_dates.year }})
+        TMDb ID: {{ plugin.tmdb.data.show.identifiers.tmdb_id }}{% if plugin.tmdb.data.episode %}
+        Episode: S{{ '%02d' | format(plugin.tmdb.data.episode.season_number) }}E{{ '%02d' | format(plugin.tmdb.data.episode.episode_number) }} - {{ plugin.tmdb.data.episode.title.primary }}
+        Overview: {{ plugin.tmdb.data.episode.overview | truncate(100) }}{% endif %}{% endif %}
+
+    # Test conditional rendering
+    - name: test_condition
+      type: print
+      condition: "{% if plugin.tmdb.data.movie.ratings.tmdb.score > 8 or plugin.tmdb.data.show.ratings.tmdb.score > 8 %}true{% endif %}"
+      template: |
+        {% if plugin.tmdb.data.movie %}⭐ HIGH RATED: {{ plugin.tmdb.data.movie.ratings.tmdb.score }}/10{% elif plugin.tmdb.data.show %}⭐ HIGH RATED: {{ plugin.tmdb.data.show.ratings.tmdb.score }}/10{% endif %}
+
+    # Test count function
+    - name: test_count
+      type: print
+      template: |
+        {% if plugin.tmdb.data.movie %}Genres: {{ count:plugin.tmdb.data.movie.genres }} | Cast: {{ count:plugin.tmdb.data.movie.people.cast }}{% elif plugin.tmdb.data.show %}Genres: {{ count:plugin.tmdb.data.show.genres }} | Cast: {{ count:plugin.tmdb.data.show.people.cast }}{% if plugin.tmdb.data.episode %} | Guest Stars: {{ count:plugin.tmdb.data.episode.people.guest_stars }}{% endif %}{% endif %}
+
+    # Test FFprobe (if available)
+    - name: test_ffprobe
+      type: print
+      condition: "{% if plugin.ffprobe.data %}true{% endif %}"
+      template: |
+        📹 Video: {{ plugin.ffprobe.data.format.format_long_name }} | Duration: {{ plugin.ffprobe.data.format.duration }}s
+
+    # Test missing data (should not error)
+    - name: test_missing
+      type: print
+      template: |
+        Missing test: {{ plugin.nonexistent.data.field | default('N/A') }}
+
+    # Summary
+    - name: print_summary
+      type: print
+      template: |
+
+        ============================================================

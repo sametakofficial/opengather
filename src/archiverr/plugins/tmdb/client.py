@@ -110,16 +110,32 @@ class TMDbPlugin(OutputPlugin):
         try:
             result = None
             if movie_data and movie_data.get('name'):
+                # LIVE LOGGING: Log movie search
+                self.info("Searching TMDb for movie", name=movie_data.get('name'), year=movie_data.get('year'))
                 result = self.movie_fetcher.fetch(
                     movie_data.get('name'),
                     movie_data.get('year')
                 )
+                if result:
+                    self.info("Movie found on TMDb", tmdb_id=result.get('movie', {}).get('identifiers', {}).get('tmdb_id'))
+                else:
+                    self.warn("Movie not found on TMDb", name=movie_data.get('name'))
             elif show_data and show_data.get('name'):
+                # LIVE LOGGING: Log show search
+                self.info("Searching TMDb for show", name=show_data.get('name'), season=show_data.get('season'), episode=show_data.get('episode'))
                 result = self.show_fetcher.fetch(
                     show_data.get('name'),
                     show_data.get('season'),
                     show_data.get('episode')
                 )
+                if result and result.get('show'):
+                    show_info = result['show']
+                    tmdb_id = show_info.get('identifiers', {}).get('tmdb_id') if isinstance(show_info.get('identifiers'), dict) else None
+                    self.info("Show found on TMDb", tmdb_id=tmdb_id)
+                    if result.get('episode'):
+                        self.info("Episode data fetched", episode_count=1)
+                else:
+                    self.warn("Show not found on TMDb", name=show_data.get('name'))
             else:
                 return PluginResult.error_result("No movie or show data", started_at=started_at)
             
@@ -170,6 +186,20 @@ class TMDbPlugin(OutputPlugin):
             # Convert dict result to PluginResult
             # Remove status from data (PluginResult handles it)
             data = {k: v for k, v in result.items() if k != 'status'}
+            
+            # Session 12: Update plugin state via services
+            self.debug("TMDb services check", 
+                      services_type=str(type(services)),
+                      has_updatePlugin=hasattr(services, 'updatePlugin'),
+                      data_keys=list(data.keys()))
+            
+            if hasattr(services, 'updatePlugin'):
+                self.debug("Calling updatePlugin")
+                services.updatePlugin(data=data)
+                self.info("TMDb data updated via updatePlugin")
+            else:
+                self.warn("Services does not have updatePlugin method")
+            
             return PluginResult.success_result(data=data, started_at=started_at)
                 
         except Exception as e:

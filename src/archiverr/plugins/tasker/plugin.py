@@ -1,110 +1,82 @@
 """
-Tasker Plugin - Output task execution
+Tasker Plugin - Session 12 with Main Branch Template Logic
 
-Session 11: Replaces core/tasks system with a proper plugin.
-
-This plugin runs in the OUTPUT stage and:
-- Renders Jinja2 templates with job context
-- Executes print tasks (stdout output)
-- Executes save tasks (file operations)
-- Supports external task files (!include)
+Combines:
+- Session 12 plugin architecture (per_run, stages, state)
+- Main branch template rendering (Jinja2, $ syntax, smart routing)
 """
 
+import json
 import shutil
-import yaml
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from jinja2 import Environment, BaseLoader
+from jinja2 import Environment, BaseLoader, TemplateError
 
 
 class TaskerPlugin:
-    """
-    Output plugin for task execution.
+    """Task execution plugin with full Jinja2 + state access."""
     
-    Replaces the TaskManager from core/tasks.
-    Runs after all data plugins have completed.
-    """
+    # Template function patterns (from main branch)
+    _FUNCTION_PATTERN = re.compile(r'\b(index|count):([a-zA-Z0-9_.\[\]]*)')
     
     def __init__(self, config: Dict[str, Any]):
-        """
-        Initialize TaskerPlugin.
-        
-        Args:
-            config: Plugin config from config.yml tasker section
-        """
         self.config = config
         self.tasks = config.get('tasks', [])
         self.dry_run = config.get('dry_run', True)
-        self.provides = config.get('provides', [])
+        self.save_output = config.get('save_output', True)
+        self.output_dir = config.get('output_dir', 'output')
         
         # Jinja2 environment
-        self._env = Environment(loader=BaseLoader())
+        self.env = Environment(loader=BaseLoader())
+        self.env.filters['truncate'] = self._filter_truncate
+        self.env.filters['format'] = lambda fmt, *args: fmt % args
         
-        # Alias support
-        self._aliases: Dict[str, str] = {}
+        # Run output tracking
+        self._run_output: Dict[str, Any] = {}
     
     def configure(self, global_config: Dict[str, Any]) -> None:
-        """
-        Configure with global config (for aliases).
-        
-        Args:
-            global_config: Full config.yml content
-        """
-        self._aliases = global_config.get('aliases', {})
-        
-        # Override dry_run from global options if not set in plugin config
+        """Configure with global config."""
         if 'dry_run' not in self.config:
             self.dry_run = global_config.get('options', {}).get('dry_run', True)
     
-    def process(self, match: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        Execute tasks for a single job (legacy interface).
-        
-        Args:
-            match: Match data with plugin results
-            context: Optional execution context
-            
-        Returns:
-            Plugin result with task outputs
-        """
-        # Build job context for templates
-        job_context = self._build_job_context(match, context or {})
-        
-        # Execute all tasks
-        results = []
-        for task_config in self.tasks:
-            result = self._execute_task(task_config, job_context)
-            if result:
-                results.append(result)
-        
-        return {
-            'success': True,
-            'tasks': {r['name']: r for r in results},
-            'task_count': len(results),
-            'values': self._extract_output_values(results)
-        }
+    def debug(self, msg: str, **kwargs):
+        """Debug logging."""
+        pass  # Plugin SDK will provide this
+    
+    def warn(self, msg: str, **kwargs):
+        """Warning logging."""
+        pass
+    
+    def error(self, msg: str, **kwargs):
+        """Error logging."""
+        print(f"ERROR: {msg}", kwargs)
     
     def execute(self, job: Any, services: Any) -> Dict[str, Any]:
         """
-        Execute tasks for a job (Session 11 signature).
+        Execute tasks for job (Session 12 interface).
         
         Args:
-            job: JobState with input and plugins
-            services: PluginServices
+            job: JobState with input, plugins
+            services: PluginServices with state access
             
         Returns:
-            Plugin result with task outputs
+            PluginResult compatible dict
         """
-        # Get plugin data from job.plugins (primary source)
+        started_at = datetime.now()
+        
+        # Get plugin data from job
         plugins_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-            plugins_data = dict(job.plugins)  # Copy to avoid mutation
+            plugins_data = dict(job.plugins)
         
-        # Fallback: try services.state for any missing plugins
+        # Fallback: services.state - get ALL plugin data dynamically
         if hasattr(services, 'state'):
-            for plugin_name in ['renamer', 'ffprobe', 'tmdb', 'tvdb']:
-                if plugin_name not in plugins_data or not plugins_data.get(plugin_name):
+            # Get all plugins that have data for this job (NO HARDCODING)
+            available_plugins = services.state.get_job_plugin_names(job.id)
+            for plugin_name in available_plugins:
+                if plugin_name not in plugins_data:
                     try:
                         data = services.state.get_plugin_data(job.id, plugin_name)
                         if data:
@@ -112,123 +84,244 @@ class TaskerPlugin:
                     except Exception:
                         pass
         
-        # Build match-like structure for template processing
-        input_value = ''
-        input_data = {}
-        if hasattr(job, 'input'):
-            if hasattr(job.input, 'value'):
-                input_value = job.input.value
-            elif hasattr(job.input, 'path'):
-                input_value = job.input.path
-            if hasattr(job.input, 'data'):
-                input_data = job.input.data or {}
-        elif hasattr(job, 'input_path'):
-            input_value = job.input_path
-        
-        match = {
-            'input': {
-                'value': input_value,
-                'path': input_value,
-                'data': input_data
-            },
-            'plugins': plugins_data,
-            'index': getattr(job, 'index', 0)
-        }
-        
-        # Build context from services (P0.2: Add provides and events)
-        config = {}
-        if hasattr(services, 'config'):
-            if hasattr(services.config, 'get_all'):
-                config = services.config.get_all()
-            elif hasattr(services.config, '_config'):
-                config = services.config._config
-        
-        # P0.2: Get provides registry data for {{ provides.* }}
-        provides_dict = {}
-        if hasattr(services, 'provides') and hasattr(services.provides, 'get_all'):
-            provides_dict = services.provides.get_all()
-        
-        # P0.2: Get event bus data for {{ events.* }}
-        events_dict = {}
-        if hasattr(services, 'events') and hasattr(services.events, '_event_bus'):
-            event_bus = services.events._event_bus
-            if hasattr(event_bus, 'get_history_dict'):
-                events_dict = event_bus.get_history_dict()
-        
-        context = {
-            'config': config,
-            'provides': provides_dict,
-            'events': events_dict
-        }
+        # Build template context (Main branch style)
+        context = self._build_context(job, plugins_data, services)
         
         # Execute tasks
-        result = self.process(match, context)
+        task_results = {}
+        output_values = []
         
-        # Fill job.output.values and job.output.data (Session 11 requirement)
-        output_values = result.get('values', [])
-        output_data = {'tasks': result.get('tasks', {})}
+        for task in self.tasks:
+            result = self._execute_task(task, context, job)
+            if result:
+                task_name = result.get('name', 'unnamed')
+                task_results[task_name] = result
+                
+                # Collect save destinations
+                if result.get('type') == 'save' and result.get('destination'):
+                    output_values.append(result['destination'])
         
-        if hasattr(job, 'output'):
-            if hasattr(job.output, 'values'):
-                job.output.values = output_values
-            if hasattr(job.output, 'data'):
-                job.output.data = output_data
+        # Track for JSON output
+        self._track_run_output(job, task_results, plugins_data)
         
-        return result
+        return {
+            'success': True,
+            'tasks': task_results,
+            'values': output_values,
+            'duration_ms': int((datetime.now() - started_at).total_seconds() * 1000)
+        }
     
-    def _build_job_context(self, match: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_context(self, job: Any, plugins_data: Dict[str, Any], services: Any) -> Dict[str, Any]:
         """
-        Build template context for job.
+        Build Jinja2 context (Main branch pattern adapted to Session 12).
         
-        Args:
-            match: Match data
-            context: Execution context
-            
-        Returns:
-            Template context dict
+        Context includes:
+        - plugin.{name}.data.* - Plugin data (Session 12 format)
+        - job.* - Job data
+        - config.* - Global config (via services.state)
+        - index, total - Job index and total
         """
-        plugins = match.get('plugins', {})
-        input_data = match.get('input', {})
+        # Get job index
+        job_index = getattr(job, 'index', 0)
         
-        # Base context (P0.2: Include provides and events)
-        job_context = {
+        # Build context
+        context = {
             'job': {
-                'index': match.get('index', 0),
-                'input': input_data,
-                'plugins': plugins
+                'id': getattr(job, 'id', 'unknown'),
+                'index': job_index,
+                'input': {
+                    'value': getattr(job.input, 'value', '') if hasattr(job, 'input') else '',
+                    'data': getattr(job.input, 'data', {}) if hasattr(job, 'input') else {}
+                }
             },
-            'config': context.get('config', {}),
-            'options': context.get('config', {}).get('options', {}),
-            'provides': context.get('provides', {}),  # P0.2: Provides registry
-            'events': context.get('events', {}),      # P0.2: Event bus history
-            'index': match.get('index', 0)
+            'index': job_index,
+            'total': 1,  # Single job execution
         }
         
-        # Add plugin data directly for easy access
-        # {{ tmdb.movie.title }} instead of {{ job.plugins.tmdb.movie.title }}
-        for plugin_name, plugin_data in plugins.items():
-            job_context[plugin_name] = plugin_data
+        # Add plugin data - Session 12 format: plugin.{name}.data.*
+        context['plugin'] = {}
+        for plugin_name, plugin_info in plugins_data.items():
+            if isinstance(plugin_info, dict):
+                # Session 12: {status, data}
+                if 'data' in plugin_info:
+                    context['plugin'][plugin_name] = {'data': plugin_info['data']}
+                    # Also add direct access for compatibility
+                    context[plugin_name] = plugin_info['data']
+                else:
+                    # Legacy format
+                    context['plugin'][plugin_name] = plugin_info
+                    context[plugin_name] = plugin_info
         
-        # Add parsed shortcuts from renamer
-        if 'renamer' in plugins:
-            renamer = plugins['renamer']
-            parsed = renamer.get('parsed', {})
-            job_context['p'] = parsed
-            job_context['movie'] = parsed.get('movie')
-            job_context['show'] = parsed.get('show')
+        # Add config access (if services has state)
+        if hasattr(services, 'state'):
+            try:
+                config_state = services.state.get_config() if hasattr(services.state, 'get_config') else {}
+                context['config'] = config_state
+            except Exception:
+                context['config'] = {}
         
-        # Add metadata shortcuts
-        if 'tmdb' in plugins:
-            tmdb = plugins['tmdb']
-            job_context['m'] = tmdb.get('movie') or tmdb.get('show')
+        # Add renamer shortcuts for template compatibility (ONLY for context, aliases resolved in config)
+        if 'renamer' in plugins_data:
+            renamer_data = plugins_data['renamer'].get('data', {}) if isinstance(plugins_data['renamer'], dict) else plugins_data['renamer']
+            parsed = renamer_data.get('parsed', {})
+            category = renamer_data.get('category', 'unknown')
+            
+            context['renamer'] = renamer_data
+            if category == 'movie' and 'movie' in parsed:
+                context['movie'] = parsed['movie']
+            elif category == 'show' and 'show' in parsed:
+                context['show'] = parsed['show']
         
-        # Add user aliases
-        for alias, target in self._aliases.items():
-            resolved = self._resolve_path(target, job_context)
-            if resolved is not None:
-                job_context[alias] = resolved
+        return context
+    
+    def _execute_task(self, task: Dict[str, Any], context: Dict[str, Any], job: Any) -> Optional[Dict[str, Any]]:
+        """
+        Execute single task (Main branch pattern).
         
-        return job_context
+        Args:
+            task: Task config
+            context: Template context
+            job: Job data
+            
+        Returns:
+            Task result or None
+        """
+        task_name = task.get('name', 'unnamed')
+        task_type = task.get('type', 'print')
+        condition = task.get('condition')
+        
+        # Check condition
+        if condition:
+            if not self._evaluate_condition(condition, context):
+                return None
+        
+        # Execute by type
+        try:
+            if task_type == 'print':
+                return self._execute_print(task, context, task_name)
+            elif task_type == 'save':
+                return self._execute_save(task, context, job, task_name)
+            else:
+                return None
+        except Exception as e:
+            self.error(f"Task {task_name} failed", error=str(e))
+            return {
+                'name': task_name,
+                'type': task_type,
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _execute_print(self, task: Dict[str, Any], context: Dict[str, Any], task_name: str) -> Optional[Dict[str, Any]]:
+        """Execute print task."""
+        template = task.get('template', '')
+        if not template:
+            return None
+        
+        rendered = self._render_template(template, context)
+        print(rendered)
+        
+        return {
+            'name': task_name,
+            'type': 'print',
+            'success': True,
+            'rendered': rendered
+        }
+    
+    def _execute_save(self, task: Dict[str, Any], context: Dict[str, Any], job: Any, task_name: str) -> Optional[Dict[str, Any]]:
+        """Execute save task."""
+        destination_template = task.get('destination', '')
+        if not destination_template:
+            return None
+        
+        # Get source from job
+        source = context['job']['input']['value']
+        if not source:
+            return None
+        
+        destination = self._render_template(destination_template, context)
+        if not destination:
+            return None
+        
+        success = False
+        if not self.dry_run:
+            try:
+                dest_path = Path(destination)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                success = True
+            except Exception:
+                success = False
+        else:
+            success = True
+        
+        return {
+            'name': task_name,
+            'type': 'save',
+            'success': success,
+            'source': source,
+            'destination': destination,
+            'dry_run': self.dry_run
+        }
+    
+    def _render_template(self, template: str, context: Dict[str, Any]) -> str:
+        """
+        Render Jinja2 template (Main branch logic).
+        
+        Supports:
+        - {{ plugin.tmdb.data.movie.title }}
+        - {{ renamer.parsed.movie.name }}
+        - {% if movie %}...{% endif %}
+        - Template functions: index:, count:
+        - Error handling: Returns template error message on failure
+        """
+        try:
+            # Process template functions (index:, count:)
+            processed = self._process_functions(template, context)
+            
+            # Render with Jinja2
+            tmpl = self.env.from_string(processed)
+            result = tmpl.render(**context)
+            return result
+        except Exception as e:
+            # Main branch pattern: Return error message but don't crash
+            error_msg = str(e)
+            # Extract meaningful part of error
+            if "has no attribute" in error_msg:
+                return f""  # Silent fail for missing attributes (like main branch)
+            return f"Template error: {error_msg}"
+    
+    def _process_functions(self, template: str, context: Dict[str, Any]) -> str:
+        """
+        Process template functions (Main branch).
+        
+        - index: → current index
+        - count:matches → not applicable in Session 12 (single job)
+        - count:plugin.tmdb.data.movie.genres → count list items
+        """
+        def replacer(match):
+            func_name = match.group(1)
+            func_arg = match.group(2) if match.lastindex >= 2 else ''
+            
+            if func_name == 'index':
+                return str(context.get('index', 0))
+            
+            elif func_name == 'count':
+                if not func_arg:
+                    return '0'
+                
+                # Resolve path and count
+                try:
+                    value = self._resolve_path(func_arg, context)
+                    if isinstance(value, (list, dict)):
+                        return str(len(value))
+                    return '0'
+                except Exception:
+                    return '0'
+            
+            return match.group(0)
+        
+        return self._FUNCTION_PATTERN.sub(replacer, template)
     
     def _resolve_path(self, path: str, context: Dict[str, Any]) -> Any:
         """Resolve dot-notation path in context."""
@@ -245,189 +338,6 @@ class TaskerPlugin:
         
         return current
     
-    def _execute_task(self, task_config: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Execute a single task.
-        
-        Args:
-            task_config: Task configuration
-            context: Template context
-            
-        Returns:
-            Task result or None
-        """
-        task_name = task_config.get('name', 'unnamed')
-        is_external = task_config.get('external', False)
-        
-        # Handle external task
-        if is_external:
-            return self._execute_external_task(task_config, context)
-        
-        task_type = task_config.get('type', 'print')
-        condition = task_config.get('condition')
-        
-        # Check condition
-        if condition:
-            if not self._evaluate_condition(condition, context):
-                return None
-        
-        # Execute based on type
-        if task_type == 'print':
-            return self._execute_print_task(task_name, task_config, context)
-        elif task_type == 'save':
-            return self._execute_save_task(task_name, task_config, context)
-        
-        return None
-    
-    def _execute_print_task(
-        self, 
-        name: str, 
-        config: Dict[str, Any], 
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Execute print task."""
-        template = config.get('template', '')
-        
-        if not template:
-            return {'name': name, 'type': 'print', 'success': False, 'error': 'No template'}
-        
-        try:
-            rendered = self._render_template(template, context)
-            print(rendered)
-            
-            return {
-                'name': name,
-                'type': 'print',
-                'success': True,
-                'rendered': rendered
-            }
-        except Exception as e:
-            return {
-                'name': name,
-                'type': 'print',
-                'success': False,
-                'error': str(e)
-            }
-    
-    def _execute_save_task(
-        self, 
-        name: str, 
-        config: Dict[str, Any], 
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Execute save task."""
-        path_template = config.get('path') or config.get('destination', '')
-        
-        if not path_template:
-            return {'name': name, 'type': 'save', 'success': False, 'error': 'No path'}
-        
-        try:
-            destination = self._render_template(path_template, context)
-            
-            # Skip empty paths (conditional templates that don't apply)
-            if not destination or not destination.strip():
-                return None
-            
-            # Get source from input
-            source = context.get('job', {}).get('input', {}).get('value', '')
-            
-            result = {
-                'name': name,
-                'type': 'save',
-                'source': source,
-                'destination': destination,
-                'dry_run': self.dry_run
-            }
-            
-            if not self.dry_run and source:
-                try:
-                    dest_path = Path(destination)
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(source, destination)
-                    result['success'] = True
-                except Exception as e:
-                    result['success'] = False
-                    result['error'] = str(e)
-            else:
-                result['success'] = True
-            
-            return result
-            
-        except Exception as e:
-            return {
-                'name': name,
-                'type': 'save',
-                'success': False,
-                'error': str(e)
-            }
-    
-    def _execute_external_task(
-        self, 
-        task_config: Dict[str, Any], 
-        context: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """Execute external task from file."""
-        task_name = task_config.get('name', 'unnamed')
-        task_path = task_config.get('path')
-        
-        if not task_path:
-            return {'name': task_name, 'type': 'external', 'success': False, 'error': 'No path'}
-        
-        # Handle !include syntax
-        if task_path.startswith('!include '):
-            task_path = task_path[9:].strip()
-        
-        external_file = Path(task_path)
-        
-        if not external_file.exists():
-            return {
-                'name': task_name, 
-                'type': 'external', 
-                'success': False, 
-                'error': f'File not found: {task_path}'
-            }
-        
-        try:
-            with open(external_file, 'r') as f:
-                external_config = yaml.safe_load(f)
-            
-            if not external_config:
-                return None
-            
-            # Single task or list of tasks
-            if isinstance(external_config, dict):
-                if 'name' not in external_config:
-                    external_config['name'] = task_name
-                return self._execute_task(external_config, context)
-            elif isinstance(external_config, list):
-                results = []
-                for sub_task in external_config:
-                    result = self._execute_task(sub_task, context)
-                    if result:
-                        results.append(result)
-                return {
-                    'name': task_name,
-                    'type': 'external',
-                    'success': True,
-                    'tasks': results
-                }
-            
-        except Exception as e:
-            return {
-                'name': task_name,
-                'type': 'external',
-                'success': False,
-                'error': str(e)
-            }
-    
-    def _render_template(self, template: str, context: Dict[str, Any]) -> str:
-        """Render Jinja2 template with context."""
-        try:
-            tmpl = self._env.from_string(template)
-            return tmpl.render(**context)
-        except Exception as e:
-            return f"Template error: {e}"
-    
     def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
         """Evaluate Jinja2 condition."""
         if not condition:
@@ -435,21 +345,70 @@ class TaskerPlugin:
         
         try:
             result = self._render_template(condition, context)
-            return bool(result.strip()) and not result.startswith("Template error:")
+            return bool(result.strip()) and not result.startswith("Template error")
         except Exception:
             return False
     
-    def _extract_output_values(self, results: List[Dict[str, Any]]) -> List[str]:
-        """Extract output file paths from task results."""
-        values = []
-        for result in results:
-            if result.get('type') == 'save' and result.get('success'):
-                dest = result.get('destination')
-                if dest:
-                    values.append(dest)
-        return values
+    def _filter_truncate(self, value: str, length: int = 50, end: str = '...') -> str:
+        """Truncate filter."""
+        if not value or len(value) <= length:
+            return value
+        return value[:length - len(end)] + end
     
+    def _track_run_output(self, job: Any, task_results: Dict[str, Any], plugins_data: Dict[str, Any]) -> None:
+        """Track run output for JSON save."""
+        job_id = getattr(job, 'id', 'unknown')
+        
+        self._run_output[job_id] = {
+            'job_id': job_id,
+            'index': getattr(job, 'index', 0),
+            'input': {
+                'value': getattr(job.input, 'value', '') if hasattr(job, 'input') else '',
+                'data': getattr(job.input, 'data', {}) if hasattr(job, 'input') else {}
+            },
+            'plugins': plugins_data,  # FULL plugin data
+            'tasks': task_results,
+            'success': True,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def save_run_output(self, run_id: str) -> Optional[str]:
+        """Save run output to JSON file."""
+        if not self.save_output or not self._run_output:
+            return None
+        
+        try:
+            output_dir = Path(self.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"run_{run_id}_{timestamp}.json"
+            filepath = output_dir / filename
+            
+            output_data = {
+                'run_id': run_id,
+                'timestamp': datetime.now().isoformat(),
+                'jobs': list(self._run_output.values()),
+                'total_jobs': len(self._run_output)
+            }
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"\n✓ Run output saved: {filepath}")
+            return str(filepath)
+            
+        except Exception as e:
+            print(f"\n✗ Failed to save run output: {e}")
+            return None
+
+
+# Plugin result helper for Session 12
+class PluginResult:
     @staticmethod
-    def supports(parsed: Dict[str, Any]) -> bool:
-        """Always supports - output plugin runs for all jobs."""
-        return True
+    def success_result(data: Dict[str, Any], started_at: datetime = None) -> Dict[str, Any]:
+        return {
+            'success': True,
+            'data': data,
+            'duration_ms': int((datetime.now() - started_at).total_seconds() * 1000) if started_at else 0
+        }

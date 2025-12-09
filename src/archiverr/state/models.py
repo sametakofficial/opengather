@@ -23,11 +23,15 @@ from enum import Enum
 class StateEnum(Enum):
     """
     Unified state enum for Run and Job states.
+    
+    Aligned with API schemas (Session 12/13 fix).
     """
     PENDING = "pending"
     RUNNING = "running"
-    COMPLETED = "completed"
+    SUCCESS = "success"  # Was COMPLETED (aligned with API)
     FAILED = "failed"
+    PARTIAL = "partial"  # New: for partial success
+    CANCELLED = "cancelled"  # New: for cancelled runs
 
 
 @dataclass
@@ -170,7 +174,7 @@ class JobState:
             delta = self.status.finished_at - self.status.started_at
             self.status.duration_ms = int(delta.total_seconds() * 1000)
         self.status.success = success
-        self.status.state = StateEnum.COMPLETED if success else StateEnum.FAILED
+        self.status.state = StateEnum.SUCCESS if success else StateEnum.FAILED
     
     def add_executed(self, plugin_name: str):
         """Mark plugin as successfully executed."""
@@ -245,7 +249,7 @@ class RunState:
             delta = self.status.finished_at - self.status.started_at
             self.status.duration_ms = int(delta.total_seconds() * 1000)
         self.status.success = self.status.failed == 0
-        self.status.state = StateEnum.COMPLETED if self.status.success else StateEnum.FAILED
+        self.status.state = StateEnum.SUCCESS if self.status.success else StateEnum.FAILED
     
     def increment_jobs(self):
         """Increment total job count."""

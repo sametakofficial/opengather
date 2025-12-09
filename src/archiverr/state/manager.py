@@ -448,6 +448,13 @@ class GlobalStateManager:
         job = self.get_job_by_id(job_id)
         if job:
             job.plugins[plugin_name] = self._plugins_storage[job_id][plugin_name].to_dict()
+            
+            # Debug logging
+            data_keys = list(data.keys()) if isinstance(data, dict) else []
+            self._log("debug", "plugin_data", 
+                     f"Updated plugin {plugin_name} for job {job_id}",
+                     data_keys=data_keys,
+                     data_size=len(str(data)))
         
         self._emit("plugin.updated", {
             "job_id": job_id,
@@ -583,6 +590,76 @@ class GlobalStateManager:
         return self._run_to_execution()
     
     # ==================== PLUGIN DATA ====================
+    
+    def get_job_plugin_names(self, job_id: str) -> List[str]:
+        """
+        Get list of all plugins that have data for a job.
+        
+        This replaces hardcoded plugin name lists.
+        
+        Args:
+            job_id: Job ID
+            
+        Returns:
+            List of plugin names that have data for this job
+        """
+        job = self.get_job_by_id(job_id)
+        if not job:
+            return []
+        
+        # Get plugins from job.plugins dict
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            return list(job.plugins.keys())
+        
+        # Also check _plugins_storage
+        if job_id in self._plugins_storage:
+            return list(self._plugins_storage[job_id].keys())
+        
+        return []
+    
+    def get_all_plugin_names(self) -> List[str]:
+        """
+        Get list of all plugin names that have been used in current run.
+        
+        Returns:
+            List of unique plugin names across all jobs
+        """
+        plugin_names = set()
+        
+        # Collect from all jobs
+        for job in self._jobs.values():
+            if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+                plugin_names.update(job.plugins.keys())
+        
+        # Also check _plugins_storage
+        for job_plugins in self._plugins_storage.values():
+            plugin_names.update(job_plugins.keys())
+        
+        return sorted(list(plugin_names))
+    
+    def get_plugin_data(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get plugin data for a job.
+        
+        Args:
+            job_id: Job ID
+            plugin_name: Plugin name
+            
+        Returns:
+            Plugin data dict or None
+        """
+        if job_id not in self._plugins:
+            self._plugins[job_id] = {}
+        
+        if plugin_name in self._plugins[job_id]:
+            return self._plugins[job_id][plugin_name]
+        
+        # Try from job.plugins
+        job = self.get_job_by_id(job_id)
+        if job:
+            return job.plugins.get(plugin_name)
+        
+        return None
     
     def save_plugin_data(self, job_id: str, plugin_name: str, data: Dict[str, Any]):
         """

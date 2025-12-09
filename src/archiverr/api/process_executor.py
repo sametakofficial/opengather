@@ -82,7 +82,12 @@ def run_archiverr_process(
     try:
         # Apply target overrides if provided
         if targets:
-            for plugin_name in ['scanner', 'file_reader', 'file-reader']:
+            # Find input plugins dynamically (NO HARDCODING)
+            from archiverr.core.plugins.registry import PluginRegistry
+            registry = PluginRegistry(config)
+            input_plugin_names = registry.get_input_plugin_names()
+            
+            for plugin_name in input_plugin_names:
                 if plugin_name in config.get('plugins', {}):
                     config['plugins'][plugin_name]['targets'] = targets
             

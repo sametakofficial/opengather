@@ -190,7 +190,27 @@ class TMDbShowFetcher:
         raw_extras = self._fetch_extras(show_id, season_num, episode_num)
         
         # Normalize (THIS IS THE DEFAULT OUTPUT)
-        normalized_show = self.normalizer.normalize_show(raw_show_details, raw_season, raw_episode, raw_extras)
+        # Normalize show, episode, and season separately
+        normalized_show = self.normalizer.normalize_show(raw_show_details, None, None, raw_extras)
+        normalized_episode = self.normalizer.normalize_episode(raw_episode, raw_extras) if raw_episode else None
+        
+        # Normalize season (basic structure)
+        normalized_season = None
+        if raw_season:
+            normalized_season = {
+                'media_type': 'season',
+                'identifiers': {
+                    'tmdb_id': str(raw_season.get('id', ''))
+                },
+                'season_number': raw_season.get('season_number'),
+                'name': raw_season.get('name'),
+                'overview': raw_season.get('overview'),
+                'air_date': raw_season.get('air_date'),
+                'episode_count': len(raw_season.get('episodes', [])),
+                'images': {
+                    'poster': raw_season.get('poster_path')
+                }
+            }
         
         # Build result - NORMALIZED IS DEFAULT
         end_time = datetime.now()
@@ -202,8 +222,8 @@ class TMDbShowFetcher:
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
             'show': normalized_show,  # NORMALIZED by default
-            'episode': None,
-            'season': None,
+            'episode': normalized_episode,  # NORMALIZED episode data
+            'season': normalized_season,  # NORMALIZED season data
             'movie': None
         }
         

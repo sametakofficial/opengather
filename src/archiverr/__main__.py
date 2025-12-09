@@ -81,9 +81,17 @@ def cli_main():
         print(f"ERROR: Failed to load config.yml: {e}", file=sys.stderr)
         sys.exit(1)
     
-    # Initialize debug system
-    debug = config.get('options', {}).get('debug', False)
-    debugger = init_debugger(enabled=debug)
+    # Initialize debug system with log level support
+    options = config.get('options', {})
+    
+    # Support both log_level (new) and debug (legacy)
+    log_level = options.get('log_level')
+    if not log_level:
+        # Legacy: debug: true/false → convert to log level
+        debug = options.get('debug', False)
+        log_level = 'DEBUG' if debug else 'INFO'
+    
+    debugger = init_debugger(level=log_level)
     
     # Validate config structure
     validator = ConfigValidator()

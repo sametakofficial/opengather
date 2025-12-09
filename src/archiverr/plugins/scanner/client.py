@@ -49,30 +49,40 @@ class ScannerPlugin(InputPlugin):
         created_jobs = 0
         
         for target in targets:
+            # LIVE LOGGING: Log each target being scanned
+            self.info("Scanning target", path=target)
+            
             # Skip .txt files (handled by file_reader)
             if target.endswith('.txt'):
+                self.debug("Skipping .txt file", path=target)
                 continue
             
             target_path = Path(target)
             
             # Direct file
             if target_path.is_file():
+                self.info("Found file", path=str(target_path), size_mb=round(target_path.stat().st_size / 1024 / 1024, 2))
                 self._create_job_for_file(services, target_path)
                 created_jobs += 1
+                self.debug("Job created", job_number=created_jobs)
             
             # Directory scanning
             elif target_path.is_dir() and recursive:
+                self.debug("Scanning directory recursively", path=str(target_path))
                 for ext in ['.mkv', '.mp4', '.avi', '.m4v', '.ts']:
                     for file in target_path.rglob(f'*{ext}'):
                         if file.is_file():
+                            self.info("Found file", path=str(file), extension=ext, size_mb=round(file.stat().st_size / 1024 / 1024, 2))
                             self._create_job_for_file(services, file)
                             created_jobs += 1
+                            self.debug("Job created", job_number=created_jobs)
             
             # Virtual path support
             elif allow_virtual and not target_path.exists():
-                self.debug("Virtual path detected", path=target)
+                self.info("Virtual path detected", path=target)
                 self._create_job_for_virtual(services, target)
                 created_jobs += 1
+                self.debug("Job created from virtual path", job_number=created_jobs)
         
         self.info("Scan complete (per_run)", jobs_created=created_jobs)
         

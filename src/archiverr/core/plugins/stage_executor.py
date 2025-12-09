@@ -364,27 +364,43 @@ class StageExecutor:
             if hasattr(result, 'status'):
                 success = result.status.value == "success" if hasattr(result.status, 'value') else bool(result.status)
             
-            # Session 12: Store plugin data in plugin.{name}.data.* format
+            # Session 12: Cache result for trigger rules
             if result_data:
-                # Cache for trigger evaluation
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
-                
-                # Update job.plugins with Session 12 structure
-                if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                    # Session 12: plugin.{name}.status and plugin.{name}.data
+            
+            # Session 12: Update job.plugins carefully
+            # If plugin called services.updatePlugin(), data is already there - only update status
+            # If plugin didn't call updatePlugin(), create full structure
+            if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+                if plugin_name in job.plugins and isinstance(job.plugins[plugin_name], dict):
+                    # Plugin already has data (from services.updatePlugin()) - only update status
+                    self._log("debug", f"Plugin {plugin_name} data exists, updating status only")
+                    if 'status' not in job.plugins[plugin_name]:
+                        job.plugins[plugin_name]['status'] = {}
+                    job.plugins[plugin_name]['status'].update({
+                        'state': 'completed',
+                        'success': success
+                    })
+                    # Log existing data size for debugging
+                    data_keys = list(job.plugins[plugin_name].get('data', {}).keys()) if 'data' in job.plugins[plugin_name] else []
+                    self._log("debug", f"Preserved existing data keys: {data_keys}")
+                else:
+                    # Plugin didn't use updatePlugin() or data missing - create full structure
+                    self._log("debug", f"Plugin {plugin_name} no existing data, creating new entry")
                     job.plugins[plugin_name] = {
                         'status': {
                             'state': 'completed',
                             'success': success
                         },
-                        'data': result_data
+                        'data': result_data if result_data else {}
                     }
-                elif hasattr(job, 'plugins'):
-                    # Legacy MatchState
-                    try:
+            elif hasattr(job, 'plugins'):
+                # Legacy MatchState
+                try:
+                    if plugin_name not in job.plugins:
                         job.plugins[plugin_name] = result_data
-                    except (TypeError, AttributeError):
-                        pass
+                except (TypeError, AttributeError):
+                    pass
             
             self._mark_executed(job, plugin_name, success)
             
