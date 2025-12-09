@@ -174,7 +174,8 @@ main.app {
   margin-top: 2px;
   border: 1px solid #000;
   flex: 1 1 auto;
-  overflow: auto; /* gerçek scrollbar */
+  overflow-y: auto;   /* dikey scrollbar */
+  overflow-x: hidden; /* yatay overflow’u hücreler handle ediyor */
 }
 
 .path-table {
@@ -185,19 +186,21 @@ main.app {
 
 .path-row {
   border-bottom: 1px solid #000;
+  cursor: default;
 }
 
 .path-row:last-child {
   border-bottom: none;
 }
 
+.path-row.is-selected {
+  background: #d0d0d0;
+}
+
 .path-cell {
   border-right: 1px solid #000;
-  padding: 1px 4px;
-  white-space: nowrap;
-  /* overflow hücre içinde değil, tablo container’da */
+  padding: 0;
   height: 18px;
-  line-height: 16px;
   font-size: 12px;
 }
 
@@ -209,6 +212,16 @@ main.app {
   width: 65%;
 }
 
+/* hücre içi scroll alanı */
+.path-cell-content {
+  display: block;
+  padding: 1px 4px;
+  white-space: nowrap;
+  overflow-x: auto;   /* burada yatay scroll */
+  overflow-y: hidden;
+}
+
+/* Files: X */
 .panel-left-footer {
   margin-top: 2px;
   font-size: 11px;
@@ -365,7 +378,7 @@ figure {
   color: #555;
 }
 
-/* Genel hidden helper (JS ile kullanılıyor) */
+/* Genel hidden helper */
 [hidden] {
   display: none !important;
 }

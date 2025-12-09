@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Movie Scanner UI</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main class="app">
@@ -118,162 +118,202 @@
               <div class="path-table-container">
                 <table class="path-table js-filter-table" id="input-path-table">
                   <tbody>
-                    <!-- 20+ örnek satır -->
-                    <tr class="path-row">
+                    <!-- Her satırın data-movie-id'si var ve ilk hücrede scroll'lu içerik -->
+                    <tr class="path-row" data-movie-id="aladdin">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/aladdin (1992).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/aladdin (1992).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="mr_mrs_smith">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/mr &amp; mrs smith (2005).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/mr &amp; mrs smith (2005).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="matrix">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the matrix (1999).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the matrix (1999).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="inception">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/inception (2010).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/inception (2010).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="toy_story">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/toy story (1995).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/toy story (1995).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="lion_king">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the lion king (1994).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the lion king (1994).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="interstellar">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/interstellar (2014).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/interstellar (2014).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="avatar">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/avatar (2009).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/avatar (2009).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="gladiator">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/gladiator (2000).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/gladiator (2000).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="pulp_fiction">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/pulp fiction (1994).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/pulp fiction (1994).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="dark_knight">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the dark knight (2008).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the dark knight (2008).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="fight_club">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/fight club (1999).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/fight club (1999).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="forrest_gump">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/forrest gump (1994).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/forrest gump (1994).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="godfather">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the godfather (1972).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the godfather (1972).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="godfather2">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the godfather part ii (1974).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the godfather part ii (1974).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="shawshank">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the shawshank redemption (1994).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the shawshank redemption (1994).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="back_future">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/back to the future (1985).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/back to the future (1985).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="t2">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/terminator 2 judgment day (1991).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/terminator 2 judgment day (1991).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="spirited_away">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/spirited away (2001).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/spirited away (2001).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td>
                     </tr>
-                    <tr class="path-row">
+                    <tr class="path-row" data-movie-id="incredibles">
                       <td class="path-cell">
-                        data/srv/downloads/finished/movies/the incredibles (2004).mkv
+                        <div class="path-cell-content">
+                          data/srv/downloads/finished/movies/the incredibles (2004).mkv
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
@@ -290,7 +330,7 @@
             ></footer>
           </section>
 
-          <!-- INPUT / DİĞER ALT TABLAR: Şimdilik boş -->
+          <!-- INPUT / DİĞER ALT TABLAR -->
           <section
             class="path-section"
             data-tab-content-group="input-sub"
@@ -335,7 +375,6 @@
           aria-label="Output içeriği"
           hidden
         >
-          <!-- Output alt tablar: All / Tasker / Custom plugin -->
           <section class="panel-left-filters" aria-label="Output alt sekmeleri">
             <p>All</p>
             <div class="tab-row small">
@@ -404,32 +443,8 @@
                 >
                   <tbody>
                     <tr class="path-row">
-                      <td class="path-cell">title = "Aladdin"</td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td>
-                    </tr>
-                    <tr class="path-row">
-                      <td class="path-cell">year = 1992</td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td>
-                    </tr>
-                    <tr class="path-row">
-                      <td class="path-cell">imdb_id = "tt0103639"</td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td>
-                    </tr>
-                    <tr class="path-row">
-                      <td class="path-cell">runtime = "1h 30m"</td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td><td class="path-cell"></td>
-                      <td class="path-cell"></td>
-                    </tr>
-                    <tr class="path-row">
                       <td class="path-cell">
-                        genres = ["Animation","Family","Adventure","Fantasy"]
+                        <div class="path-cell-content">title = "Aladdin"</div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
@@ -437,7 +452,43 @@
                     </tr>
                     <tr class="path-row">
                       <td class="path-cell">
-                        path = "data/srv/downloads/finished/movies/aladdin (1992).mkv"
+                        <div class="path-cell-content">year = 1992</div>
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        <div class="path-cell-content">imdb_id = "tt0103639"</div>
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        <div class="path-cell-content">runtime = "1h 30m"</div>
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        <div class="path-cell-content">
+                          genres = ["Animation","Family","Adventure","Fantasy"]
+                        </div>
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        <div class="path-cell-content">
+                          path = "data/srv/downloads/finished/movies/aladdin (1992).mkv"
+                        </div>
                       </td>
                       <td class="path-cell"></td><td class="path-cell"></td>
                       <td class="path-cell"></td><td class="path-cell"></td>
@@ -454,7 +505,7 @@
             ></footer>
           </section>
 
-          <!-- OUTPUT / DİĞER ALT TABLAR: Şimdilik boş -->
+          <!-- OUTPUT / DİĞER ALT TABLAR -->
           <section
             class="path-section"
             data-tab-content-group="output-sub"
@@ -587,48 +638,46 @@
               </aside>
 
               <article class="info-section">
-                <h1 class="info-title">Alaaddin</h1>
-                <p class="info-subtitle">Aladdin</p>
+                <h1 class="info-title" id="detail-title">Alaaddin</h1>
+                <p class="info-subtitle" id="detail-subtitle">Aladdin</p>
 
                 <dl class="info-grid">
                   <dt class="info-label">Year</dt>
-                  <dd class="info-value">1992</dd>
+                  <dd class="info-value" id="detail-year"></dd>
                   <dt class="info-label">IMDB ID</dt>
-                  <dd class="info-value">tt0103639</dd>
+                  <dd class="info-value" id="detail-imdb-id"></dd>
 
                   <dt class="info-label">Release Date</dt>
-                  <dd class="info-value">Nov 25, 1992</dd>
+                  <dd class="info-value" id="detail-release-date"></dd>
                   <dt class="info-label">TMDB ID</dt>
-                  <dd class="info-value">812</dd>
+                  <dd class="info-value" id="detail-tmdb-id"></dd>
 
                   <dt class="info-label">Certification</dt>
-                  <dd class="info-value">0</dd>
+                  <dd class="info-value" id="detail-certification"></dd>
                   <dt class="info-label">Trakt.tv ID</dt>
-                  <dd class="info-value"></dd>
+                  <dd class="info-value" id="detail-trakt-id"></dd>
 
                   <dt class="info-label">Runtime</dt>
-                  <dd class="info-value">1h 30m</dd>
+                  <dd class="info-value" id="detail-runtime"></dd>
                   <dt class="info-label">Other IDs</dt>
-                  <dd class="info-value"></dd>
+                  <dd class="info-value" id="detail-other-ids"></dd>
 
                   <dt class="info-label">Genres</dt>
-                  <dd class="info-value">
-                    Animation, Family, Adventure, Fantasy
-                  </dd>
+                  <dd class="info-value" id="detail-genres"></dd>
                   <dt class="info-label">Production</dt>
-                  <dd class="info-value">Walt Disney Pictures</dd>
+                  <dd class="info-value" id="detail-production"></dd>
 
                   <dt class="info-label">Country</dt>
-                  <dd class="info-value">United States</dd>
+                  <dd class="info-value" id="detail-country"></dd>
                   <dt class="info-label">Spoken Languages</dt>
-                  <dd class="info-value">English</dd>
+                  <dd class="info-value" id="detail-languages"></dd>
                 </dl>
 
                 <div class="rating-row">
                   <div
                     class="stars"
                     role="img"
-                    aria-label="Rating: 8.0 out of 10"
+                    aria-label="Rating out of 10"
                   >
                     <span class="star-box"></span>
                     <span class="star-box"></span>
@@ -640,7 +689,9 @@
                     <span class="star-box empty"></span>
                     <span class="star-box empty"></span>
                   </div>
-                  <p class="rating-text">8.0/10 (169,456 Votes)</p>
+                  <p class="rating-text" id="detail-rating-text">
+                    8.0/10 (169,456 Votes)
+                  </p>
                 </div>
 
                 <div class="audio-video-row">
@@ -652,39 +703,28 @@
                 </div>
 
                 <h2 class="tagline-title">Tagline</h2>
-                <p class="tagline-text">
-                  Pilot<br /><br />
-                  Agrabah şehrinin kalbinde, köylü Alaaddin ve onun yaramaz
-                  maymunu Abu, özgür ruhlu güzel prenses Yasemin'i kurtarmak için
-                  savaşı vermektedirler. Sihirli bir lambayı ovuşturup hayata
-                  geçirdiği Alaaddin'in şimdi çılgın ve çekici dilek şefi
-                  Cin'den bir sürü yardımı vardır. Cin de yardımıyla Alaaddin
-                  artık bir prenstir. Fakat kötü yürekli Câfer ve onun sinsi
-                  bozacı papağanı Yago da lambanın gizli gücünün peşindedir...
+                <p class="tagline-text" id="detail-tagline">
+                  ...
                 </p>
 
                 <dl class="bottom-info">
                   <dt class="info-label">Movie Set</dt>
-                  <dd>Alaaddin Collection</dd>
+                  <dd id="detail-movie-set"></dd>
 
                   <dt class="info-label">TV Show Link</dt>
-                  <dd>Nov 25, 1992</dd>
+                  <dd id="detail-tv-link"></dd>
 
                   <dt class="info-label">Edition</dt>
-                  <dd>0</dd>
+                  <dd id="detail-edition"></dd>
 
                   <dt class="info-label">Tags</dt>
-                  <dd>
-                    magic, villain, parrot, musical, tiger, sultan, flying
-                    carpet, wish, cartoon, princess, love, monkey, nostalgic,
-                    arab, aftercreditstinger, genie, arabian
-                  </dd>
+                  <dd id="detail-tags"></dd>
 
                   <dt class="info-label">Paths</dt>
-                  <dd>Media/downloads/downloading/movies</dd>
+                  <dd id="detail-paths"></dd>
 
                   <dt class="info-label">Note</dt>
-                  <dd></dd>
+                  <dd id="detail-note"></dd>
                 </dl>
               </article>
             </div>
@@ -750,6 +790,6 @@
     </div>
   </main>
 
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

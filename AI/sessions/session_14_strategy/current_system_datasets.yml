@@ -1,0 +1,376 @@
+# CURRENT SYSTEM - DATA STRUCTURES (AS-IS)
+# Based on actual codebase analysis
+# Date: December 10, 2024
+
+# ============================================================================
+# RUN STATE (GlobalStateManager._run)
+# ============================================================================
+run:
+  id: run_abc123
+  branch: main # ISSUE: Commits oluşturuluyor ama kullanılmıyor
+  status:
+    state: running # running | completed | failed
+    success: false
+    total_jobs: 0
+    completed: 0
+    failed: 0
+    skipped: 0
+    started_at: 2024-12-10T00:00:00Z
+    finished_at: null
+    duration_ms: 0
+  config: # DUPLICATE: Config zaten GlobalStateManager._config'de var
+    options:
+      debug: true
+      dry_run: false
+    plugins: {}
+
+  # ISSUE: Legacy aliases hala mevcut
+  # execution_id -> run.id (KALDIRIALCAK)
+  # total_matches -> run.status.total_jobs (KALDIRIACAK)
+
+# ============================================================================
+# JOB STATE (GlobalStateManager._current_job ve _jobs)
+# ============================================================================
+job: # Current job (per_job plugins için)
+  id: job_run_abc123_0
+  index: 0
+  run_id: run_abc123 # DUPLICATE: Zaten run context içindeyiz
+  input:
+    value: /data/movies/Movie.2024.mkv
+    data:
+      filename: Movie.2024.mkv
+      extension: mkv
+      size_bytes: 1073741824
+      created_by: scanner # ISSUE: Plugin tracking gereksiz burada
+  output:
+    values: [] # List of output paths
+    data: {} # Task results
+  status:
+    state: running
+    success: false
+    executed: [] # ISSUE: Plugin tracking sistem tarafından yapılıyor
+    failed: [] # ISSUE: Plugin'ler kendi durumlarını bildirmeli
+    skipped: [] # ISSUE: Plugin tracking sistem tarafından yapılıyor
+    started_at: 2024-12-10T00:00:01Z
+    finished_at: null
+    duration_ms: 0
+
+jobs: # All jobs (read-only for per_job plugins)
+  - id: job_run_abc123_0
+    index: 0
+    # ... same structure as job above
+
+# ============================================================================
+# PLUGIN STATE (GlobalStateManager._current_plugins ve _all_plugins)
+# ============================================================================
+plugin: # Current job's plugins (per_job için)
+  tmdb:
+    status:
+      state: completed # ISSUE: Sistem status tracking yapıyor
+      success: true # ISSUE: Plugin kendi bildirmeli
+      started_at: 2024-12-10T00:00:02Z
+      finished_at: 2024-12-10T00:00:03Z
+      duration_ms: 800
+      error: null
+    data:
+      movie:
+        id: 12345
+        title: Movie
+        release_date: 2024-01-15
+  renamer:
+    status:
+      state: completed
+      success: true
+      duration_ms: 200
+    data:
+      parsed:
+        movie:
+          name: Movie
+          year: 2024
+
+plugins: # All jobs' plugins (read-only)
+  - job_id: job_run_abc123_0
+    job_index: 0
+    tmdb:
+      status: { state: completed, success: true }
+      data: { movie: { title: Movie } }
+    renamer:
+      status: { state: completed, success: true }
+      data: { parsed: { movie: { name: Movie } } }
+
+# ============================================================================
+# CONFIG STATE (GlobalStateManager._config)
+# ============================================================================
+config: # Frozen config
+  options:
+    debug: true
+    dry_run: false
+  aliases: # GOOD: Alias system (well-designed)
+    m: plugin.tmdb.data.movie
+    p: plugin.renamer.data.parsed
+  scanner:
+    targets: [/downloads]
+  tmdb:
+    api_key: ${TMDB_API_KEY} # GOOD: Env var expansion
+  tasker:
+    tasks: "!include ./tasks/" # GOOD: Include system
+
+# ============================================================================
+# GLOBAL STATE MANAGER STRUCTURE (CURRENT)
+# ============================================================================
+global_state_manager:
+  _run: RunState # 1. Current run
+  _config: Dict # 2. Frozen config
+  _current_job: JobState # 3. Current job (per_job only)
+  _jobs: List[JobState] # 4. All jobs
+  _current_plugins: Dict # 5. Current job's plugins
+  _all_plugins: List[Dict] # 6. All jobs' plugins
+
+  # ISSUE: 6 state objects, çok fazla
+  # ISSUE: _current_job ve _current_plugins duplicate tracking
+  # ISSUE: _jobs ve _all_plugins içindeki data duplicate
+
+# ============================================================================
+# PLUGIN SERVICES (Access Control Layer)
+# ============================================================================
+plugin_services:
+  mode: per_job | per_run
+  current_job_id: job_run_abc123_0 # ISSUE: Context tracking
+  current_plugin_name: tmdb # ISSUE: Context tracking
+
+  # ISSUE: Çok katı access control
+  methods:
+    createJob:
+      allowed: [per_run, per_job]
+    updateJob:
+      allowed: [per_job] # ISSUE: per_run neden oluşturamasın?
+      requires_context: true
+    updatePlugin:
+      allowed: [per_job]
+      requires_context: true
+    get_current_job:
+      allowed: [per_job]
+      denied: [per_run] # ISSUE: Gereksiz kısıtlama
+    get_all_jobs:
+      allowed: [per_job]
+      denied: [per_run] # ISSUE: Gereksiz kısıtlama
+
+# ============================================================================
+# EXECUTION MODES (Current Implementation)
+# ============================================================================
+execution_modes:
+  per_run:
+    description: Job creation plugins
+    stage: null
+    access:
+      - run (read-only)
+      - config (read-only)
+    cannot_access: # ISSUE: Gereksiz kısıtlamalar
+      - job
+      - jobs # ISSUE: Neden okuyamasın?
+      - plugin
+      - plugins
+    methods:
+      - createJob(input_value, input_data)
+    examples: [scanner]
+
+  per_job:
+    description: Job processing plugins
+    stage: parse | data | output
+    access:
+      - run (read-only)
+      - config (read-only)
+      - job (read-write current)
+      - jobs (read-only all)
+      - plugin (read-write current)
+      - plugins (read-only all)
+    methods:
+      - createJob() # ISSUE: Neden olmasın?
+      - updateJob(key, value)
+      - updatePlugin(data)
+    examples: [renamer, tmdb, tasker]
+
+# ============================================================================
+# MONGODB COLLECTIONS (Current - with Legacy Duplication)
+# ============================================================================
+mongodb:
+  # NEW Collections (Session 12)
+  runs:
+    _id: ObjectId
+    id: run_abc123
+    status: { ... }
+    config: { ... }
+    created_at: ISODate
+
+  jobs:
+    _id: ObjectId
+    run_id: run_abc123
+    id: job_run_abc123_0
+    index: 0
+    input: { ... }
+    output: { ... }
+    status: { ... }
+    created_at: ISODate
+
+  plugins:
+    _id: ObjectId
+    run_id: run_abc123
+    job_id: job_run_abc123_0
+    plugin_name: tmdb
+    status: { ... }
+    data: { ... }
+    created_at: ISODate
+
+  # LEGACY Collections (ISSUE: Duplicate yazılıyor!)
+  executions: # KALDIRIILACAK: Same as runs
+    _id: ObjectId
+    id: exec_abc123 # exec_ prefix
+    # ... same structure as runs
+
+  matches: # KALDIRILACAK: Same as jobs
+    _id: ObjectId
+    execution_id: exec_abc123
+    # ... same structure as jobs
+
+  plugin_results: # KALDIRILACAK: Same as plugins
+    _id: ObjectId
+    execution_id: exec_abc123
+    match_id: match_abc123_0
+    # ... same structure as plugins
+
+  # VERSIONING Collections (ISSUE: Commits oluşturuluyor ama kullanılmıyor!)
+  branches:
+    _id: ObjectId (branch_abc)
+    name: main
+    is_default: true
+    head_commit_id: commit_xyz # ISSUE: Kullanılmıyor
+    created_at: ISODate
+
+  commits: # KALDIRILACAK: Hiç kullanılmıyor!
+    _id: ObjectId (commit_xyz)
+    branch_id: branch_abc
+    execution_id: exec_123
+    parent_commit_id: commit_uvw
+    message: "Run exec_123: 42 jobs"
+    metadata: { ... }
+    created_at: ISODate
+
+# ============================================================================
+# PLUGIN MANIFEST (Current Structure)
+# ============================================================================
+manifest:
+  # Immutable fields
+  name: tmdb
+  version: 1.0.0
+  run_mode: per_job
+  stage: data
+  class_name: TMDbPlugin
+  entry_point: client.py
+
+  # Mutable fields (config.yml override edebilir)
+  requires:
+    - plugin.renamer.data.parsed:success
+  fs_lock: [] # GOOD: Static paths only
+  trigger_rule: all_success
+
+  # Config schema
+  config_schema:
+    api_key:
+      type: string
+      required: true
+
+# ============================================================================
+# PLUGIN DISCOVERY & LOADING (Current - 5 Layers!)
+# ============================================================================
+plugin_system:
+  layers:
+    1_discovery: # PluginDiscovery
+      responsibility: Find manifest.yml files
+      output: List[manifest_path]
+
+    2_loader: # PluginLoader
+      responsibility: Import Python modules
+      output: List[PluginClass]
+
+    3_registry: # PluginRegistry
+      responsibility: Organize by stage
+      output: Dict[Stage, List[Plugin]]
+
+    4_executor: # PluginExecutor
+      responsibility: Execute single plugin
+      output: PluginResult
+
+    5_stage_executor: # StageExecutor
+      responsibility: Execute stage of plugins
+      output: StageResult
+
+  # ISSUE: Too many layers, mostly delegation
+  # RECOMMENDATION: Merge 1+2 into 3 (Discovery + Loading into Registry)
+
+# ============================================================================
+# CONFIG PROCESSING (Current - 4 Steps)
+# ============================================================================
+config_processing:
+  steps:
+    1_load_yaml_with_includes:
+      description: Process !include directives
+      complexity: Medium
+      status: GOOD (well-designed feature)
+
+    2_expand_env_vars:
+      description: Replace ${TMDB_API_KEY} with env values
+      complexity: Low
+      status: GOOD (essential)
+
+    3_normalize_config:
+      description: Support multiple config formats
+      complexity: High
+      status: QUESTIONABLE (3 formats support needed?)
+
+    4_resolve_aliases:
+      description: Replace m.title with plugin.tmdb.data.movie.title
+      complexity: High (regex-based)
+      status: GOOD (well-designed feature)
+
+  # RECOMMENDATION: Keep 1, 2, 4. Review 3 (maybe support only 1 format?)
+
+# ============================================================================
+# ISSUES SUMMARY
+# ============================================================================
+issues:
+  critical:
+    - Legacy collections duplicate yazılıyor (executions, matches, plugin_results)
+    - Commits oluşturuluyor ama hiç kullanılmıyor
+    - MockPersistence hala kodda (KALDIRILACAK)
+
+  state_management:
+    - 6 state object (run, config, job, jobs, plugin, plugins)
+    - Duplicate data tracking (job in _current_job and _jobs)
+    - Gereksiz context tracking (current_job_id, current_plugin_name)
+
+  access_control:
+    - per_run plugin'ler jobs okuyamıyor (gereksiz kısıtlama)
+    - per_job plugin'ler job oluşturamasın (gereksiz kısıtlama)
+    - Plugin'ler global state'e direkt erişemiyor (gereksiz kısıtlama)
+
+  plugin_tracking:
+    - Sistem plugin success/fail tracking yapıyor
+    - Plugin'ler kendi durumlarını bildirmeli (updateStatus)
+    - executed/failed/skipped lists sistem tarafından yönetiliyor
+
+  naming:
+    - logger vs debugger karışıklığı
+    - execution vs run (legacy aliases)
+    - match vs job (legacy aliases)
+
+# ============================================================================
+# STRENGTHS (Keep These!)
+# ============================================================================
+strengths:
+  - Stage-based execution (PARSE → DATA → OUTPUT)
+  - Plugin system architecture (well-designed, not over-engineered)
+  - Config merge with !include (well-designed)
+  - Alias system (well-designed)
+  - Env var expansion
+  - Dependency-based execution (requires + trigger_rule)
+  - Event bus (good design, just under-utilized)
