@@ -30,7 +30,6 @@ class BranchResponse(BaseModel):
     name: str
     description: str
     is_default: bool
-    head_commit_id: Optional[str]
     created_at: str
 
 
@@ -60,7 +59,6 @@ async def list_branches(db: DatabaseDep):
                     name=b.get("name", ""),
                     description=b.get("description", ""),
                     is_default=b.get("is_default", False),
-                    head_commit_id=b.get("head_commit_id"),
                     created_at=_to_iso_string(b.get("created_at", ""))
                 )
                 for b in branches
@@ -99,7 +97,6 @@ async def create_branch(branch: BranchCreate, db: DatabaseDep):
             "name": branch.name,
             "description": branch.description or "",
             "is_default": False,
-            "head_commit_id": None,
             "created_at": now,
             "updated_at": now
         }
@@ -110,7 +107,6 @@ async def create_branch(branch: BranchCreate, db: DatabaseDep):
             name=branch.name,
             description=branch.description or "",
             is_default=False,
-            head_commit_id=None,
             created_at=now
         )
         
@@ -138,7 +134,6 @@ async def get_branch(branch_name: str, db: DatabaseDep):
             name=doc.get("name", ""),
             description=doc.get("description", ""),
             is_default=doc.get("is_default", False),
-            head_commit_id=doc.get("head_commit_id"),
             created_at=_to_iso_string(doc.get("created_at", ""))
         )
         
