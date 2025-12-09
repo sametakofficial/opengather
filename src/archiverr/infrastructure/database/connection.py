@@ -16,9 +16,9 @@ from .mock import MockPersistence
 @dataclass
 class DatabaseConfig:
     """Database configuration"""
-    backend: str = "mock"  # "mock" or "mongodb"
+    backend: str = "mongodb"  # "mock" (ONLY FOR TESTING) or "mongodb" (PRODUCTION)
     
-    # Mock settings
+    # Mock settings (TESTING ONLY - DO NOT USE IN PRODUCTION)
     mock_path: str = "./mock_db"
     
     # MongoDB settings
@@ -31,13 +31,13 @@ class DatabaseConfig:
         Load configuration from environment variables.
         
         Environment Variables:
-            ARCHIVERR_DB_BACKEND: "mock" or "mongodb" (default: mock)
+            ARCHIVERR_DB_BACKEND: "mongodb" (default, REQUIRED) or "mock" (testing only)
             ARCHIVERR_MOCK_PATH: Path for mock database (default: ./mock_db)
             MONGODB_URI: MongoDB connection string (default: mongodb://localhost:27017)
             MONGODB_DATABASE: Database name (default: archiverr)
         """
         return cls(
-            backend=os.getenv("ARCHIVERR_DB_BACKEND", "mock"),
+            backend=os.getenv("ARCHIVERR_DB_BACKEND", "mongodb"),
             mock_path=os.getenv("ARCHIVERR_MOCK_PATH", "./mock_db"),
             mongodb_uri=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
             mongodb_database=os.getenv("MONGODB_DATABASE", "archiverr")

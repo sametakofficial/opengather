@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Movie Scanner UI</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app">
+    <!-- ÜST ÇERÇEVE -->
+    <header class="frame">
+      <button type="button" class="frame-gear" aria-label="Ayarlar">
+        ⚙
+      </button>
+    </header>
+
+    <div class="main">
+      <!-- SOL PANEL -->
+      <section class="panel-left" aria-label="Sol panel">
+        <!-- Input / Output -->
+        <nav class="panel-left-top-tabs" aria-label="Input / Output">
+          <div class="tab-row">
+            <button
+              type="button"
+              class="tab is-active"
+              data-tab-group="io"
+              data-tab-target="input"
+            >
+              Input
+            </button>
+            <button
+              type="button"
+              class="tab"
+              data-tab-group="io"
+              data-tab-target="output"
+            >
+              Output
+            </button>
+          </div>
+        </nav>
+
+        <!-- INPUT PANEL İÇERİĞİ -->
+        <section
+          data-tab-content-group="io"
+          data-tab-content="input"
+          aria-label="Input içeriği"
+        >
+          <!-- All / scanner / file-reader / custom-plugin -->
+          <section class="panel-left-filters" aria-label="Input alt sekmeleri">
+            <p>All</p>
+            <div class="tab-row small">
+              <button
+                type="button"
+                class="tab is-active"
+                data-tab-group="input-sub"
+                data-tab-target="input-all"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="input-sub"
+                data-tab-target="input-scanner"
+              >
+                scanner
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="input-sub"
+                data-tab-target="input-file-reader"
+              >
+                file-reader
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="input-sub"
+                data-tab-target="input-custom-plugin"
+              >
+                custom-plugin
+              </button>
+            </div>
+          </section>
+
+          <!-- INPUT / ALL TABLOSU -->
+          <section
+            class="path-section"
+            data-tab-content-group="input-sub"
+            data-tab-content="input-all"
+          >
+            <div class="path-wrapper">
+              <div class="path-toolbar">
+                <input
+                  class="path-filter-input js-filter-input"
+                  type="text"
+                  aria-label="Yol filtresi"
+                  placeholder="Ara..."
+                  data-target-table="input-path-table"
+                />
+                <button type="button" class="path-search" aria-label="Ara">
+                  🔍
+                </button>
+              </div>
+
+              <header class="path-header">
+                <h2 class="path-header-title">Path</h2>
+                <div class="path-header-icons" aria-hidden="true">
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                </div>
+              </header>
+
+              <div class="path-table-container">
+                <table class="path-table js-filter-table" id="input-path-table">
+                  <tbody>
+                    <!-- 20+ örnek satır -->
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/aladdin (1992).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/mr &amp; mrs smith (2005).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the matrix (1999).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/inception (2010).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/toy story (1995).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the lion king (1994).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/interstellar (2014).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/avatar (2009).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/gladiator (2000).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/pulp fiction (1994).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the dark knight (2008).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/fight club (1999).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/forrest gump (1994).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the godfather (1972).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the godfather part ii (1974).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the shawshank redemption (1994).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/back to the future (1985).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/terminator 2 judgment day (1991).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/spirited away (2001).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        data/srv/downloads/finished/movies/the incredibles (2004).mkv
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <footer
+              class="panel-left-footer"
+              data-count-table="input-path-table"
+            ></footer>
+          </section>
+
+          <!-- INPUT / DİĞER ALT TABLAR: Şimdilik boş -->
+          <section
+            class="path-section"
+            data-tab-content-group="input-sub"
+            data-tab-content="input-scanner"
+            hidden
+          >
+            <div class="path-wrapper empty-panel">
+              <p>scanner sekmesi için içerik henüz yok.</p>
+            </div>
+            <footer class="panel-left-footer">Files : 0</footer>
+          </section>
+
+          <section
+            class="path-section"
+            data-tab-content-group="input-sub"
+            data-tab-content="input-file-reader"
+            hidden
+          >
+            <div class="path-wrapper empty-panel">
+              <p>file-reader sekmesi için içerik henüz yok.</p>
+            </div>
+            <footer class="panel-left-footer">Files : 0</footer>
+          </section>
+
+          <section
+            class="path-section"
+            data-tab-content-group="input-sub"
+            data-tab-content="input-custom-plugin"
+            hidden
+          >
+            <div class="path-wrapper empty-panel">
+              <p>custom-plugin sekmesi için içerik henüz yok.</p>
+            </div>
+            <footer class="panel-left-footer">Files : 0</footer>
+          </section>
+        </section>
+
+        <!-- OUTPUT PANEL İÇERİĞİ -->
+        <section
+          data-tab-content-group="io"
+          data-tab-content="output"
+          aria-label="Output içeriği"
+          hidden
+        >
+          <!-- Output alt tablar: All / Tasker / Custom plugin -->
+          <section class="panel-left-filters" aria-label="Output alt sekmeleri">
+            <p>All</p>
+            <div class="tab-row small">
+              <button
+                type="button"
+                class="tab is-active"
+                data-tab-group="output-sub"
+                data-tab-target="output-all"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="output-sub"
+                data-tab-target="output-tasker"
+              >
+                tasker
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="output-sub"
+                data-tab-target="output-custom-plugin"
+              >
+                custom-plugin
+              </button>
+            </div>
+          </section>
+
+          <!-- OUTPUT / ALL TABLOSU -->
+          <section
+            class="path-section"
+            data-tab-content-group="output-sub"
+            data-tab-content="output-all"
+          >
+            <div class="path-wrapper">
+              <div class="path-toolbar">
+                <input
+                  class="path-filter-input js-filter-input"
+                  type="text"
+                  aria-label="Value filtresi"
+                  placeholder="Ara..."
+                  data-target-table="output-value-table"
+                />
+                <button type="button" class="path-search" aria-label="Ara">
+                  🔍
+                </button>
+              </div>
+
+              <header class="path-header">
+                <h2 class="path-header-title">Value</h2>
+                <div class="path-header-icons" aria-hidden="true">
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                  <span class="icon-box"></span>
+                </div>
+              </header>
+
+              <div class="path-table-container">
+                <table
+                  class="path-table js-filter-table"
+                  id="output-value-table"
+                >
+                  <tbody>
+                    <tr class="path-row">
+                      <td class="path-cell">title = "Aladdin"</td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">year = 1992</td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">imdb_id = "tt0103639"</td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">runtime = "1h 30m"</td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        genres = ["Animation","Family","Adventure","Fantasy"]
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                    <tr class="path-row">
+                      <td class="path-cell">
+                        path = "data/srv/downloads/finished/movies/aladdin (1992).mkv"
+                      </td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td><td class="path-cell"></td>
+                      <td class="path-cell"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <footer
+              class="panel-left-footer"
+              data-count-table="output-value-table"
+            ></footer>
+          </section>
+
+          <!-- OUTPUT / DİĞER ALT TABLAR: Şimdilik boş -->
+          <section
+            class="path-section"
+            data-tab-content-group="output-sub"
+            data-tab-content="output-tasker"
+            hidden
+          >
+            <div class="path-wrapper empty-panel">
+              <p>tasker sekmesi için içerik henüz yok.</p>
+            </div>
+            <footer class="panel-left-footer">Files : 0</footer>
+          </section>
+
+          <section
+            class="path-section"
+            data-tab-content-group="output-sub"
+            data-tab-content="output-custom-plugin"
+            hidden
+          >
+            <div class="path-wrapper empty-panel">
+              <p>custom-plugin sekmesi için içerik henüz yok.</p>
+            </div>
+            <footer class="panel-left-footer">Files : 0</footer>
+          </section>
+        </section>
+      </section>
+
+      <!-- SAĞ PANEL -->
+      <section class="panel-right" aria-label="Sağ panel">
+        <!-- Üst yatay tablar -->
+        <nav class="panel-right-top-tabs" aria-label="Kaynak tabları">
+          <div class="tab-row">
+            <button
+              type="button"
+              class="tab is-active"
+              data-tab-group="right-main"
+              data-tab-target="right-all"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              class="tab"
+              data-tab-group="right-main"
+              data-tab-target="right-tmdb"
+            >
+              tmdb
+            </button>
+            <button
+              type="button"
+              class="tab"
+              data-tab-group="right-main"
+              data-tab-target="right-omdb"
+            >
+              omdb
+            </button>
+            <button
+              type="button"
+              class="tab"
+              data-tab-group="right-main"
+              data-tab-target="right-tvdb"
+            >
+              tvdb
+            </button>
+            <button
+              type="button"
+              class="tab"
+              data-tab-group="right-main"
+              data-tab-target="right-custom-plugin"
+            >
+              custom-plugin
+            </button>
+          </div>
+        </nav>
+
+        <!-- SAĞ PANEL: ALL İÇİN ALT TABLAR + İÇERİK -->
+        <section
+          data-tab-content-group="right-main"
+          data-tab-content="right-all"
+        >
+          <!-- Alt yatay tablar -->
+          <nav class="panel-right-sub-tabs" aria-label="All alt sekmeleri">
+            <div class="tab-row small">
+              <button
+                type="button"
+                class="tab is-active"
+                data-tab-group="right-all-sub"
+                data-tab-target="right-all-general"
+              >
+                General
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="right-all-sub"
+                data-tab-target="right-all-credentials"
+              >
+                Credentials
+              </button>
+              <button
+                type="button"
+                class="tab"
+                data-tab-group="right-all-sub"
+                data-tab-target="right-all-media"
+              >
+                Media
+              </button>
+            </div>
+          </nav>
+
+          <!-- ALL / GENERAL İÇERİĞİ -->
+          <section
+            data-tab-content-group="right-all-sub"
+            data-tab-content="right-all-general"
+          >
+            <div class="detail-grid">
+              <aside aria-label="Posterler">
+                <figure>
+                  <div class="poster-main"></div>
+                  <figcaption class="poster-caption">
+                    Poster - 1000x1426
+                  </figcaption>
+                </figure>
+
+                <figure>
+                  <div class="poster-small"></div>
+                  <figcaption class="poster-caption">
+                    Fanart - 1280x720
+                  </figcaption>
+                </figure>
+              </aside>
+
+              <article class="info-section">
+                <h1 class="info-title">Alaaddin</h1>
+                <p class="info-subtitle">Aladdin</p>
+
+                <dl class="info-grid">
+                  <dt class="info-label">Year</dt>
+                  <dd class="info-value">1992</dd>
+                  <dt class="info-label">IMDB ID</dt>
+                  <dd class="info-value">tt0103639</dd>
+
+                  <dt class="info-label">Release Date</dt>
+                  <dd class="info-value">Nov 25, 1992</dd>
+                  <dt class="info-label">TMDB ID</dt>
+                  <dd class="info-value">812</dd>
+
+                  <dt class="info-label">Certification</dt>
+                  <dd class="info-value">0</dd>
+                  <dt class="info-label">Trakt.tv ID</dt>
+                  <dd class="info-value"></dd>
+
+                  <dt class="info-label">Runtime</dt>
+                  <dd class="info-value">1h 30m</dd>
+                  <dt class="info-label">Other IDs</dt>
+                  <dd class="info-value"></dd>
+
+                  <dt class="info-label">Genres</dt>
+                  <dd class="info-value">
+                    Animation, Family, Adventure, Fantasy
+                  </dd>
+                  <dt class="info-label">Production</dt>
+                  <dd class="info-value">Walt Disney Pictures</dd>
+
+                  <dt class="info-label">Country</dt>
+                  <dd class="info-value">United States</dd>
+                  <dt class="info-label">Spoken Languages</dt>
+                  <dd class="info-value">English</dd>
+                </dl>
+
+                <div class="rating-row">
+                  <div
+                    class="stars"
+                    role="img"
+                    aria-label="Rating: 8.0 out of 10"
+                  >
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box"></span>
+                    <span class="star-box empty"></span>
+                    <span class="star-box empty"></span>
+                  </div>
+                  <p class="rating-text">8.0/10 (169,456 Votes)</p>
+                </div>
+
+                <div class="audio-video-row">
+                  <span class="av-pill">480p VIDEO</span>
+                  <span class="av-pill">1.85</span>
+                  <span class="av-pill">H.264</span>
+                  <span class="av-pill">5.1 AUDIO</span>
+                  <span class="av-pill">DOLBY</span>
+                </div>
+
+                <h2 class="tagline-title">Tagline</h2>
+                <p class="tagline-text">
+                  Pilot<br /><br />
+                  Agrabah şehrinin kalbinde, köylü Alaaddin ve onun yaramaz
+                  maymunu Abu, özgür ruhlu güzel prenses Yasemin'i kurtarmak için
+                  savaşı vermektedirler. Sihirli bir lambayı ovuşturup hayata
+                  geçirdiği Alaaddin'in şimdi çılgın ve çekici dilek şefi
+                  Cin'den bir sürü yardımı vardır. Cin de yardımıyla Alaaddin
+                  artık bir prenstir. Fakat kötü yürekli Câfer ve onun sinsi
+                  bozacı papağanı Yago da lambanın gizli gücünün peşindedir...
+                </p>
+
+                <dl class="bottom-info">
+                  <dt class="info-label">Movie Set</dt>
+                  <dd>Alaaddin Collection</dd>
+
+                  <dt class="info-label">TV Show Link</dt>
+                  <dd>Nov 25, 1992</dd>
+
+                  <dt class="info-label">Edition</dt>
+                  <dd>0</dd>
+
+                  <dt class="info-label">Tags</dt>
+                  <dd>
+                    magic, villain, parrot, musical, tiger, sultan, flying
+                    carpet, wish, cartoon, princess, love, monkey, nostalgic,
+                    arab, aftercreditstinger, genie, arabian
+                  </dd>
+
+                  <dt class="info-label">Paths</dt>
+                  <dd>Media/downloads/downloading/movies</dd>
+
+                  <dt class="info-label">Note</dt>
+                  <dd></dd>
+                </dl>
+              </article>
+            </div>
+          </section>
+
+          <!-- ALL / CREDENTIALS & MEDIA: Şimdilik boş -->
+          <section
+            class="empty-panel"
+            data-tab-content-group="right-all-sub"
+            data-tab-content="right-all-credentials"
+            hidden
+          >
+            <p>Credentials sekmesi için içerik henüz yok.</p>
+          </section>
+
+          <section
+            class="empty-panel"
+            data-tab-content-group="right-all-sub"
+            data-tab-content="right-all-media"
+            hidden
+          >
+            <p>Media sekmesi için içerik henüz yok.</p>
+          </section>
+        </section>
+
+        <!-- SAĞ PANEL: TMDB / OMDB / TVDB / CUSTOM-PLUGIN -> Şimdilik boş -->
+        <section
+          class="empty-panel"
+          data-tab-content-group="right-main"
+          data-tab-content="right-tmdb"
+          hidden
+        >
+          <p>tmdb sekmesi için içerik henüz yok.</p>
+        </section>
+
+        <section
+          class="empty-panel"
+          data-tab-content-group="right-main"
+          data-tab-content="right-omdb"
+          hidden
+        >
+          <p>omdb sekmesi için içerik henüz yok.</p>
+        </section>
+
+        <section
+          class="empty-panel"
+          data-tab-content-group="right-main"
+          data-tab-content="right-tvdb"
+          hidden
+        >
+          <p>tvdb sekmesi için içerik henüz yok.</p>
+        </section>
+
+        <section
+          class="empty-panel"
+          data-tab-content-group="right-main"
+          data-tab-content="right-custom-plugin"
+          hidden
+        >
+          <p>custom-plugin sekmesi için içerik henüz yok.</p>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -9,8 +9,11 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
+from .schemas import RunRequest
+import tempfile
+import yaml
 
 router = APIRouter()
 
@@ -30,13 +33,46 @@ class RunResponse(BaseModel):
 
 
 @router.post("/", response_model=RunResponse)
-def run_default():
-    """Run archiverr - subprocess based, no async issues"""
+def run_default(request: RunRequest = Body(None)):
+    """Run archiverr with optional custom config - FLEXIBLE!"""
     
     start_time = time.time()
     
-    # Check config exists
+    # Default config path
     config_path = PROJECT_ROOT / "config.yml"
+    temp_config_file = None
+    
+    # If custom config provided, use it!
+    if request and request.config_override:
+        try:
+            # Load default config
+            with open(config_path, 'r') as f:
+                base_config = yaml.safe_load(f)
+            
+            # Merge with override (override wins!)
+            base_config.update(request.config_override)
+            
+            # Create temp config file
+            temp_config_file = tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix='.yml',
+                prefix='archiverr_api_',
+                dir=str(PROJECT_ROOT),
+                delete=False
+            )
+            yaml.dump(base_config, temp_config_file, default_flow_style=False)
+            temp_config_file.close()
+            
+            config_path = Path(temp_config_file.name)
+        except Exception as e:
+            if temp_config_file:
+                try:
+                    os.unlink(temp_config_file.name)
+                except:
+                    pass
+            raise HTTPException(status_code=400, detail=f"Failed to process custom config: {str(e)}")
+    
+    # Check config exists
     if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"config.yml not found at {config_path}")
     
@@ -119,3 +155,10 @@ def run_default():
             duration_ms=int((time.time() - start_time) * 1000),
             error=str(e)
         )
+    finally:
+        # Cleanup temp config
+        if temp_config_file and Path(temp_config_file.name).exists():
+            try:
+                os.unlink(temp_config_file.name)
+            except:
+                pass

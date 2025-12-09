@@ -1,8 +1,11 @@
 """Plugin Loader - Load and instantiate plugins with config validation"""
 import importlib
-from typing import Dict, Any, Optional
-from archiverr.utils.debug import get_debugger
+from typing import Dict, Any, Optional, List
+import importlib.util
+import sys
+from pathlib import Path
 from archiverr.core.plugins.sdk.validators import validate_plugin_config
+from archiverr.utils.debug import get_debugger
 
 
 class PluginLoader:

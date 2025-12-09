@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archiverr"
-version = "2.1.0"
+version = "0.1.0-dev"
 description = "A plugin-based media archiving and metadata enrichment system"
 readme = "README.md"
 license = {text = "MIT"}

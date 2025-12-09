@@ -62,17 +62,17 @@ class PyMongoPersistence(PersistenceInterface):
     For API (async context), use Motor directly via get_database dependency.
     """
     
-    # Collection names (legacy)
-    EXECUTIONS = "executions"
-    MATCHES = "matches"
-    PLUGIN_RESULTS = "plugin_results"
+    # Collection names (Session 12 - CLEAN!)
+    RUNS = "runs"
+    JOBS = "jobs"
+    PLUGINS = "plugins"  # ALL plugin data here!
     BRANCHES = "branches"
     COMMITS = "commits"
     
-    # New collection names (Session 11)
-    RUNS = "runs"
-    JOBS = "jobs"
-    PLUGINS = "plugins"
+    # Legacy collection names (for backward compatibility)
+    EXECUTIONS = "executions"
+    MATCHES = "matches"
+    PLUGIN_RESULTS = "plugin_results"
     
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
@@ -142,32 +142,26 @@ class PyMongoPersistence(PersistenceInterface):
             logger.debug("PyMongo connection closed")
     
     def _create_indexes(self) -> None:
-        """Create database indexes."""
-        # Executions indexes
-        self._db[self.EXECUTIONS].create_index("started_at")
-        self._db[self.EXECUTIONS].create_index([("status", 1), ("started_at", -1)])
+        """Create database indexes (Session 12 - CLEAN!)."""
+        # Runs indexes
+        self._db[self.RUNS].create_index("started_at")
+        self._db[self.RUNS].create_index([("status", 1), ("started_at", -1)])
+        # _id is already unique by default, no need to specify!
         
-        # Matches indexes
-        self._db[self.MATCHES].create_index(
-            [("execution_id", 1), ("index", 1)],
+        # Jobs indexes
+        self._db[self.JOBS].create_index("run_id")
+        # Note: (run_id, index) unique index created in _create_new_indexes()
+        # _id is already unique by default!
+        
+        # Plugins indexes (ALL plugin data here!)
+        self._db[self.PLUGINS].create_index(
+            [("run_id", 1), ("job_id", 1), ("plugin_name", 1)],
             unique=True
         )
-        self._db[self.MATCHES].create_index("execution_id")
-        self._db[self.MATCHES].create_index("category")
-        
-        # Plugin results indexes
-        self._db[self.PLUGIN_RESULTS].create_index(
-            [("execution_id", 1), ("match_index", 1), ("plugin_name", 1)],
-            unique=True
-        )
-        self._db[self.PLUGIN_RESULTS].create_index("match_id")
-        self._db[self.PLUGIN_RESULTS].create_index("plugin_name")
-        
-        # TTL index for plugin results
-        self._db[self.PLUGIN_RESULTS].create_index(
-            "expires_at",
-            expireAfterSeconds=0
-        )
+        self._db[self.PLUGINS].create_index("run_id")
+        self._db[self.PLUGINS].create_index("job_id")
+        self._db[self.PLUGINS].create_index("plugin_name")
+        self._db[self.PLUGINS].create_index("stage")
         
         # Branches indexes
         self._db[self.BRANCHES].create_index("name", unique=True)
@@ -440,20 +434,28 @@ class PyMongoPersistence(PersistenceInterface):
     
     def _create_new_indexes(self) -> None:
         """Create indexes for new collections (Session 11)."""
-        # runs indexes
-        self._db[self.RUNS].create_index("id", unique=True)
-        self._db[self.RUNS].create_index("created_at")
-        self._db[self.RUNS].create_index("status.state")
-        
-        # jobs indexes
-        self._db[self.JOBS].create_index([("run_id", 1), ("index", 1)], unique=True)
-        self._db[self.JOBS].create_index("id", unique=True)
-        self._db[self.JOBS].create_index("run_id")
-        
-        # plugins indexes
-        self._db[self.PLUGINS].create_index([("job_id", 1), ("plugin_name", 1)], unique=True)
-        self._db[self.PLUGINS].create_index("run_id")
-        self._db[self.PLUGINS].create_index("job_id")
+        try:
+            # runs indexes
+            self._db[self.RUNS].create_index("id", unique=True)
+            self._db[self.RUNS].create_index("created_at")
+            self._db[self.RUNS].create_index("status.state")
+            
+            # jobs indexes - drop existing non-unique before creating unique
+            try:
+                self._db[self.JOBS].drop_index("run_id_1_index_1")
+            except Exception:
+                pass  # Index doesn't exist or different name, continue
+            
+            self._db[self.JOBS].create_index([("run_id", 1), ("index", 1)], unique=True)
+            self._db[self.JOBS].create_index("id", unique=True)
+            self._db[self.JOBS].create_index("run_id")
+            
+            # plugins indexes
+            self._db[self.PLUGINS].create_index([("job_id", 1), ("plugin_name", 1)], unique=True)
+            self._db[self.PLUGINS].create_index("run_id")
+            self._db[self.PLUGINS].create_index("job_id")
+        except Exception as e:
+            logger.warning(f"Index creation warning (non-critical): {e}")
     
     # ==================== STATISTICS ====================
     

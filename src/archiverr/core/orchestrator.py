@@ -171,7 +171,9 @@ class Orchestrator:
             return self._build_result(success=False, error=str(e))
             
         except Exception as e:
-            self._log("error", f"Unexpected error: {e}")
+            import traceback
+            error_detail = f"{e}\n{traceback.format_exc()}"
+            self._log("error", f"Unexpected error: {error_detail}")
             self._emit_error(e, critical=False)
             self._finalize(success=False)
             return self._build_result(success=False, error=str(e))
@@ -248,9 +250,6 @@ class Orchestrator:
             "plugins": self._plugin_registry.enabled_plugins
         })
         
-        # Session 12: Provides registry removed
-        # No need to register provides or track reactive plugins
-        
         # Register event handlers for persistence
         self._register_event_handlers()
     
@@ -316,7 +315,7 @@ class Orchestrator:
     
     def _execute_stages(self) -> None:
         """
-        Execute all 3 stages in order (Session 12).
+        Execute all 3 stages in order.
         
         Stage execution is best-effort: if a stage fails,
         we log the error and continue to the next stage.
@@ -524,7 +523,7 @@ def build_orchestrator(
         orchestrator = build_orchestrator(config)
         result = orchestrator.run()
     """
-    from archiverr.utils.debug import init_debugger
+    from archiverr.utils.debug import init_debugger, get_debugger
     from archiverr.state import GlobalStateManager
     from archiverr.infrastructure.database import DatabaseConnection
     
@@ -541,14 +540,10 @@ def build_orchestrator(
     state = GlobalStateManager()
     state.reset()
     
-    # Create persistence if not provided (optional)
+    # Create persistence if not provided (REQUIRED - no fallback)
     if persistence is None:
-        try:
-            db_connection = DatabaseConnection.from_env()
-            persistence = db_connection.connect()
-        except (ImportError, Exception) as e:
-            debugger.warn("orchestrator", f"Persistence unavailable: {e}")
-            persistence = None
+        db_connection = DatabaseConnection.from_env()
+        persistence = db_connection.connect()
     
     # Configure state with persistence
     state.configure(

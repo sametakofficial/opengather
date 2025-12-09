@@ -48,10 +48,16 @@ class DebugSystem:
     """
     
     def __init__(self, enabled: bool = False, level: int = None, diagnostics_logger = None):
-        self.enabled = enabled
-        # If level not specified, use DEBUG if enabled, else WARNING
-        self.level = level if level is not None else (LogLevel.DEBUG if enabled else LogLevel.WARNING)
-        self.log_buffer: List[Dict[str, Any]] = []  # Always collect logs, regardless of debug mode
+        # Level determines what gets logged to console
+        # Default: INFO (show INFO, WARNING, ERROR, CRITICAL)
+        if level is not None:
+            self.level = level
+        elif enabled:
+            self.level = LogLevel.DEBUG  # Old behavior: debug=true → show everything
+        else:
+            self.level = LogLevel.INFO  # Default: show INFO and above
+        
+        self.log_buffer: List[Dict[str, Any]] = []  # Always collect logs for export
         self._diagnostics_logger = diagnostics_logger
         self._execution_id: Optional[str] = None
     
@@ -131,10 +137,7 @@ class DebugSystem:
             except Exception:
                 pass  # Don't let diagnostics failures break the app
         
-        # Only print to stderr if debug mode is enabled
-        if not self.enabled:
-            return
-        
+        # Print to console (stderr) - level already filtered above!
         context = " ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
         
         if context:

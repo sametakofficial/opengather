@@ -190,8 +190,6 @@ class StageExecutor:
                 
                 duration_ms = self._calc_duration(start_time)
                 
-                # Session 12: Provides system removed
-                
                 # Emit success event
                 self._emit_plugin_completed(
                     plugin_name=plugin_name,
@@ -205,8 +203,6 @@ class StageExecutor:
             except Exception as e:
                 duration_ms = self._calc_duration(start_time)
                 self._log("error", f"Plugin {plugin_name} failed: {e}")
-                
-                # Session 12: Provides system removed
                 
                 self._emit_plugin_failed(
                     plugin_name=plugin_name,
@@ -403,8 +399,6 @@ class StageExecutor:
                     pass
             
             self._mark_executed(job, plugin_name, success)
-            
-            # Session 12: Provides system removed
             
             # Emit event
             self._emit_plugin_completed(
@@ -759,7 +753,7 @@ class StageExecutor:
         duration_ms: int,
         job_id: str = None
     ) -> None:
-        """Emit plugin.completed event (Session 12: provides removed)."""
+        """Emit plugin.completed event."""
         event_data = {
             "plugin_name": plugin_name,
             "stage": stage.value,
@@ -781,7 +775,7 @@ class StageExecutor:
         duration_ms: int,
         job_id: str = None
     ) -> None:
-        """Emit plugin.failed event (Session 12: provides removed)."""
+        """Emit plugin.failed event."""
         event_data = {
             "plugin_name": plugin_name,
             "stage": stage.value,
@@ -851,5 +845,3 @@ class StageExecutor:
                 global_state['plugin'][plugin_name] = plugin_data
         
         return global_state
-    
-    # Session 12: Provides registry methods removed

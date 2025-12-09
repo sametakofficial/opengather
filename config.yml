@@ -12,14 +12,21 @@ aliases:
   tmdb_show: "tmdb.show"
 
 options:
-  debug: true
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # DEBUG: Show everything (verbose)
+  # INFO: Show INFO and above (default, recommended)
+  # WARNING: Show only warnings and errors
+  # ERROR: Show only errors
+  log_level: DEBUG # Default: INFO
+
+  # Legacy (use log_level instead):
+  debug: false
   dry_run: true
   hardlink: true
 
 scanner:
   enabled: true
   targets:
-    - "/tmp/test_movies/The.Matrix.1999.1080p.mkv"
     - "/tmp/friends/friends s01/friends s01 e02.mkv"
   allow_virtual_paths: true
   extensions: [mkv, mp4]

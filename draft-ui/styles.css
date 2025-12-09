@@ -1,0 +1,371 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #ffffff;
+  color: #000;
+  font-size: 13px;
+}
+
+main.app {
+  padding: 8px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ÜST ÇERÇEVE / HEADER */
+.frame {
+  border: 1px solid #000;
+  padding: 8px;
+  position: relative;
+  margin-bottom: 8px;
+  height: 60px;
+}
+
+.frame-gear {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #000;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* ANA İKİLİ KOLON */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 3fr; /* sol ~1/4, sağ ~3/4 */
+  gap: 8px;
+  align-items: stretch;
+}
+
+.panel-left,
+.panel-right {
+  border: 1px solid #000;
+  padding: 8px;
+  background: #fff;
+  min-height: 520px;
+}
+
+/* TAB GENEL STİLİ */
+.tab-row {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.tab {
+  padding: 4px 16px;
+  border: 1px solid #000;
+  background: #e0e0e0;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  border-radius: 0;
+}
+
+.tab-row.small .tab {
+  padding: 3px 10px;
+}
+
+.tab.is-active {
+  background: #ffffff;
+}
+
+/* SOL PANEL: INPUT/OUTPUT + FİLTRE TABLARI */
+.panel-left-top-tabs {
+  margin-bottom: 6px;
+}
+
+.panel-left-filters {
+  margin-bottom: 4px;
+}
+
+.panel-left-filters p {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+/* PATH BÖLÜMÜ GENEL */
+.path-section {
+  margin-top: 4px;
+}
+
+.path-wrapper {
+  border: 1px solid #000;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  height: 430px;
+}
+
+.path-toolbar {
+  display: flex;
+  margin-bottom: 4px;
+  gap: 2px;
+  align-items: center;
+}
+
+.path-filter-input {
+  flex: 1;
+  height: 22px;
+  border: 1px solid #000;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.path-search {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #000;
+  background: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.path-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.path-header-title {
+  flex: 1;
+  border: 1px solid #000;
+  padding: 2px 4px;
+  font-weight: 600;
+  font-size: 12px;
+  margin: 0;
+}
+
+.path-header-icons {
+  display: flex;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.icon-box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #000;
+}
+
+/* TABLO GÖVDE */
+.path-table-container {
+  margin-top: 2px;
+  border: 1px solid #000;
+  flex: 1 1 auto;
+  overflow: auto; /* gerçek scrollbar */
+}
+
+.path-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.path-row {
+  border-bottom: 1px solid #000;
+}
+
+.path-row:last-child {
+  border-bottom: none;
+}
+
+.path-cell {
+  border-right: 1px solid #000;
+  padding: 1px 4px;
+  white-space: nowrap;
+  /* overflow hücre içinde değil, tablo container’da */
+  height: 18px;
+  line-height: 16px;
+  font-size: 12px;
+}
+
+.path-cell:last-child {
+  border-right: none;
+}
+
+.path-table td:first-child {
+  width: 65%;
+}
+
+.panel-left-footer {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+/* SAĞ PANEL: ÜST TABLAR */
+.panel-right-top-tabs {
+  margin-bottom: 4px;
+}
+
+.panel-right-sub-tabs {
+  margin-bottom: 4px;
+}
+
+/* SAĞ PANEL İÇ GRID */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 8px;
+}
+
+figure {
+  margin: 0;
+}
+
+.poster-main {
+  width: 100%;
+  border: 1px dashed #000;
+  background: #dbe9ff;
+  aspect-ratio: 1000 / 1426; /* Poster 1000x1426 oranı */
+}
+
+.poster-small {
+  margin-top: 8px;
+  width: 100%;
+  border: 1px dashed #000;
+  background: #dbe9ff;
+  aspect-ratio: 1280 / 720; /* Fanart 1280x720 oranı */
+}
+
+.poster-caption {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.info-section {
+  font-size: 13px;
+}
+
+.info-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.info-subtitle {
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr 90px 1fr;
+  row-gap: 1px;
+  column-gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.info-label {
+  font-weight: 600;
+}
+
+.info-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rating-row {
+  display: flex;
+  align-items: center;
+  margin: 8px 0 6px;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.star-box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #000;
+  background: #ffe591;
+  display: inline-block;
+}
+
+.star-box.empty {
+  background: #fff;
+}
+
+.rating-text {
+  margin: 0 0 0 6px;
+}
+
+.audio-video-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.av-pill {
+  border: 1px solid #000;
+  padding: 3px 6px;
+  font-size: 11px;
+  display: inline-block;
+}
+
+.tagline-title {
+  margin-top: 4px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.tagline-text {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.bottom-info {
+  margin-top: 8px;
+  border-top: 1px solid #000;
+  padding-top: 4px;
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  row-gap: 1px;
+  column-gap: 4px;
+  font-size: 12px;
+}
+
+.empty-panel {
+  border: 1px dashed #aaa;
+  height: 100%;
+}
+
+.empty-panel p {
+  margin: 4px;
+  font-size: 12px;
+  color: #555;
+}
+
+/* Genel hidden helper (JS ile kullanılıyor) */
+[hidden] {
+  display: none !important;
+}
