@@ -85,23 +85,20 @@ class PluginServices:
     
     # ==================== CORE METHODS ====================
     
-    def createJob(self, input_value: str, input_data: Dict[str, Any] = None, input_metadata: Dict[str, Any] = None) -> str:
+    def createJob(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
         """
         create new job (both per_run and per_job).
         
         args:
-            input_value: job input (path, query, etc.) - plugin sets this
-            input_data: plugin-specific input data - plugin sets this
-            input_metadata: system metadata (source, modified_at, size_bytes, etc.) - system sets this
+            input_value: job input (path, query, etc.)
+            input_data: plugin-specific data (best practice: include 'source' field)
             
         returns:
             job id (string)
         """
         job_id = self._state.create_job(
             input_value=input_value,
-            input_data=input_data or {},
-            input_metadata=input_metadata or {},
-            filled_by=self._current_plugin_name or 'unknown'
+            input_data=input_data or {}
         )
         
         self._logger.debug(

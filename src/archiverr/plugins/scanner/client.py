@@ -93,65 +93,61 @@ class ScannerPlugin(InputPlugin):
     
     def _create_job_for_file(self, services: Any, file_path: Path) -> None:
         """
-        create a job for a file with proper input.value and input.metadata.
+        create a job for a file.
         
         session 14 format:
-        - input.value: full file path (plugin)
-        - input.data: {} (plugin-specific, empty for scanner)
-        - input.metadata: {filename, extension, size_bytes, modified_at, source, filled_by, filled_at} (system)
+        - input.value: full file path
+        - input.data: plugin data (includes 'source' as best practice)
         """
-        # build input.metadata with file system info
+        # build input data with file info + source
         stat = file_path.stat()
-        input_metadata = {
+        input_data = {
+            'source': 'scanner',  # best practice: identify plugin
             'filename': file_path.name,
             'extension': file_path.suffix.lstrip('.'),
             'size_bytes': stat.st_size,
             'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            'source': 'filesystem'
+            'filesystem': True
         }
         
-        # session 14: create job via pluginservices
+        # create job via pluginservices
         if hasattr(services, 'createJob'):
             services.createJob(
                 input_value=str(file_path),
-                input_data={},  # scanner has no plugin-specific data
-                input_metadata=input_metadata
+                input_data=input_data
             )
         elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
             # legacy fallback
             services.state.create_job(
                 input_value=str(file_path),
-                input_data={},
-                input_metadata=input_metadata,
-                filled_by='scanner'
+                input_data=input_data
             )
         else:
             self.debug("no job creation method available", path=str(file_path))
     
     def _create_job_for_virtual(self, services: Any, path: str) -> None:
         """create a job for a virtual path."""
-        input_metadata = {
+        input_data = {
+            'source': 'scanner',  # best practice: identify plugin
             'filename': Path(path).name,
             'extension': Path(path).suffix.lstrip('.') if '.' in path else '',
             'size_bytes': 0,
             'modified_at': None,
-            'source': 'virtual'
+            'filesystem': False,
+            'virtual': True
         }
         
-        # session 14: create job via pluginservices
+        # create job via pluginservices
         if hasattr(services, 'createJob'):
             services.createJob(
                 input_value=path,
-                input_data={},
-                input_metadata=input_metadata
+                input_data=input_data
             )
         elif hasattr(services, 'state') and hasattr(services.state, 'create_job'):
             # legacy fallback
             services.state.create_job(
                 input_value=path,
-                input_data={},
-                input_metadata=input_metadata,
-                filled_by='scanner'
+                input_data=input_data
             )
         else:
             self.debug("no job creation method available", path=path)
@@ -207,13 +203,13 @@ class ScannerPlugin(InputPlugin):
             'input': {
                 'value': str(file_path),
                 'path': str(file_path),  # legacy
-                'data': {},  # plugin-specific (empty for scanner)
-                'metadata': {
+                'data': {
+                    'source': 'scanner',
                     'filename': file_path.name,
                     'extension': file_path.suffix.lstrip('.'),
                     'size_bytes': stat.st_size,
                     'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                    'source': 'filesystem'
+                    'filesystem': True
                 }
             }
         }
@@ -225,13 +221,14 @@ class ScannerPlugin(InputPlugin):
             'input': {
                 'value': path,
                 'path': path,  # legacy
-                'data': {},  # plugin-specific (empty for scanner)
-                'metadata': {
+                'data': {
+                    'source': 'scanner',
                     'filename': Path(path).name,
                     'extension': Path(path).suffix.lstrip('.') if '.' in path else '',
                     'size_bytes': 0,
                     'modified_at': None,
-                    'source': 'virtual'
+                    'filesystem': False,
+                    'virtual': True
                 }
             }
         }
