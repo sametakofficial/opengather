@@ -356,8 +356,20 @@ class TaskerPlugin:
         return value[:length - len(end)] + end
     
     def _track_run_output(self, job: Any, task_results: Dict[str, Any], plugins_data: Dict[str, Any]) -> None:
-        """Track run output for JSON save."""
+        """
+        Track run output for JSON save.
+        
+        Session 14 structure:
+        - input: value + data (plugin sets)
+        - output: values + data (plugin sets)
+        - plugins: plugin data (each plugin has status + data)
+        - tasks removed: tasker plugin stores task results in its own data
+        """
         job_id = getattr(job, 'id', 'unknown')
+        
+        # Add task results to tasker plugin data
+        if 'tasker' in plugins_data:
+            plugins_data['tasker']['data']['tasks'] = task_results
         
         self._run_output[job_id] = {
             'job_id': job_id,
@@ -366,8 +378,11 @@ class TaskerPlugin:
                 'value': getattr(job.input, 'value', '') if hasattr(job, 'input') else '',
                 'data': getattr(job.input, 'data', {}) if hasattr(job, 'input') else {}
             },
-            'plugins': plugins_data,  # FULL plugin data
-            'tasks': task_results,
+            'output': {
+                'values': getattr(job.output, 'values', []) if hasattr(job, 'output') else [],
+                'data': getattr(job.output, 'data', {}) if hasattr(job, 'output') else {}
+            },
+            'plugins': plugins_data,
             'success': True,
             'timestamp': datetime.now().isoformat()
         }
