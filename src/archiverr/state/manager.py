@@ -15,6 +15,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from .models import RunState, JobState, InputData, StateEnum, PluginData, PluginStatus, PluginState
+from .context import ExecutionContext
 
 if TYPE_CHECKING:
     from archiverr.events import EventBus
@@ -22,19 +23,18 @@ if TYPE_CHECKING:
 
 class GlobalStateManager:
     """
-    Session 12 Global State Manager.
+    session 14 global state manager - normalized.
     
-    Manages 6 global state objects:
-    1. run: RunState (read-only for all plugins)
-    2. config: Dict (frozen config, read-only for all)
-    3. job: JobState (current job, per_job only)
-    4. jobs: List[JobState] (all jobs, per_job read-only)
-    5. plugin: Dict[str, PluginState] (current job plugins, per_job only)
-    6. plugins: List[Dict] (all jobs' plugins, per_job read-only)
+    manages 3 global state objects (reduced from 6):
+    1. run: runstate (read-only for all plugins)
+    2. config: dict (frozen config, read-only for all)
+    3. context: executioncontext (unified job + plugin state)
     
-    Plugin Data Structure:
-        plugin.{name}.status: PluginStatus
-        plugin.{name}.data: Dict (plugin's own data)
+    context contains:
+        - job: current job (read-write)
+        - jobs: all jobs (read-only)
+        - plugin: current job plugins (read-write)
+        - plugins: all jobs plugins (read-only)
     """
     
     def __init__(
@@ -47,12 +47,13 @@ class GlobalStateManager:
         self._debugger = debugger
         self._event_bus = event_bus
         
-        # Session 12: 6 global state objects
+        # session 14: 3 global state objects
         self._run: Optional[RunState] = None
         self._config: Dict[str, Any] = {}
-        self._current_job: Optional[JobState] = None
-        self._jobs: List[JobState] = []
-        self._plugins_storage: Dict[str, Dict[str, PluginState]] = {}  # job_id -> plugin_name -> PluginState
+        self._context: ExecutionContext = ExecutionContext()
+        
+        # legacy: for backward compatibility during migration
+        self._plugins_storage: Dict[str, Dict[str, PluginState]] = {}
     
     def configure(
         self, 
@@ -69,63 +70,48 @@ class GlobalStateManager:
             self._event_bus = event_bus
     
     def reset(self):
-        """Reset state for new run (Session 12)."""
+        """reset state for new run."""
         self._run = None
         self._config = {}
-        self._current_job = None
-        self._jobs = []
+        self._context.reset()
         self._plugins_storage = {}
     
-    # ==================== SESSION 12: GLOBAL STATE PROPERTIES ====================
+    # ==================== SESSION 14: GLOBAL STATE PROPERTIES ====================
     
     @property
     def run(self) -> Optional[RunState]:
-        """Global state 1: run (read-only for all plugins)"""
+        """global state 1: run (read-only for all plugins)"""
         return self._run
     
     @property
     def config(self) -> Dict[str, Any]:
-        """Global state 2: config (frozen, read-only for all plugins)"""
+        """global state 2: config (frozen, read-only for all plugins)"""
         return self._config
     
     @property
+    def context(self) -> ExecutionContext:
+        """global state 3: context (unified execution context)"""
+        return self._context
+    
+    @property
     def job(self) -> Optional[JobState]:
-        """Global state 3: job (current job, per_job plugins only)"""
-        return self._current_job
+        """current job (via context) - backward compat property"""
+        return self._context._current_job
     
     @property
     def jobs(self) -> List[JobState]:
-        """Global state 4: jobs (all jobs, per_job read-only)"""
-        return self._jobs.copy()  # Return copy to prevent mutation
+        """all jobs (via context) - backward compat property"""
+        return self._context.jobs
     
     @property
-    def plugin(self) -> Dict[str, PluginState]:
-        """Global state 5: plugin (current job's plugins, per_job only)"""
-        if not self._current_job:
-            return {}
-        return self._plugins_storage.get(self._current_job.id, {}).copy()
+    def plugin(self) -> Dict[str, Dict]:
+        """current job plugins (via context) - backward compat property"""
+        return self._context.plugin
     
     @property
-    def plugins(self) -> List[Dict[str, Any]]:
-        """
-        Global state 6: plugins (all jobs' plugins, per_job read-only)
-        
-        Returns:
-            List of {job_id, job_index, run_id, plugins: {...}}
-        """
-        result = []
-        for job in self._jobs:
-            job_plugins = self._plugins_storage.get(job.id, {})
-            result.append({
-                "job_id": job.id,
-                "job_index": job.index,
-                "run_id": job.run_id,
-                "plugins": {
-                    name: state.to_dict()
-                    for name, state in job_plugins.items()
-                }
-            })
-        return result
+    def plugins(self) -> List[Dict]:
+        """all jobs plugins (via context) - backward compat property"""
+        return self._context.plugins
     
     def _emit(self, event_name: str, data: Dict[str, Any] = None, source: str = "state"):
         """Emit event if event bus is configured."""
@@ -290,9 +276,9 @@ class GlobalStateManager:
             Job ID (string)
         """
         if not self._run:
-            raise RuntimeError("No active run")
+            raise RuntimeError("no active run")
         
-        index = len(self._jobs)
+        index = len(self._context._jobs)
         
         job = JobState(
             index=index,
@@ -304,8 +290,8 @@ class GlobalStateManager:
         )
         job.start()
         
-        # Session 12: Use list instead of dict
-        self._jobs.append(job)
+        # session 14: add to context
+        self._context.add_job(job)
         self._run.increment_jobs()
         
         # Initialize plugin storage for this job
@@ -336,18 +322,18 @@ class GlobalStateManager:
     
     def set_current_job(self, job_id: str) -> None:
         """
-        Set current job context (Session 12).
+        set current job context (session 14).
         
-        Used by Orchestrator to set current job before executing per_job plugins.
+        used by orchestrator to set current job before executing per_job plugins.
         """
         job = self.get_job_by_id(job_id)
         if not job:
-            raise ValueError(f"Job {job_id} not found")
-        self._current_job = job
+            raise ValueError(f"job {job_id} not found")
+        self._context.set_current_job(job)
     
     def clear_current_job(self) -> None:
-        """Clear current job context (Session 12)."""
-        self._current_job = None
+        """clear current job context (session 14)."""
+        self._context.clear_current_job()
     
     def update_job(self, job_id: str, key: str, value: Any) -> None:
         """
@@ -459,25 +445,27 @@ class GlobalStateManager:
         return LegacyMatch(job)
     
     def get_job(self, index: int) -> Optional[JobState]:
-        """Get job by index (Session 12: _jobs is a list)."""
-        if 0 <= index < len(self._jobs):
-            return self._jobs[index]
+        """get job by index (session 14: via context)."""
+        jobs = self._context._jobs
+        if 0 <= index < len(jobs):
+            return jobs[index]
         return None
     
     def get_job_by_id(self, job_id: str) -> Optional[JobState]:
-        """Get job by ID (Session 12)."""
+        """get job by id (session 14: via context)."""
         try:
             parts = job_id.split('_')
             index = int(parts[-1])
-            if 0 <= index < len(self._jobs):
-                return self._jobs[index]
+            jobs = self._context._jobs
+            if 0 <= index < len(jobs):
+                return jobs[index]
         except (ValueError, IndexError):
             pass
         return None
     
     def get_all_jobs(self) -> List[JobState]:
-        """Get all jobs (Session 12: _jobs is already a list)."""
-        return self._jobs.copy()  # Return copy to prevent mutation
+        """get all jobs (session 14: via context)."""
+        return self._context.jobs
     
     def complete_job(self, index: int):
         """Mark job as completed (Session 12)."""

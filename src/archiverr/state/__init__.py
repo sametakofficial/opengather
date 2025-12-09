@@ -22,6 +22,7 @@ from .models import (
     RunState,
     PluginData,
 )
+from .context import ExecutionContext
 
 # Legacy aliases - will be removed after test migration
 ExecutionStatus = StateEnum  # Legacy: use StateEnum
@@ -64,6 +65,7 @@ __all__ = [
     # New API
     'StateManager',
     'GlobalStateManager',
+    'ExecutionContext',
     'StateEnum',
     'InputData',
     'OutputData',
