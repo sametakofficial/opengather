@@ -10,16 +10,12 @@ from typing import Optional, Union
 from dataclasses import dataclass
 
 from .interface import PersistenceInterface
-from .mock import MockPersistence
 
 
 @dataclass
 class DatabaseConfig:
     """Database configuration"""
-    backend: str = "mongodb"  # "mock" (ONLY FOR TESTING) or "mongodb" (PRODUCTION)
-    
-    # Mock settings (TESTING ONLY - DO NOT USE IN PRODUCTION)
-    mock_path: str = "./mock_db"
+    backend: str = "mongodb"  # Only MongoDB supported
     
     # MongoDB settings
     mongodb_uri: str = "mongodb://localhost:27017"
@@ -31,14 +27,11 @@ class DatabaseConfig:
         Load configuration from environment variables.
         
         Environment Variables:
-            ARCHIVERR_DB_BACKEND: "mongodb" (default, REQUIRED) or "mock" (testing only)
-            ARCHIVERR_MOCK_PATH: Path for mock database (default: ./mock_db)
             MONGODB_URI: MongoDB connection string (default: mongodb://localhost:27017)
             MONGODB_DATABASE: Database name (default: archiverr)
         """
         return cls(
-            backend=os.getenv("ARCHIVERR_DB_BACKEND", "mongodb"),
-            mock_path=os.getenv("ARCHIVERR_MOCK_PATH", "./mock_db"),
+            backend="mongodb",
             mongodb_uri=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
             mongodb_database=os.getenv("MONGODB_DATABASE", "archiverr")
         )
@@ -100,11 +93,7 @@ class DatabaseConnection:
         if self._persistence is not None:
             return self._persistence
         
-        if self.config.backend == "mock":
-            self._persistence = MockPersistence(base_path=self.config.mock_path)
-        
-        elif self.config.backend == "mongodb":
-            # Use new PyMongoPersistence (pure sync, no event loop issues)
+        if self.config.backend == "mongodb":
             try:
                 from .pymongo_persistence import PyMongoPersistence
                 self._persistence = PyMongoPersistence(
@@ -116,7 +105,6 @@ class DatabaseConnection:
                     "MongoDB backend requires 'pymongo' package. "
                     "Install with: pip install pymongo"
                 ) from e
-        
         else:
             raise ValueError(f"Unknown database backend: {self.config.backend}")
         

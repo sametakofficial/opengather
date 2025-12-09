@@ -1,6 +1,32 @@
 * {
   box-sizing: border-box;
 }
+/* Tüm sayfadaki scrollbar'lar için genel ayar */
+* {
+  /* Firefox */
+  scrollbar-width: thin;                 /* ince */
+  scrollbar-color: #888 transparent;     /* thumb rengi / track şeffaf */
+}
+
+/* Chrome, Edge, Safari vs. (WebKit) */
+*::-webkit-scrollbar {
+  width: 6px;   /* dikey scrollbar kalınlığı */
+  height: 6px;  /* yatay scrollbar kalınlığı */
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;  /* arka plan yok */
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #888;   /* ince gri çubuk */
+  border-radius: 3px;
+  border: none;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 html,
 body {

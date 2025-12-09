@@ -124,18 +124,26 @@
 
 ---
 
-### 1.6 Plugin Status Tracking (SYSTEM IS TOO INVASIVE)
+### 1.6 Plugin Status Tracking (CONTROL MECHANISM CHANGE)
 
 **Original Analysis:** "System tracks plugin success/fail automatically"  
 **User Feedback:**
 
-> "her plugin fail mi olmuş success mi olmuş skip mi olmuş sisteme kendi bildirmeli sistem pluginlerin fail olup olmadığını tespit edecekse bu sistemin problemidir"
+> "pluginler kendi durumlarını bildiriyor ama veri global statede tutuluyor, sadece kontrol mekanizması değişiyor. tracking değil kontrol yani plugin başarılı mı başarısız mı sistem kontrol etmeyecek plugin kendi bildirecek"
+
+**CLARIFICATION:**  
+Plugin status is STORED in global state, but HOW it's determined changed:
+
+- OLD: System inspects plugin execution result and determines success/fail
+- NEW: Plugin self-reports its status via services.update_status()
+- Status data remains in global state for querying and indexing
+- This is about CONTROL mechanism, not data storage
 
 **ISSUE:**  
 Current system:
 
 ```python
-# orchestrator.py - System tracks plugin status
+# orchestrator.py - System determines status
 if result.success:
     job.add_executed(plugin_name)
 else:
@@ -143,18 +151,19 @@ else:
 ```
 
 **SOLUTION:**  
-Plugin self-reports:
+Plugin self-reports (but data still stored in state):
 
 ```python
 # Plugin code
-services.updateStatus(
+services.update_status(
     state="completed",
     success=True,
     message="Fetched 10 results from TMDB"
 )
+# System stores this in job.status.executed[] and plugin.status
 ```
 
-**PRINCIPLE:** System is plugin-agnostic. Plugins report their own status.
+**PRINCIPLE:** Plugin autonomy in status reporting, system stores for indexing.
 
 ---
 

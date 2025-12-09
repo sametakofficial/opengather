@@ -10,17 +10,18 @@
 
 ### OLD THINKING
 
-- "Per-run vs per-job are distinct modes"
+- "System inspects plugin results to determine success/fail"
 - "Access control prevents plugins from breaking things"
-- "System should track plugin status"
 - "Legacy code for backward compatibility"
+- "Remove executed/failed/skipped tracking"
 
 ### NEW THINKING
 
-- **Dependency-based execution** - Not mode-based
-- **Plugin autonomy** - Self-reporting, trusted
-- **Minimal restrictions** - Provide interfaces, not walls
+- **Plugin self-reporting** - Plugins report their own status via update_status()
+- **Mode + dependency execution** - per_run vs per_job KEPT, dependency resolution within modes
+- **Minimal restrictions** - Plugins can access all state, create jobs freely
 - **No legacy before v1.0** - Clean slate
+- **Keep indexing data** - executed/failed/skipped lists KEPT for MongoDB indexing
 
 ---
 
@@ -235,33 +236,47 @@ def _check_per_job_access(self, method_name: str):
 
 ---
 
-### 2.3 Simplify Job & Plugin State
+### 2.3 Update Job & Plugin State
 
-**Remove redundant fields:**
+**Add metadata tracking, keep indexing fields:**
 
 ```python
 # OLD
 class JobState:
     id: str
-    run_id: str  # ← REDUNDANT (already in run context)
+    run_id: str
     input: {...}
     output: {...}
     status:
-        executed: []  # ← System tracking (remove)
-        failed: []    # ← System tracking (remove)
-        skipped: []   # ← System tracking (remove)
+        executed: []
+        failed: []
+        skipped: []
 
 # NEW
 class JobState:
     id: str
-    # run_id removed (implicit from context)
-    input: {...}
-    output: {...}
+    run_id: str  # KEPT: Required for MongoDB queries
+    input:
+        value: str
+        data: Dict
+        metadata:  # NEW: Track which plugin filled this
+            filled_by: str
+            filled_at: datetime
+    output:
+        values: List[str]
+        data: Dict
+        metadata:  # NEW: Track which plugin filled this
+            filled_by: str
+            filled_at: datetime
     status:
-        state: running
-        success: false
-        started_at: ...
-        # executed/failed/skipped removed
+        state: str
+        success: bool
+        executed: []  # KEPT: For MongoDB indexing, quick lookup
+        failed: []    # KEPT: For MongoDB indexing, quick lookup
+        skipped: []   # KEPT: For MongoDB indexing, quick lookup
+        started_at: datetime
+        finished_at: datetime
+        duration_ms: int
 ```
 
 **Remove duplicate config:**
@@ -288,12 +303,12 @@ class RunState:
 
 ## PHASE 3: PLUGIN AUTONOMY (Weeks 3-4)
 
-### 3.1 Add updateStatus() Method
+### 3.1 Add update_status() Method
 
 **New PluginServices method:**
 
 ```python
-def updateStatus(
+def update_status(
     self,
     state: str,  # pending | running | completed | failed | skipped
     success: bool,
@@ -310,7 +325,7 @@ def updateStatus(
         error: Error message if failed
 
     Example:
-        services.updateStatus(
+        services.update_status(
             state="completed",
             success=True,
             message="Fetched 10 movies from TMDB"
@@ -347,24 +362,24 @@ def updateStatus(
 
 ### 3.2 Update All Plugins
 
-**Update each plugin to use updateStatus():**
+**Update each plugin to use update_status():**
 
 ```python
 # Example: tmdb plugin
 class TMDbPlugin:
     def execute_job(self, services):
         # Report start
-        services.updateStatus("running", True, "Fetching movie data")
+        services.update_status("running", True, "Fetching movie data")
 
         try:
             # Do work
             movie_data = self.fetch_movie(...)
 
             # Save data
-            services.updatePlugin({"movie": movie_data})
+            services.update_plugin({"movie": movie_data})
 
             # Report success
-            services.updateStatus(
+            services.update_status(
                 "completed",
                 True,
                 f"Fetched {movie_data['title']}"
@@ -372,7 +387,7 @@ class TMDbPlugin:
 
         except Exception as e:
             # Report failure
-            services.updateStatus(
+            services.update_status(
                 "failed",
                 False,
                 "Failed to fetch movie data",
@@ -390,7 +405,7 @@ version: 1.0.0
 stage: data
 status_reporting:
   auto_start: true # System sets state=running
-  auto_complete: false # Plugin must call updateStatus()
+  auto_complete: false # Plugin must call update_status()
   timeout_ms: 30000 # Fail if no update in 30s
 ```
 

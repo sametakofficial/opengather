@@ -4,23 +4,21 @@ Database Module
 Persistence layer implementations following Repository Pattern.
 
 Backends:
-    - MockPersistence: JSON file-based (development/testing)
     - PyMongoPersistence: MongoDB with PyMongo sync driver (CLI)
-    - Motor: Async MongoDB driver (FastAPI/API)
+    - AsyncMongoDB: Async MongoDB driver (FastAPI/API)
 
 Usage:
     # Sync persistence (CLI)
-    from archiverr.infrastructure.database import MockPersistence
-    persistence = MockPersistence(base_path="./mock_db")
+    from archiverr.infrastructure.database import PyMongoPersistence
+    persistence = PyMongoPersistence(uri="mongodb://localhost:27017/archiverr")
     persistence.connect()
     
-    # Async Motor (API)
-    from archiverr.infrastructure.database import mongodb_lifespan, MongoDB
+    # Async (API)
+    from archiverr.infrastructure.database import mongodb_lifespan, AsyncMongoDB
     app = FastAPI(lifespan=mongodb_lifespan)
 """
 
 from .interface import PersistenceInterface
-from .mock import MockPersistence
 from .connection import DatabaseConnection, DatabaseConfig
 
 # PyMongo sync driver (for CLI) - NEW: Clean sync implementation
@@ -60,11 +58,10 @@ __all__ = [
     # Interfaces
     'PersistenceInterface',
     # Sync backends
-    'MockPersistence',
     'PyMongoPersistence',  # Recommended for CLI
     'MongoDBPersistence',  # DEPRECATED: Use PyMongoPersistence
     # Async PyMongo (FastAPI)
-    'AsyncMongoDB',        # NEW: PyMongo AsyncMongoClient wrapper
+    'AsyncMongoDB',        # PyMongo AsyncMongoClient wrapper
     'MongoDB',             # DEPRECATED alias for AsyncMongoDB
     'mongodb_lifespan',
     'get_database',
@@ -73,7 +70,7 @@ __all__ = [
     'DatabaseConfig',
     # Availability flags
     'PYMONGO_AVAILABLE',
-    'ASYNC_PYMONGO_AVAILABLE',  # NEW: PyMongo async support
-    'MONGODB_AVAILABLE',        # DEPRECATED
-    'MOTOR_AVAILABLE',          # DEPRECATED: alias for ASYNC_PYMONGO_AVAILABLE
+    'ASYNC_PYMONGO_AVAILABLE',
+    'MONGODB_AVAILABLE',  # DEPRECATED
+    'MOTOR_AVAILABLE',    # DEPRECATED: alias for ASYNC_PYMONGO_AVAILABLE
 ]

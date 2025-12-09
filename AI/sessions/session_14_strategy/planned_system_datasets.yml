@@ -32,12 +32,12 @@ run:
   # ❌ REMOVED: Legacy total_matches alias
 
 # ============================================================================
-# JOB STATE (Simplified)
+# JOB STATE (Updated)
 # ============================================================================
 job:  # Current job being processed
   id: job_run_abc123_0
   index: 0
-  # ❌ REMOVED: run_id (redundant - already in run context) !# bilmiyorum aslında mantık burda mongo db ye eklerken eşleştirmek di eğer o aşamada id yi eşkeştirmeyi dorğu yapacaksan benlik soru yok
+  run_id: run_abc123  # KEPT: Required for MongoDB persistence/queries
   
   input:
     value: /data/movies/Movie.2024.mkv
@@ -45,11 +45,16 @@ job:  # Current job being processed
       filename: Movie.2024.mkv
       extension: mkv
       size_bytes: 1073741824
-      # ❌ REMOVED: created_by (plugin tracking not needed)  !# burada aslında not needed değilde bu data kısmı da value kısmıda pluginler tarafından belirleniyor bunun fix bir verisi yok isteyen plugin ekler ama guzel fikir aslında web panelde işimize yarar bence input ve output içinde value ve data varya yanlarına bide status veya info veya ona benzer birşey ekleyelim hangi saniyede doldurulmuş hangi plugin doldurmuş falan olsun, aynı plugin datalarının yanındaki status gibi tek fark belli ozellikler yok ve hangi plugin doldurmuş ozellliği olsun
+    metadata:  # NEW: Track which plugin filled this
+      filled_by: scanner
+      filled_at: 2024-12-10T00:00:01.123Z
   
   output:
     values: []  # List of output paths
     data: {}    # Plugin output data (free-form)
+    metadata:  # NEW: Track which plugin filled this
+      filled_by: null
+      filled_at: null
   
   status:
     state: running  # pending | running | completed | failed
@@ -57,9 +62,9 @@ job:  # Current job being processed
     started_at: 2024-12-10T00:00:01Z
     finished_at: null
     duration_ms: 0
-    # ❌ REMOVED: executed[] - plugin'ler kendi durumlarını bildiriyor
-    # ❌ REMOVED: failed[] - plugin'ler kendi durumlarını bildiriyor
-    # ❌ REMOVED: skipped[] - plugin'ler kendi durumlarını bildiriyor  !# ya kardeşim kendi durumlarını bildiriyorlarda indexleme açısından eklemiştim ben buraya diyorsanki webde indexlemek için sana elastik index falan birşey ayarlarız birşeyilde mongo db de tamam ama buranın amacı bir jobda kim fail kim başarılı hızlı tespit amaçlı...
+    executed: []  # KEPT: For MongoDB indexing, quick lookup
+    failed: []    # KEPT: For MongoDB indexing, quick lookup
+    skipped: []   # KEPT: For MongoDB indexing, quick lookup
 
 jobs:  # All jobs (read-only list)
   - id: job_run_abc123_0
@@ -69,12 +74,13 @@ jobs:  # All jobs (read-only list)
     status: {...}
 
 # ============================================================================
-# PLUGIN STATE (Simplified & Normalized)
+# PLUGIN STATE (Normalized - Status Self-Reported)
 # ============================================================================
-# ✅ NEW DESIGN: Plugin'ler kendi durumlarını services.updateStatus() ile bildiriyor
-!# ne saçma karar abi mal mısın global state de tutmak için aslnda bu kedileri bildirme olayı yani senin allahını sikiyim abi mantık şuydu pluginler rust based birşeklde kendileri başarılı mı başarısız mı bildirir yani veri tutma amaçlı değil veri kontrol amaçlı aptal amcık ne tersten anladın amk ya bu status onemli bir şey global statede olmak zorunda ama  eskiden pluginlerin başarılı mı başarısız mı olduğunu sistem kontrol ediyordu artık ekndileri bildirsin dedim oneri yaptım neden hemen aldım kabul ettim diyorsun olm lazım lan bu veri 
-!# şimdi aliuslasyon gorup aşağıdaki status içine kstra bişey eklemeye çalışma zaten birşey kaldırmamışsın aşağıdan ama yukarıdan kaldırmışsın onuda ekleyip eklememeyi yine sana bırakıyorum çünkü mongo db indexleme için alzım sadece onun doşında çok gerekli değil ama olayı tersden anlamana sinirlendim abi tracking değil kontrol yani plugin başarılı mı başarısız mı sisitem kontrol etmeyecek plugin kendi bildirecek sen bunu gidipde state ile nereden alakasını çıkardın amk
-# ✅ Sistem sadece plugin data'yı tutuyor, status tracking yapmıyor
+# CLARIFICATION: Plugin status is STORED in global state, but HOW it's determined changed:
+#   - OLD: System inspects plugin execution result and determines success/fail
+#   - NEW: Plugin self-reports its status via services.updateStatus()
+#   - Status data remains in global state for querying and indexing
+#   - This is about CONTROL mechanism, not data storage
 
 plugin:  # Current job's plugins
   tmdb:
@@ -109,7 +115,7 @@ plugin:  # Current job's plugins
 plugins:  # All jobs' plugins (normalized structure)
   - job_id: job_run_abc123_0
     job_index: 0
-    plugin_data:  # ✅ Single nested object !# aferim ama hiç config.yml içinde plugins e erişecek olanları düşünme ama tamam mı ekle ekleyebildiğin kakdar katmankinaye yapıyorum şuan amacı sana bu kararını sorgulatmak yani plugin_data yaptın ne oldu ne değişi data yapsana ismini sadece bari daha kısa olsun
+    data:  # Shorter name, accessible from config.yml via plugins[0].data.tmdb
       tmdb:
         status: {...}
         data: {...}
@@ -163,7 +169,7 @@ plugin_services:
       returns: RunState
       access: All plugins
     
-    get_config: !# amınakoyayım neden kebab case kullanmadın da alt tire kullandın ya hepsini kebab case yap yada hepsini alt tire yap ne garipsin aq
+    get_config:
       returns: Dict  
       access: All plugins
     
@@ -172,32 +178,32 @@ plugin_services:
       access: All plugins
       description: "Returns current job context if in job execution"
     
-    # State mutation
-    createJob:
+    # State mutation (consistent snake_case naming)
+    create_job:
       params: [input_value, input_data]
       returns: job_id
-      access: All plugins  # ✅ No restriction!
+      access: All plugins
       description: "Any plugin can create jobs"
     
-    updateJob:
+    update_job:
       params: [job_id, key, value]
       returns: void
-      access: All plugins  # ✅ No restriction!
+      access: All plugins
       description: "Update any job (if you have job_id)"
     
-    updatePlugin:
+    update_plugin:
       params: [job_id, plugin_name, data]
       returns: void
-      access: All plugins  # ✅ No restriction!
+      access: All plugins
       description: "Update any plugin data"
     
-    updateStatus:  # ✅ NEW: Plugin reports its own status
+    update_status:
       params: [state, success, message, error]
       returns: void
       access: All plugins
       description: "Plugin reports its current status"
       example: |
-        services.updateStatus(
+        services.update_status(
           state="completed",
           success=True,
           message="Fetched 10 results"
@@ -211,22 +217,31 @@ plugin_services:
       description: "Emit event to event bus"
 
 # ============================================================================
-# EXECUTION FLOW (Dependency-Based, Not Mode-Based)
+# EXECUTION FLOW (Dependency-Based + Mode-Based)
 # ============================================================================
-# ✅ NEW PHILOSOPHY: Execution order determined by requires, not by mode
-# ✅ Plugin declares what it needs (requires)
-# ✅ System executes when dependencies satisfied
+# EXECUTION MODES: per_run vs per_job distinction IS NECESSARY
+#   - per_run: Runs once per execution, typically creates jobs (like scanner)
+#   - per_job: Runs for each job, cannot execute without jobs existing
+#   - Analogy: System is hourglass, each job is sand grain
+#   - per_job plugins cannot run if there's no sand (jobs) in the hourglass
+#
+# DEPENDENCY RESOLUTION: Within modes, execution order by requires
+#   - Plugin declares what it needs (requires)
+#   - System executes when dependencies satisfied
 
 execution_flow:
   description: |
-    System doesn't care about per_run vs per_job distinction.
-    System only cares about: "Are this plugin's dependencies satisfied?"
+    Two-level execution model:
+    1. MODE level: per_run vs per_job (structural requirement)
+    2. DEPENDENCY level: requires satisfaction (ordering within mode)
   
   rules:
-    - Plugin with no requires → Execute immediately (e.g., scanner)
+    - per_run plugin → Executes once before job processing
+    - per_job plugin → Requires at least one job to exist
+    - Plugin with no requires → Execute immediately (within its mode)
     - Plugin with stage + requires → Wait for stage + dependencies
     - Plugin creates jobs → Other plugins wait for those jobs
-    - Plugin reports status → Dependents can check that status  !# burda çok kritik birşeyi atlıyorsun abi bir plugin per job ise bir job olmadan execute edilemez yani bunu bir analoji ile anlatmak gerekirse kum saati düşün kum saatinde kum olmadan kum saatin dondursende birşey olmaz yani sistemimiz kum saati, her job da bir kum. yukarıda kum getiren bir boru var, o boruya bir modul kum veriyor kumu veren module nasıl bir kum vermesini tarif edende createJob yapan bir plugin(perrun per jıb farketmez) yani demek istediğim bu per run per job ayırt etmeme olayı hayata geçirilecek bir plan değil, eskisi iyiydi abi bazen zoelamamak gerek
+    - Plugin reports status → Dependents can check that status
   
   example_flow:
     scanner:
@@ -292,18 +307,27 @@ mongodb:
   
   jobs:
     _id: ObjectId
-    run_id: run_abc123
+    run_id: run_abc123  # KEPT: For MongoDB queries and indexing
     id: job_run_abc123_0
     index: 0
     input:
       value: /data/movies/Movie.2024.mkv
       data: {...}
+      metadata:  # NEW: Track plugin that filled this
+        filled_by: scanner
+        filled_at: ISODate
     output:
       values: [...]
       data: {...}
+      metadata:  # NEW: Track plugin that filled this
+        filled_by: tasker
+        filled_at: ISODate
     status:
       state: completed
       success: true
+      executed: [scanner, renamer, tmdb, tasker]  # KEPT: For MongoDB indexing
+      failed: []    # KEPT: For MongoDB indexing
+      skipped: [tvdb]  # KEPT: For MongoDB indexing
       started_at: ISODate
       finished_at: ISODate
       duration_ms: 4000

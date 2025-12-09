@@ -53,21 +53,27 @@ run, config, context  # 3 objects
 
 ### 3. PLUGIN AUTONOMY
 
-**Add updateStatus():**
+**Add update_status():**
 
 ```python
-services.updateStatus(
+services.update_status(
     state="completed",
     success=True,
     message="Fetched 10 results"
 )
+# Status stored in global state, plugin reports how
 ```
+
+**Keep indexing data:**
+
+- executed[], failed[], skipped[] lists KEPT for MongoDB indexing
+- run_id KEPT in jobs for MongoDB queries
 
 **Remove restrictions:**
 
-- ✅ All plugins can read all state
-- ✅ All plugins can create jobs
-- ✅ All plugins can update jobs/plugins
+- All plugins can read all state
+- All plugins can create jobs
+- All plugins can update jobs/plugins
 
 ### 4. CONSISTENT NAMING
 

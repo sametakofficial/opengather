@@ -201,9 +201,6 @@ class GlobalStateManager:
                 self._persistence.save_run(self._run)
             elif hasattr(self._persistence, 'save_execution'):
                 self._persistence.save_execution(self._run_to_execution())
-            
-            # Create commit
-            self._create_commit(branch_name)
         
         self._log("info", "execution", "Execution completed",
                  matches=self._run.status.total_jobs,
@@ -257,48 +254,6 @@ class GlobalStateManager:
                 }
         
         return LegacyExecution(self._run)
-    
-    def _create_commit(self, branch_name: str = "main"):
-        """Create commit for versioning."""
-        if not self._persistence or not self._run:
-            return
-        
-        if not hasattr(self._persistence, 'create_branch'):
-            return
-        
-        try:
-            branch = self._persistence.get_branch(name=branch_name)
-            
-            if not branch:
-                branch = self._persistence.create_branch(
-                    name=branch_name,
-                    description=f"Default branch" if branch_name == "main" else f"Branch: {branch_name}",
-                    is_default=(branch_name == "main")
-                )
-                self._log("info", "state", f"Created branch", branch=branch_name)
-            else:
-                self._log("debug", "state", f"Using existing branch", branch=branch_name)
-            
-            branch_id = branch.get("_id")
-            
-            commit = self._persistence.create_commit(
-                branch_id=branch_id,
-                execution_id=self._run.id,
-                message=f"Run {self._run.id}: {self._run.status.total_jobs} jobs",
-                metadata={
-                    "success": self._run.status.success,
-                    "total_jobs": self._run.status.total_jobs,
-                    "completed": self._run.status.completed,
-                    "failed": self._run.status.failed,
-                    "duration_ms": self._run.status.duration_ms
-                }
-            )
-            
-            self._log("info", "state", f"Created commit", 
-                     commit=commit.get("_id", "unknown"), branch=branch_name)
-            
-        except Exception as e:
-            self._log("warn", "state", f"Failed to create commit: {e}")
     
     @property
     def run(self) -> Optional[RunState]:
