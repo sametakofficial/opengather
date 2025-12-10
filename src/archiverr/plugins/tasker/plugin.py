@@ -101,6 +101,20 @@ class TaskerPlugin:
                 if result.get('type') == 'save' and result.get('destination'):
                     output_values.append(result['destination'])
         
+        # Write to job.output via services (Session 12 pattern)
+        if output_values:
+            services.updateJob("output.values", output_values)
+        
+        if task_results:
+            # Store task results in output.data under 'tasks' key
+            services.updateJob("output.data", {"tasks": task_results})
+        
+        # Also store in plugin data (plugin.tasker.data)
+        services.updatePlugin({
+            "tasks": task_results,
+            "output_values": output_values
+        })
+        
         # Track for JSON output
         self._track_run_output(job, task_results, plugins_data)
         
