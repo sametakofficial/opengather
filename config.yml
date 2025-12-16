@@ -27,10 +27,13 @@ options:
 scanner:
   enabled: true
   targets:
-    - "/tmp/friends/friends s01/friends s01 e02.mkv"
+    - "/tmp/Breaking.Bad.S01E01.720p.BluRay.x264.mkv"
   allow_virtual_paths: true
-  extensions: [mkv, mp4]
+  extensions: [mkv, mp4, avi]
   recursive: false
+
+ffprobe:
+  enabled: true
 
 renamer:
   enabled: true

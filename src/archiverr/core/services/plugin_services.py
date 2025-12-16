@@ -1,18 +1,16 @@
 """
-Plugin Services - Session 12
+Plugin Services - Session 16
 
-Provides 3 core methods for plugin communication:
-1. createJob(input_value, input_data) -> job_id
-2. updateJob(key, value)  # No ID - current context
-3. updatePlugin(data)     # No name - current context
+Provides core methods for plugin communication:
+1. create_job(input_value, input_data) -> job_id
+2. update_job(job_id, key, value)
+3. update_plugin(target_id, plugin_name, data)
+4. get_plugin_data(target_id, plugin_name)
 
-Access Control:
-- per_run: Only createJob allowed
-- per_job: All methods allowed
-
-Current Context:
-- job_id: Set by Orchestrator before plugin execution
-- plugin_name: Set by Orchestrator before plugin execution
+Session 16 Changes:
+- snake_case naming
+- Explicit target_id and plugin_name parameters
+- Backward compatible aliases (createJob, updateJob, updatePlugin)
 """
 
 from typing import Dict, Any, Optional, TYPE_CHECKING
@@ -85,16 +83,16 @@ class PluginServices:
     
     # ==================== CORE METHODS ====================
     
-    def createJob(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
+    def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
         """
-        create new job (both per_run and per_job).
+        Create new job.
         
-        args:
-            input_value: job input (path, query, etc.)
-            input_data: plugin-specific data (best practice: include 'source' field)
+        Args:
+            input_value: Job input (path, query, etc.)
+            input_data: Plugin-specific data
             
-        returns:
-            job id (string)
+        Returns:
+            Job ID
         """
         job_id = self._state.create_job(
             input_value=input_value,
@@ -103,67 +101,85 @@ class PluginServices:
         
         self._logger.debug(
             "plugin_services",
-            f"created job: {job_id}",
+            f"Created job: {job_id}",
             mode=self._mode,
             input_value=input_value
         )
         
         return job_id
     
-    def updateJob(self, key: str, value: Any) -> None:
+    def createJob(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
+        """Backward compatible alias for create_job."""
+        return self.create_job(input_value, input_data)
+    
+    def update_job(self, job_id: str = None, key: str = None, value: Any = None) -> None:
         """
-        Update CURRENT job (per_job only).
+        Update job state.
         
         Args:
+            job_id: Target job ID (uses current context if None)
             key: Dot-notation path (e.g., "output.values")
             value: New value
-            
-        Raises:
-            PermissionError: If called from per_run plugin
-            ValueError: If no current job context
         """
-        self._check_per_job_access("updateJob")
+        target_job_id = job_id or self._current_job_id
+        if not target_job_id:
+            raise ValueError("No job ID specified and no current job context")
         
-        if not self._current_job_id:
-            raise ValueError("No current job context")
-        
-        self._state.update_job(self._current_job_id, key, value)
+        self._state.update_job(target_job_id, key, value)
         
         self._logger.debug(
             "plugin_services",
-            f"Updated job: {self._current_job_id}",
+            f"Updated job: {target_job_id}",
             key=key,
             plugin=self._current_plugin_name
         )
     
-    def updatePlugin(self, data: Dict[str, Any]) -> None:
+    def updateJob(self, key: str, value: Any) -> None:
+        """Backward compatible alias for update_job."""
+        self.update_job(self._current_job_id, key, value)
+    
+    def update_plugin(self, target_id: str = None, plugin_name: str = None, data: Dict[str, Any] = None) -> None:
         """
-        Update CURRENT plugin data (per_job only).
-        
-        Data is stored in: plugin.{current_plugin_name}.data
+        Update plugin data.
         
         Args:
+            target_id: "job_xxx" or "run_xxx" (uses current context if None)
+            plugin_name: Plugin name (uses current context if None)
             data: Plugin data
-            
-        Raises:
-            PermissionError: If called from per_run plugin
-            ValueError: If no current job/plugin context
         """
-        self._check_per_job_access("updatePlugin")
+        tid = target_id or self._current_job_id
+        pname = plugin_name or self._current_plugin_name
         
-        if not self._current_job_id:
-            raise ValueError("No current job context")
-        if not self._current_plugin_name:
-            raise ValueError("No current plugin context")
+        if not tid:
+            raise ValueError("No target_id specified and no current context")
+        if not pname:
+            raise ValueError("No plugin_name specified and no current context")
         
-        self._state.update_plugin(self._current_job_id, self._current_plugin_name, data)
+        self._state.update_plugin(tid, pname, data or {})
         
         self._logger.debug(
             "plugin_services",
-            f"Updated plugin: {self._current_plugin_name}",
-            job=self._current_job_id,
-            data_keys=list(data.keys())
+            f"Updated plugin: {pname}",
+            target_id=tid,
+            data_keys=list(data.keys()) if data else []
         )
+    
+    def updatePlugin(self, data: Dict[str, Any]) -> None:
+        """Backward compatible alias for update_plugin."""
+        self.update_plugin(self._current_job_id, self._current_plugin_name, data)
+    
+    def get_plugin_data(self, target_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get plugin data.
+        
+        Args:
+            target_id: "job_xxx" or "run_xxx"
+            plugin_name: Plugin name
+            
+        Returns:
+            Plugin data dict or None
+        """
+        return self._state.get_plugin_data(target_id, plugin_name)
     
     # ==================== STATE ACCESS ====================
     
@@ -177,42 +193,26 @@ class PluginServices:
     
     def get_current_job(self):
         """
-        Get current job (per_job only).
-        
-        Raises:
-            PermissionError: If called from per_run plugin
+        Get current job.
         """
-        self._check_per_job_access("get_current_job")
         return self._state.job
     
     def get_all_jobs(self):
         """
-        Get all jobs (per_job only, read-only).
-        
-        Raises:
-            PermissionError: If called from per_run plugin
+        Get all jobs (read-only).
         """
-        self._check_per_job_access("get_all_jobs")
         return self._state.jobs
     
     def get_current_plugins(self) -> Dict[str, Any]:
         """
-        Get current job's plugins (per_job only).
-        
-        Raises:
-            PermissionError: If called from per_run plugin
+        Get current job's plugins.
         """
-        self._check_per_job_access("get_current_plugins")
         return self._state.plugin
     
     def get_all_plugins(self):
         """
-        Get all jobs' plugins (per_job only, read-only).
-        
-        Raises:
-            PermissionError: If called from per_run plugin
+        Get all jobs' plugins (read-only).
         """
-        self._check_per_job_access("get_all_plugins")
         return self._state.plugins
     
     # ==================== EVENT BUS ====================
@@ -302,21 +302,6 @@ class PluginServices:
             message=message
         )
     
-    # ==================== ACCESS CONTROL ====================
-    
-    def _check_per_job_access(self, method_name: str) -> None:
-        """
-        Check if per_job method can be called.
-        
-        Raises:
-            PermissionError: If called from per_run plugin
-        """
-        if self._mode != "per_job":
-            raise PermissionError(
-                f"{method_name}() can only be called by per_job plugins. "
-                f"Current mode: {self._mode}"
-            )
-    
     # ==================== PROPERTIES ====================
     
     @property
@@ -333,3 +318,9 @@ class PluginServices:
     def current_plugin_name(self) -> Optional[str]:
         """Get current plugin name."""
         return self._current_plugin_name
+    
+    @property
+    def run_id(self) -> Optional[str]:
+        """Get current run ID."""
+        run = self._state.run
+        return run.id if run else None

@@ -22,7 +22,9 @@ QUALITY_KEYWORDS: List[str] = [
     "4K", "2160p", "1080p", "720p", "480p", "UHD",
     "BluRay", "BDRip", "BRRip", "WEB-DL", "WEBDL",
     "WEBRip", "HDTV", "DVDRip", "PROPER", "EXTENDED", "BR",
-    "TSRG", "YIFY", "RARBG", "FGT", "SPARKS", "ROVERS"
+    "TSRG", "YIFY", "RARBG", "FGT", "SPARKS", "ROVERS",
+    "DSNP", "NF", "AMZN", "ATVP", "HMAX", "PMTP", "DSNP",
+    "TURG", "BYNDR", "Xvid", "TR"
 ]
 
 # Codec indicators to remove from filenames
@@ -221,11 +223,11 @@ def parse_movie_name(
     # Now sanitize
     cleaned = sanitize_string(name_without_year, custom_delete_keywords)
     
-    # Handle dual title format: "Turkish - English"
     if ' - ' in cleaned:
         parts = cleaned.split(' - ')
-        # Use the last part (usually English)
         cleaned = parts[-1].strip()
+    
+    cleaned = cleaned.strip(' -')
     
     return cleaned.title(), year
 

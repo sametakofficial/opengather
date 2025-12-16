@@ -1,0 +1,207 @@
+# CURRENT SYSTEM - DATA STRUCTURES (AS-IS)
+# Mevcut proje yapisi - Aralik 2024
+# Kaynak: src/archiverr/state/models.py, infrastructure/database/pymongo_persistence.py
+
+# ============================================================================
+# MONGODB COLLECTIONS (Mevcut)
+# ============================================================================
+mongodb_collections:
+  runs: "runs"
+  jobs: "jobs"
+  plugins: "plugins"
+  branches: "branches"
+
+# ============================================================================
+# RUN STATE (Mevcut)
+# Kaynak: state/models.py - RunState
+# ============================================================================
+run:
+  id: "run_abc123"  # Format: run_{uuid8}
+  status:
+    state: "running"  # pending | running | success | failed | partial | cancelled
+    success: true
+    total_jobs: 10
+    completed: 5
+    failed: 0
+    started_at: "2024-12-16T10:00:00Z"
+    finished_at: null
+    duration_ms: 0
+  config: {}  # Frozen config snapshot
+
+# ============================================================================
+# JOB STATE (Mevcut)
+# Kaynak: state/models.py - JobState
+# ============================================================================
+job:
+  id: "job_run_abc123_0"  # Format: job_{run_id}_{index}
+  index: 0
+  run_id: "run_abc123"
+  input:
+    value: "/path/to/file.mkv"
+    data:
+      source: "scanner"
+      filename: "file.mkv"
+      extension: "mkv"
+  output:
+    values: ["/output/path1", "/output/path2"]
+    data:
+      tasks:
+        print_header: {success: true, rendered: "..."}
+  status:
+    state: "running"
+    success: true
+    executed: ["scanner", "renamer", "tmdb"]
+    failed: []
+    skipped: []
+    started_at: "2024-12-16T10:00:00Z"
+    finished_at: null
+    duration_ms: 0
+  plugins:  # Runtime plugin data access
+    renamer:
+      status: {state: "completed", success: true}
+      data: {parsed: {...}}
+    tmdb:
+      status: {state: "completed", success: true}
+      data: {movie: {...}, show: {...}}
+
+# ============================================================================
+# PLUGIN STATE (Mevcut)
+# Kaynak: state/models.py - PluginState, PluginData
+# ============================================================================
+plugin_state:
+  # In-memory (PluginState)
+  status:
+    state: "completed"
+    success: true
+    started_at: "2024-12-16T10:00:00Z"
+    finished_at: "2024-12-16T10:00:01Z"
+    duration_ms: 800
+    error: null
+  data: {}  # Plugin-specific data
+
+plugin_data:
+  # MongoDB'de (PluginData)
+  id: "plugin_job_run_abc123_0_tmdb"  # Format: plugin_{job_id}_{plugin_name}
+  job_id: "job_run_abc123_0"
+  run_id: "run_abc123"
+  job_index: 0
+  plugin_name: "tmdb"
+  stage: "data"  # parse | data | output
+  status: {state: "completed", success: true, ...}
+  data: {movie: {...}, show: {...}}
+
+# ============================================================================
+# PLUGIN SERVICES (Mevcut)
+# Kaynak: core/services/plugin_services.py
+# ============================================================================
+plugin_services:
+  methods:
+    createJob:
+      signature: "createJob(input_value: str, input_data: dict) -> str"
+      description: "Yeni job olustur"
+      returns: "job_id"
+    
+    updateJob:
+      signature: "updateJob(key: str, value: Any) -> None"
+      description: "Current job guncelle (ID belirtilmez, context'ten alinir)"
+      example: "updateJob('output.values', [...])"
+    
+    updatePlugin:
+      signature: "updatePlugin(data: dict) -> None"
+      description: "Current plugin data guncelle (ID/name belirtilmez)"
+      example: "updatePlugin({'movie': {...}})"
+
+  context:
+    current_job_id: "Orchestrator tarafindan set edilir"
+    current_plugin_name: "Orchestrator tarafindan set edilir"
+    mode: "per_run | per_job"
+
+# ============================================================================
+# GLOBAL STATE MANAGER (Mevcut)
+# Kaynak: state/manager.py - GlobalStateManager
+# ============================================================================
+global_state_manager:
+  internal_storage:
+    _run: "RunState instance"
+    _jobs: "Dict[index, JobState]"
+    _plugins: "Dict[job_id, Dict[plugin_name, data]]"
+    _plugins_storage: "Dict[job_id, Dict[plugin_name, PluginState]]"
+    _context: "ExecutionContext instance"
+  
+  methods:
+    # Run
+    start_run: "Run baslat"
+    complete_run: "Run bitir"
+    
+    # Job
+    create_job: "Job olustur"
+    get_job: "Job al (index ile)"
+    get_job_by_id: "Job al (id ile)"
+    get_all_jobs: "Tum job'lari al"
+    complete_job: "Job bitir"
+    update_job: "Job guncelle (dot notation)"
+    
+    # Plugin
+    update_plugin: "Plugin data guncelle"
+    get_plugin_data: "Plugin data al"
+    save_plugin_data: "Plugin data kaydet (MongoDB'ye)"
+
+# ============================================================================
+# MONGODB INDEXES (Mevcut)
+# Kaynak: infrastructure/database/pymongo_persistence.py
+# ============================================================================
+mongodb_indexes:
+  runs:
+    - "id (unique)"
+    - "created_at"
+    - "status.state"
+  
+  jobs:
+    - "id (unique)"
+    - "run_id"
+    - "(run_id, index) unique"
+  
+  plugins:
+    - "(run_id, job_id, plugin_name) unique"
+    - "run_id"
+    - "job_id"
+    - "plugin_name"
+    - "stage"
+
+# ============================================================================
+# FASTAPI ENDPOINTS (Mevcut)
+# Kaynak: api/v1/*/router.py
+# ============================================================================
+fastapi_endpoints:
+  runs:
+    - "GET /api/v1/runs - List runs"
+    - "GET /api/v1/runs/{run_id} - Get run"
+    - "POST /api/v1/run/start - Start new run"
+  
+  jobs:
+    - "GET /api/v1/jobs - List jobs"
+    - "GET /api/v1/jobs/{job_id} - Get job"
+  
+  plugins:
+    - "GET /api/v1/plugins/{job_id} - Get plugins for job"
+    - "GET /api/v1/plugins/{job_id}/{plugin_name} - Get specific plugin"
+
+# ============================================================================
+# SORUNLAR (Mevcut Sistemde)
+# ============================================================================
+issues:
+  - name: "ID Zorunlulugu Yok"
+    description: "updateJob ve updatePlugin ID belirtmiyor, context'e bagli"
+    impact: "Per run plugin job'a veri ekleyemiyor"
+  
+  - name: "Plugin Status Dagitik"
+    description: "Status hem plugin data icinde hem job.plugins icinde"
+    impact: "Cift kayit, sync sorunu"
+  
+  - name: "Data Wrapper"
+    description: "plugins.tmdb.data.movie seklinde erisim"
+    impact: "Gereksiz nesting"
+  
+  - name: "Per Run/Job Ayrimi Yok"
+    description: "Tum plugin data'lari ayni yerde"
+    impact: "Run-level ve job-level data karisik"

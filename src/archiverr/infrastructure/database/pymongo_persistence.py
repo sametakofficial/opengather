@@ -62,16 +62,9 @@ class PyMongoPersistence(PersistenceInterface):
     For API (async context), use Motor directly via get_database dependency.
     """
     
-    # Collection names (Session 14 - CLEAN!)
     RUNS = "runs"
     JOBS = "jobs"
     PLUGINS = "plugins"
-    BRANCHES = "branches"
-    
-    # Legacy collection names (DEPRECATED - will be dropped)
-    EXECUTIONS = "executions"
-    MATCHES = "matches"
-    PLUGIN_RESULTS = "plugin_results"
     
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
@@ -162,152 +155,8 @@ class PyMongoPersistence(PersistenceInterface):
         self._db[self.PLUGINS].create_index("plugin_name")
         self._db[self.PLUGINS].create_index("stage")
         
-        # Branches indexes
-        self._db[self.BRANCHES].create_index("name", unique=True)
-        self._db[self.BRANCHES].create_index("is_default")
-        
         # Create new collection indexes (Session 11)
         self._create_new_indexes()
-    
-    # ==================== EXECUTION OPERATIONS ====================
-    
-    def save_execution(self, execution) -> None:
-        """Save or update execution."""
-        try:
-            if hasattr(execution, 'to_dict'):
-                exec_dict = execution.to_dict()
-            else:
-                exec_dict = dict(execution)
-            exec_id = exec_dict["_id"]
-            
-            self._db[self.EXECUTIONS].update_one(
-                {"_id": exec_id},
-                {"$set": exec_dict},
-                upsert=True
-            )
-        except OperationFailure as e:
-            logger.error(f"Failed to save execution: {e}")
-            raise
-    
-    def get_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
-        """Get execution by ID."""
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        return self._db[self.EXECUTIONS].find_one({"_id": exec_id})
-    
-    def get_recent_executions(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent executions ordered by start time."""
-        cursor = self._db[self.EXECUTIONS].find().sort("started_at", -1).limit(limit)
-        return list(cursor)
-    
-    def get_failed_executions(self) -> List[Dict[str, Any]]:
-        """Get failed executions."""
-        cursor = self._db[self.EXECUTIONS].find({"success": False})
-        return list(cursor)
-    
-    def delete_execution(self, execution_id: str) -> bool:
-        """Delete execution and all related data."""
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
-        # Delete plugin results
-        self._db[self.PLUGIN_RESULTS].delete_many({"execution_id": exec_id})
-        
-        # Delete matches
-        self._db[self.MATCHES].delete_many({"execution_id": exec_id})
-        
-        # Delete execution
-        result = self._db[self.EXECUTIONS].delete_one({"_id": exec_id})
-        return result.deleted_count > 0
-    
-    # ==================== MATCH OPERATIONS ====================
-    
-    def save_match(self, match) -> None:
-        """Save or update match."""
-        try:
-            if hasattr(match, 'to_dict'):
-                match_dict = match.to_dict()
-            else:
-                match_dict = dict(match)
-            match_id = match_dict["_id"]
-            
-            self._db[self.MATCHES].update_one(
-                {"_id": match_id},
-                {"$set": match_dict},
-                upsert=True
-            )
-        except OperationFailure as e:
-            logger.error(f"Failed to save match: {e}")
-            raise
-    
-    def get_matches(self, execution_id: str) -> List[Dict[str, Any]]:
-        """Get all matches for execution."""
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        cursor = self._db[self.MATCHES].find({"execution_id": exec_id})
-        return list(cursor)
-    
-    # ==================== PLUGIN RESULT OPERATIONS ====================
-    
-    def save_plugin_result(
-        self,
-        execution_id: str,
-        match_index: int,
-        plugin_name: str,
-        result: Dict[str, Any]
-    ) -> None:
-        """Save plugin result."""
-        result_id = f"pr_{plugin_name}_{match_index}_{execution_id}"
-        
-        try:
-            # Extract status from result (if present)
-            status = result.pop('status', None) if isinstance(result, dict) else None
-            
-            if status is None:
-                status = {
-                    "success": True,
-                    "started_at": datetime.utcnow().isoformat(),
-                    "finished_at": datetime.utcnow().isoformat(),
-                    "duration_ms": 0,
-                    "error": None
-                }
-            
-            result_doc = {
-                "_id": result_id,
-                "execution_id": f"exec_{execution_id}",
-                "match_id": f"match_{match_index}_{execution_id}",
-                "match_index": match_index,
-                "plugin_name": plugin_name,
-                "status": status,
-                "data": result,
-                "created_at": datetime.utcnow(),
-                "expires_at": datetime.utcnow() + timedelta(days=self._ttl_days)
-            }
-            
-            self._db[self.PLUGIN_RESULTS].update_one(
-                {"_id": result_id},
-                {"$set": result_doc},
-                upsert=True
-            )
-        except OperationFailure as e:
-            logger.error(f"Failed to save plugin result {plugin_name} for match {match_index}: {e}")
-            raise
-    
-    def get_plugin_results(
-        self,
-        execution_id: str,
-        match_index: int
-    ) -> Dict[str, Dict[str, Any]]:
-        """Get all plugin results for a match."""
-        exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
-        cursor = self._db[self.PLUGIN_RESULTS].find({
-            "execution_id": exec_id,
-            "match_index": match_index
-        })
-        
-        results = {}
-        for doc in cursor:
-            results[doc["plugin_name"]] = doc["data"]
-        
-        return results
     
     # =========================================================================
     # NEW METHODS (Session 11 - FINAL_DATASETS.yml compliant)
@@ -459,78 +308,8 @@ class PyMongoPersistence(PersistenceInterface):
             "backend": "PyMongoPersistence",
             "uri": self._uri,
             "database": self._database_name,
-            # Legacy collections
-            "executions": self._db[self.EXECUTIONS].count_documents({}),
-            "matches": self._db[self.MATCHES].count_documents({}),
-            "plugin_results": self._db[self.PLUGIN_RESULTS].count_documents({}),
-            # New collections (Session 11)
             "runs": self._db[self.RUNS].count_documents({}),
             "jobs": self._db[self.JOBS].count_documents({}),
             "plugins": self._db[self.PLUGINS].count_documents({})
         }
     
-    # ==================== GIT-LIKE VERSIONING ====================
-    
-    def create_branch(
-        self,
-        name: str,
-        description: str = "",
-        is_default: bool = False
-    ) -> Dict[str, Any]:
-        """Create a new branch."""
-        branch_id = f"branch_{str(uuid4())[:8]}"
-        now = datetime.utcnow()
-        
-        # If this is default branch, unset others
-        if is_default:
-            self._db[self.BRANCHES].update_many(
-                {"is_default": True},
-                {"$set": {"is_default": False}}
-            )
-        
-        branch_doc = {
-            "_id": branch_id,
-            "name": name,
-            "description": description,
-            "is_default": is_default,
-            "head_commit_id": None,
-            "created_at": now,
-            "updated_at": now
-        }
-        
-        try:
-            self._db[self.BRANCHES].insert_one(branch_doc)
-            return branch_doc
-        except DuplicateKeyError:
-            raise ValueError(f"Branch '{name}' already exists")
-    
-    def get_branch(
-        self,
-        branch_id: str = None,
-        name: str = None
-    ) -> Optional[Dict[str, Any]]:
-        """Get branch by ID or name."""
-        if branch_id:
-            return self._db[self.BRANCHES].find_one({"_id": branch_id})
-        elif name:
-            return self._db[self.BRANCHES].find_one({"name": name})
-        else:
-            return self._db[self.BRANCHES].find_one({"is_default": True})
-    
-    def list_branches(self) -> List[Dict[str, Any]]:
-        """List all branches."""
-        cursor = self._db[self.BRANCHES].find().sort("created_at", -1)
-        return list(cursor)
-    
-    def delete_branch(self, branch_id: str) -> bool:
-        """Delete a branch."""
-        branch = self._db[self.BRANCHES].find_one({"_id": branch_id})
-        if not branch:
-            return False
-        
-        if branch.get("is_default"):
-            raise ValueError("Cannot delete default branch")
-        
-        # Delete branch
-        result = self._db[self.BRANCHES].delete_one({"_id": branch_id})
-        return result.deleted_count > 0

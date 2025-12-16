@@ -86,9 +86,22 @@ class ScannerPlugin(InputPlugin):
         
         self.info("Scan complete (per_run)", jobs_created=created_jobs)
         
+        # Session 17: Save run-level plugin data via update_plugin
+        if hasattr(services, 'update_plugin') and hasattr(services, 'run_id'):
+            services.update_plugin(
+                target_id=services.run_id,
+                plugin_name="scanner",
+                data={
+                    "count": created_jobs,
+                    "targets": targets,
+                    "recursive": recursive,
+                    "allow_virtual_paths": allow_virtual
+                }
+            )
+        
         return {
-            'status': {'success': True},
-            'data': {'count': created_jobs}
+            'success': True,
+            'count': created_jobs
         }
     
     def _create_job_for_file(self, services: Any, file_path: Path) -> None:

@@ -151,13 +151,8 @@ class GlobalStateManager:
         )
         self._run.start()
         
-        # Persist
-        if self._persistence:
-            if hasattr(self._persistence, 'save_run'):
-                self._persistence.save_run(self._run)
-            elif hasattr(self._persistence, 'save_execution'):
-                # Legacy persistence adapter
-                self._persistence.save_execution(self._run_to_execution())
+        if self._persistence and hasattr(self._persistence, 'save_run'):
+            self._persistence.save_run(self._run)
         
         self._log("debug", "run", "Started run", id=run_id)
         
@@ -181,14 +176,10 @@ class GlobalStateManager:
         
         self._run.complete()
         
-        # Persist
-        if self._persistence:
-            if hasattr(self._persistence, 'save_run'):
-                self._persistence.save_run(self._run)
-            elif hasattr(self._persistence, 'save_execution'):
-                self._persistence.save_execution(self._run_to_execution())
+        if self._persistence and hasattr(self._persistence, 'save_run'):
+            self._persistence.save_run(self._run)
         
-        self._log("info", "execution", "Execution completed",
+        self._log("info", "run", "Run completed",
                  matches=self._run.status.total_jobs,
                  errors=self._run.status.failed,
                  duration_ms=self._run.status.duration_ms)
@@ -204,65 +195,7 @@ class GlobalStateManager:
         
         return self._run
     
-    def _run_to_execution(self):
-        """Convert RunState to legacy ExecutionState format for persistence."""
-        if not self._run:
-            return None
-        
-        class LegacyExecution:
-            def __init__(self, run: RunState):
-                self.id = run.id
-                self.started_at = run.status.started_at
-                self.finished_at = run.status.finished_at
-                self.duration_ms = run.status.duration_ms
-                self.success = run.status.success
-                self.status = type('Status', (), {'value': run.status.state.value})()
-                self.total_matches = run.status.total_jobs
-                self.completed_matches = run.status.completed
-                self.failed_matches = run.status.failed
-                self.config_snapshot = run.config
-            
-            def to_dict(self):
-                return {
-                    "_id": f"exec_{self.id}",
-                    "id": self.id,
-                    "started_at": self.started_at.isoformat() if self.started_at else None,
-                    "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-                    "duration_ms": self.duration_ms,
-                    "success": self.success,
-                    "status": self.status.value,
-                    "summary": {
-                        "total_matches": self.total_matches,
-                        "completed_matches": self.completed_matches,
-                        "failed_matches": self.failed_matches
-                    },
-                    "config_snapshot": self.config_snapshot
-                }
-        
-        return LegacyExecution(self._run)
-    
-    @property
-    def run(self) -> Optional[RunState]:
-        """Get current run state."""
-        return self._run
-    
-    @property
-    def run_id(self) -> Optional[str]:
-        """Get current run ID."""
-        return self._run.id if self._run else None
-    
-    # Legacy property aliases
-    @property
-    def execution(self):
-        """Legacy: Get current run as execution."""
-        return self._run_to_execution()
-    
-    @property
-    def execution_id(self) -> Optional[str]:
-        """Legacy: Get current run ID."""
-        return self.run_id
-    
-    # ==================== JOBS (was MATCHES) ====================
+    # ==================== JOBS ====================
     
     def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
         """
@@ -297,17 +230,11 @@ class GlobalStateManager:
         # Initialize plugin storage for this job
         self._plugins_storage[job.id] = {}
         
-        # Persist
         if self._persistence:
             if hasattr(self._persistence, 'save_job'):
                 self._persistence.save_job(job)
-            elif hasattr(self._persistence, 'save_match'):
-                self._persistence.save_match(self._job_to_match(job))
-            
             if hasattr(self._persistence, 'save_run'):
                 self._persistence.save_run(self._run)
-            elif hasattr(self._persistence, 'save_execution'):
-                self._persistence.save_execution(self._run_to_execution())
         
         self._log("debug", "job", f"Created job {index}", input_value=input_value)
         
@@ -364,104 +291,69 @@ class GlobalStateManager:
             "value": value
         })
     
-    def update_plugin(self, job_id: str, plugin_name: str, data: Dict[str, Any]) -> None:
+    def update_plugin(self, target_id: str, plugin_name: str, data: Dict[str, Any]) -> None:
         """
-        Update plugin data (Session 12 internal method).
+        Update plugin data (Session 17 refactored).
         
-        Called by PluginServices.updatePlugin(data).
-        PluginServices provides job_id and plugin_name internally.
+        Session 17: Flat data structure, no status/data wrapper.
+        - Plugin data stored directly: plugins[target_id][plugin_name] = data
+        - Plugin status stored in job.status.plugins or run.status.plugins
         
         Args:
-            job_id: Job ID
+            target_id: Job ID (job_xxx) or Run ID (run_xxx or just the run id)
             plugin_name: Plugin name
-            data: Plugin data (stored in plugin.{name}.data)
+            data: Plugin data (stored directly, no wrapper)
         """
-        if job_id not in self._plugins_storage:
-            self._plugins_storage[job_id] = {}
+        # Determine if this is a run or job target
+        is_run_target = target_id.startswith("run_") or (self._run and target_id == self._run.id)
         
-        if plugin_name not in self._plugins_storage[job_id]:
-            self._plugins_storage[job_id][plugin_name] = PluginState()
-        
-        # Update plugin data
-        self._plugins_storage[job_id][plugin_name].data = data
-        
-        # Also update JobState.plugins for backward compatibility
-        job = self.get_job_by_id(job_id)
-        if job:
-            job.plugins[plugin_name] = self._plugins_storage[job_id][plugin_name].to_dict()
+        if is_run_target:
+            # Per-run plugin (e.g., scanner)
+            run_id = target_id if target_id.startswith("run_") else f"run_{target_id}"
             
-            # Debug logging
-            data_keys = list(data.keys()) if isinstance(data, dict) else []
-            self._log("debug", "plugin_data", 
-                     f"Updated plugin {plugin_name} for job {job_id}",
-                     data_keys=data_keys,
-                     data_size=len(str(data)))
+            if run_id not in self._plugins_storage:
+                self._plugins_storage[run_id] = {}
+            
+            # Session 17: Store data directly (flat structure)
+            self._plugins_storage[run_id][plugin_name] = data
+            
+            self._log("debug", "plugin_data",
+                     f"Updated run plugin {plugin_name}",
+                     run_id=run_id,
+                     data_keys=list(data.keys()) if isinstance(data, dict) else [])
+        else:
+            # Per-job plugin
+            job_id = target_id
+            
+            if job_id not in self._plugins_storage:
+                self._plugins_storage[job_id] = {}
+            
+            # Session 17: Store data directly (flat structure)
+            self._plugins_storage[job_id][plugin_name] = data
+            
+            # Update JobState.plugins with flat data
+            job = self.get_job_by_id(job_id)
+            if job:
+                job.plugins[plugin_name] = data
+                
+                self._log("debug", "plugin_data", 
+                         f"Updated plugin {plugin_name} for job {job_id}",
+                         data_keys=list(data.keys()) if isinstance(data, dict) else [],
+                         data_size=len(str(data)))
         
         self._emit("plugin.updated", {
-            "job_id": job_id,
+            "target_id": target_id,
             "plugin_name": plugin_name,
             "data": data
         })
     
-    def _job_to_match(self, job: JobState):
-        """Convert JobState to legacy MatchState format for persistence."""
-        class LegacyMatch:
-            def __init__(self, j: JobState):
-                self.index = j.index
-                self.input_path = j.input.value
-                self.execution_id = j.run_id
-                self.success = j.status.success
-                self.status = type('Status', (), {'value': j.status.state.value})()
-                self.executed_plugins = j.status.executed
-                self.failed_plugins = j.status.failed
-                self.not_supported_plugins = j.status.skipped
-                self.started_at = j.status.started_at
-                self.finished_at = j.status.finished_at
-                self.duration_ms = j.status.duration_ms
-                self.plugins = j.plugins
-                self.tasks = []
-            
-            @property
-            def id(self):
-                return f"match_{self.index}_{self.execution_id}"
-            
-            def to_dict(self):
-                return {
-                    "_id": self.id,
-                    "execution_id": f"exec_{self.execution_id}",
-                    "index": self.index,
-                    "input_path": self.input_path,
-                    "success": self.success,
-                    "status": self.status.value,
-                    "executed_plugins": self.executed_plugins,
-                    "failed_plugins": self.failed_plugins,
-                    "not_supported_plugins": self.not_supported_plugins,
-                    "started_at": self.started_at.isoformat() if self.started_at else None,
-                    "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-                    "duration_ms": self.duration_ms,
-                    "tasks": self.tasks
-                }
-        
-        return LegacyMatch(job)
-    
     def get_job(self, index: int) -> Optional[JobState]:
-        """get job by index (session 14: via context)."""
-        jobs = self._context._jobs
-        if 0 <= index < len(jobs):
-            return jobs[index]
-        return None
+        """get job by index (session 17: via context helper)."""
+        return self._context.get_job_by_index(index)
     
     def get_job_by_id(self, job_id: str) -> Optional[JobState]:
-        """get job by id (session 14: via context)."""
-        try:
-            parts = job_id.split('_')
-            index = int(parts[-1])
-            jobs = self._context._jobs
-            if 0 <= index < len(jobs):
-                return jobs[index]
-        except (ValueError, IndexError):
-            pass
-        return None
+        """get job by id (session 17: direct dict lookup)."""
+        return self._context.get_job(job_id)
     
     def get_all_jobs(self) -> List[JobState]:
         """get all jobs (session 14: via context)."""
@@ -480,12 +372,8 @@ class GlobalStateManager:
         if not job.status.success:
             self._run.increment_failed()
         
-        # Persist
-        if self._persistence:
-            if hasattr(self._persistence, 'save_job'):
-                self._persistence.save_job(job)
-            elif hasattr(self._persistence, 'save_match'):
-                self._persistence.save_match(self._job_to_match(job))
+        if self._persistence and hasattr(self._persistence, 'save_job'):
+            self._persistence.save_job(job)
         
         self._log("debug", "job", f"Job {index} completed",
                  success=job.status.success, duration_ms=job.status.duration_ms)
@@ -498,39 +386,6 @@ class GlobalStateManager:
             "executed_plugins": job.status.executed,
             "failed_plugins": job.status.failed
         })
-    
-    # Legacy aliases
-    def register_match(self, index: int, input_path: str):
-        """Legacy: Create job."""
-        return self.create_job(input_path)
-    
-    def get_match(self, index: int):
-        """Legacy: Get job."""
-        return self.get_job(index)
-    
-    def get_all_matches(self):
-        """Legacy: Get all jobs as dict."""
-        return {j.index: j for j in self._jobs.values()}
-    
-    def complete_match(self, index: int):
-        """Legacy: Complete job."""
-        self.complete_job(index)
-    
-    # Internal compatibility - expose _matches for code that accesses it directly
-    @property
-    def _matches(self):
-        """Legacy: Direct access to jobs dict."""
-        return self._jobs
-    
-    @_matches.setter
-    def _matches(self, value):
-        """Legacy: Set jobs dict."""
-        self._jobs = value
-    
-    @property
-    def _execution(self):
-        """Legacy: Direct access to run."""
-        return self._run_to_execution()
     
     # ==================== PLUGIN DATA ====================
     
@@ -569,8 +424,8 @@ class GlobalStateManager:
         """
         plugin_names = set()
         
-        # Collect from all jobs
-        for job in self._jobs.values():
+        # Collect from all jobs (Session 17: via context)
+        for job in self._context.jobs:
             if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
                 plugin_names.update(job.plugins.keys())
         
@@ -781,7 +636,7 @@ class GlobalStateManager:
         context = {
             "run": run_context,
             "job": job_context,
-            "jobs": [self._job_to_context(j) for j in self._jobs.values()],
+            "jobs": [self._job_to_context(j) for j in self._context.jobs],
             
             # Legacy aliases
             "globals": run_context,
@@ -811,24 +666,6 @@ class GlobalStateManager:
             "plugins": job.plugins
         }
     
-    # ==================== LEGACY COMPATIBILITY ====================
-    
-    def start_execution(self, config: Dict[str, Any]) -> str:
-        """Legacy: Start run."""
-        return self.start_run(config)
-    
-    def complete_execution(self, branch_name: str = "main"):
-        """Legacy: Complete run."""
-        return self.complete_run(branch_name)
-    
-    def _create_config_snapshot(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Create minimal config snapshot."""
-        return {
-            "plugins": list(config.keys()),
-            "options": config.get("options", {}),
-            "aliases": config.get("aliases", {})
-        }
 
 
-# Backward compatibility alias (Session 12: class renamed)
 StateManager = GlobalStateManager

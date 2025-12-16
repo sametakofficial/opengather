@@ -1,0 +1,261 @@
+# PLANNED SYSTEM - DATA STRUCTURES (TO-BE)
+# Hedef proje yapisi - Session 16
+# Key-based plugins yaklasimi
+
+# ============================================================================
+# TASARIM KARARLARI
+# ============================================================================
+design_decisions:
+  plugins_structure: "key-based"  # Dict with target_id as key
+  plugin_status_location: "job.status.plugins / run.status.plugins"
+  plugin_data_location: "plugins[target_id][plugin_name]"
+  api_naming: "snake_case"
+  id_requirement: "zorunlu"  # Her iletisimde target_id belirtilmeli
+
+# ============================================================================
+# MONGODB COLLECTIONS (Hedef)
+# ============================================================================
+mongodb_collections:
+  runs: "runs"
+  jobs: "jobs"
+  plugins: "plugins"  # Key: target_id (job_id veya run_id)
+  branches: "branches"
+
+# ============================================================================
+# RUN STATE (Hedef)
+# ============================================================================
+run:
+  id: "run_abc123"
+  branch: "main"
+  status:
+    state: "running"
+    success: true
+    total_jobs: 10
+    completed: 5
+    failed: 0
+    started_at: "2024-12-16T10:00:00Z"
+    finished_at: null
+    duration_ms: 0
+    # YENI: Per-run plugin status'lari buraya tasiniyor
+    plugins:
+      scanner:
+        state: "completed"
+        success: true
+        started_at: "2024-12-16T09:59:59Z"
+        finished_at: "2024-12-16T10:00:00Z"
+        duration_ms: 1200
+        error: null
+
+# ============================================================================
+# JOB STATE (Hedef)
+# ============================================================================
+job:
+  id: "job_run_abc123_0"
+  index: 0
+  run_id: "run_abc123"
+  input:
+    value: "/path/to/file.mkv"
+    data:
+      source: "scanner"
+      filename: "file.mkv"
+  output:
+    values: ["/output/path1"]
+    data:
+      tasks: {...}
+  status:
+    state: "completed"
+    success: true
+    executed: ["renamer", "tmdb", "tasker"]
+    failed: []
+    skipped: []
+    started_at: "2024-12-16T10:00:00Z"
+    finished_at: "2024-12-16T10:00:05Z"
+    duration_ms: 5000
+    # YENI: Per-job plugin status'lari buraya tasiniyor
+    plugins:
+      renamer:
+        state: "completed"
+        success: true
+        started_at: "2024-12-16T10:00:00Z"
+        finished_at: "2024-12-16T10:00:01Z"
+        duration_ms: 800
+        error: null
+      tmdb:
+        state: "completed"
+        success: true
+        started_at: "2024-12-16T10:00:01Z"
+        finished_at: "2024-12-16T10:00:02Z"
+        duration_ms: 1200
+        error: null
+      tasker:
+        state: "completed"
+        success: true
+        started_at: "2024-12-16T10:00:02Z"
+        finished_at: "2024-12-16T10:00:05Z"
+        duration_ms: 3000
+        error: null
+
+# ============================================================================
+# PLUGINS STATE (Hedef - Key-Based)
+# ============================================================================
+# Flat dict, key = target_id (job_id veya run_id)
+# job_ prefix = job plugin data
+# run_ prefix = run plugin data
+plugins:
+  # Per-run plugin data (tek obje, tum run icin)
+  run_abc123:
+    scanner:
+      count: 10
+      targets: ["/data/movies", "/data/shows"]
+      extensions: [".mkv", ".mp4"]
+  
+  # Per-job plugin data (her job icin ayri obje)
+  job_run_abc123_0:
+    renamer:
+      parsed:
+        movie:
+          name: "Movie"
+          year: 2024
+    tmdb:
+      movie:
+        id: 12345
+        title: "Movie Title"
+        release_date: "2024-01-15"
+        genres: ["Action", "Thriller"]
+    tasker:
+      tasks:
+        print_header: {success: true, rendered: "..."}
+        save_file: {success: true, destination: "/output/..."}
+      output_values: ["/output/..."]
+  
+  job_run_abc123_1:
+    renamer:
+      parsed:
+        show:
+          name: "Show"
+          season: 1
+          episode: 1
+    tmdb:
+      show:
+        id: 67890
+        name: "Show Title"
+        first_air_date: "2020-01-01"
+
+# ============================================================================
+# PLUGIN SERVICES (Hedef - ID Zorunlu)
+# ============================================================================
+plugin_services:
+  methods:
+    create_job:
+      signature: "create_job(input_value: str, input_data: dict) -> str"
+      description: "Yeni job olustur"
+      returns: "job_id"
+    
+    update_job:
+      signature: "update_job(job_id: str, path: str, value: Any) -> None"
+      description: "Job guncelle - ID ZORUNLU"
+      example: "update_job('job_abc_0', 'output.values', [...])"
+    
+    update_plugin:
+      signature: "update_plugin(target_id: str, plugin_name: str, data: dict) -> None"
+      description: "Plugin data guncelle - ID ve NAME ZORUNLU"
+      examples:
+        - "update_plugin('job_abc_0', 'tmdb', {'movie': {...}})"
+        - "update_plugin('run_abc', 'scanner', {'count': 10})"
+    
+    get_plugin_data:
+      signature: "get_plugin_data(target_id: str, plugin_name: str) -> dict"
+      description: "Plugin data al"
+    
+    # Sistem metodlari (plugin cagirmaz)
+    mark_plugin_started:
+      signature: "mark_plugin_started(target_id: str, plugin_name: str) -> None"
+      description: "Plugin basladiginda sistem tarafindan cagrilir"
+      writes_to: "job.status.plugins.{name} veya run.status.plugins.{name}"
+    
+    mark_plugin_completed:
+      signature: "mark_plugin_completed(target_id: str, plugin_name: str, success: bool, error: str) -> None"
+      description: "Plugin bittiginde sistem tarafindan cagrilir"
+
+# ============================================================================
+# GLOBAL STATE MANAGER (Hedef)
+# ============================================================================
+global_state_manager:
+  internal_storage:
+    _run: "RunState instance"
+    _jobs: "Dict[index, JobState]"
+    _plugins: "Dict[target_id, Dict[plugin_name, data]]"  # Key-based
+  
+  changes:
+    - "update_plugin artik target_id aliyor"
+    - "update_job artik job_id aliyor"
+    - "Plugin status job/run.status.plugins icinde"
+    - "_plugins_storage kaldirildi, _plugins yeterli"
+
+# ============================================================================
+# MONGODB SCHEMA (Hedef)
+# ============================================================================
+mongodb_schema:
+  runs:
+    id: "run_abc123"
+    branch: "main"
+    status:
+      state: "completed"
+      plugins:
+        scanner: {state: "completed", duration_ms: 1200}
+  
+  jobs:
+    id: "job_run_abc123_0"
+    run_id: "run_abc123"
+    index: 0
+    status:
+      state: "completed"
+      plugins:
+        renamer: {state: "completed", duration_ms: 800}
+        tmdb: {state: "completed", duration_ms: 1200}
+  
+  plugins:
+    # Key-based document
+    _id: "job_run_abc123_0"  # veya "run_abc123"
+    type: "job"  # veya "run" (opsiyonel, prefix'ten anlasilir)
+    renamer: {parsed: {...}}
+    tmdb: {movie: {...}}
+
+# ============================================================================
+# FASTAPI ENDPOINTS (Hedef)
+# ============================================================================
+fastapi_endpoints:
+  runs:
+    - "GET /api/v1/runs"
+    - "GET /api/v1/runs/{run_id}"
+    - "POST /api/v1/runs"
+  
+  jobs:
+    - "GET /api/v1/jobs"
+    - "GET /api/v1/jobs/{job_id}"
+  
+  plugins:
+    - "GET /api/v1/plugins/{target_id}"
+    - "GET /api/v1/plugins/{target_id}/{plugin_name}"
+
+# ============================================================================
+# AVANTAJLAR
+# ============================================================================
+advantages:
+  - name: "Kolay Erisim"
+    description: "plugins['job_abc_0']['tmdb'] ile direkt erisim"
+  
+  - name: "ID Zorunlulugu"
+    description: "Her islemde target belirtilir, hata riski azalir"
+  
+  - name: "Plugin Agnostic"
+    description: "Her plugin her metodu kullanabilir"
+  
+  - name: "Status Ayirimi"
+    description: "Status sistem yonetir, data plugin yonetir"
+  
+  - name: "Run/Job Ayrimi"
+    description: "Prefix ile (run_ vs job_) net ayrim"
+  
+  - name: "MongoDB Uyumu"
+    description: "Tek dokuman per target_id, verimli query"

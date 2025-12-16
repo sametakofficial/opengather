@@ -78,12 +78,16 @@ class OutputData:
 class JobStatus:
     """
     Job execution status.
+    
+    Session 17: Added plugins dict to track per-plugin status.
+    Status moved from plugin.{name}.status to job.status.plugins.{name}
     """
     state: StateEnum = StateEnum.PENDING
     success: bool = True
     executed: List[str] = field(default_factory=list)
     failed: List[str] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)
+    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     duration_ms: int = 0
@@ -95,6 +99,7 @@ class JobStatus:
             "executed": self.executed,
             "failed": self.failed,
             "skipped": self.skipped,
+            "plugins": self.plugins,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "duration_ms": self.duration_ms
@@ -105,12 +110,15 @@ class JobStatus:
 class RunStatus:
     """
     Run execution status.
+    
+    Session 17: Added plugins dict for per_run plugin status (e.g., scanner).
     """
     state: StateEnum = StateEnum.PENDING
     success: bool = True
     total_jobs: int = 0
     completed: int = 0
     failed: int = 0
+    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     duration_ms: int = 0
@@ -122,6 +130,7 @@ class RunStatus:
             "total_jobs": self.total_jobs,
             "completed": self.completed,
             "failed": self.failed,
+            "plugins": self.plugins,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "duration_ms": self.duration_ms

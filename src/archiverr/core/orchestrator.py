@@ -231,7 +231,7 @@ class Orchestrator:
                 self._log("warn", err)
         
         # Start run in state
-        self._run_id = self._state.start_execution(self._config)
+        self._run_id = self._state.start_run(self._config)
         self._log("debug", f"Run started: {self._run_id}")
         
         # Create stage executor
@@ -395,8 +395,11 @@ class Orchestrator:
         except Exception as e:
             self._log("warn", f"Failed to save run output: {e}")
         
+        # Session 16: Global state dump
+        self._dump_global_state()
+        
         # Complete run in state
-        self._state.complete_execution()
+        self._state.complete_run()
         
         # Build final statistics
         # Note: Using legacy state manager methods for now
@@ -449,18 +452,10 @@ class Orchestrator:
             delta = datetime.now() - self._start_time
             duration_ms = int(delta.total_seconds() * 1000)
         
-        # Get stats from state manager
-        # Using legacy methods for now
-        execution = self._state._execution
-        
-        total_jobs = 0
-        completed = 0
-        failed = 0
-        
-        if execution:
-            total_jobs = execution.total_matches
-            completed = execution.completed_matches
-            failed = execution.failed_matches
+        run = self._state.run
+        total_jobs = run.status.total_jobs if run else 0
+        completed = run.status.completed if run else 0
+        failed = run.status.failed if run else 0
         
         return RunResult(
             run_id=self._run_id or "",
@@ -495,6 +490,74 @@ class Orchestrator:
         """Log with debugger."""
         log_func = getattr(self._debugger, level, self._debugger.info)
         log_func("orchestrator", message, **kwargs)
+    
+    def _dump_global_state(self) -> None:
+        """
+        Session 16: Dump complete global state to output folder.
+        
+        Creates output/run_{run_id}_state.json with:
+        - run: RunState
+        - jobs: All JobState objects
+        - plugins: All plugin data by target_id
+        """
+        import json
+        from pathlib import Path
+        from datetime import datetime
+        
+        try:
+            output_dir = Path("output")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            run = self._state.run
+            if not run:
+                return
+            
+            run_dict = run.to_dict() if hasattr(run, 'to_dict') else {}
+            
+            # Session 17: Jobs as key-based dict (like plugins)
+            jobs_dict = {}
+            for job in self._state.get_all_jobs():
+                job_dict = job.to_dict() if hasattr(job, 'to_dict') else {
+                    "id": job.id,
+                    "index": job.index,
+                    "input": {"value": job.input.value, "data": job.input.data} if hasattr(job, 'input') else {},
+                    "output": {"values": job.output.values, "data": job.output.data} if hasattr(job, 'output') else {},
+                    "status": job.status.to_dict() if hasattr(job.status, 'to_dict') else {},
+                    "plugins": job.plugins if hasattr(job, 'plugins') else {}
+                }
+                jobs_dict[job.id] = job_dict
+            
+            plugins_data = {}
+            if hasattr(self._state, '_plugins_storage'):
+                for target_id, plugins in self._state._plugins_storage.items():
+                    plugins_data[target_id] = {}
+                    for plugin_name, plugin_state in plugins.items():
+                        if hasattr(plugin_state, 'to_dict'):
+                            plugins_data[target_id][plugin_name] = plugin_state.to_dict()
+                        elif hasattr(plugin_state, 'data'):
+                            plugins_data[target_id][plugin_name] = plugin_state.data
+                        else:
+                            plugins_data[target_id][plugin_name] = plugin_state
+            
+            state_dump = {
+                "dump_type": "global_state",
+                "timestamp": datetime.now().isoformat(),
+                "run": run_dict,
+                "jobs": jobs_dict,
+                "plugins": plugins_data
+            }
+            
+            filename = f"run_{self._run_id}_state.json"
+            filepath = output_dir / filename
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(state_dump, f, indent=2, ensure_ascii=False, default=str)
+            
+            self._log("info", f"Global state dumped: {filepath}")
+            print(f"\n[STATE DUMP] {filepath}")
+            
+        except Exception as e:
+            self._log("warn", f"Failed to dump global state: {e}")
 
 
 def build_orchestrator(

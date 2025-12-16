@@ -10,7 +10,6 @@ from archiverr.core.plugins.sdk import ExecutionContext, PluginResult
 
 if TYPE_CHECKING:
     from archiverr.events import EventBus
-    from archiverr.core.tasks import TaskManager
 
 
 class PluginExecutor:
@@ -22,7 +21,6 @@ class PluginExecutor:
         
         # Injected dependencies for ExecutionContext (optional)
         self.event_bus: Optional['EventBus'] = None
-        self.task_manager: Optional['TaskManager'] = None
         self.execution_id: str = ""
         self.config: Dict[str, Any] = {}
         self.dry_run: bool = True
@@ -31,7 +29,6 @@ class PluginExecutor:
     def configure(
         self,
         event_bus: Optional['EventBus'] = None,
-        task_manager: Optional['TaskManager'] = None,
         execution_id: str = "",
         config: Dict[str, Any] = None,
         dry_run: bool = True,
@@ -42,14 +39,12 @@ class PluginExecutor:
         
         Args:
             event_bus: EventBus for plugin events
-            task_manager: TaskManager for per-plugin task emission
             execution_id: Current execution ID
             config: Config dict
             dry_run: Dry run mode
             debug: Debug mode
         """
         self.event_bus = event_bus
-        self.task_manager = task_manager
         self.execution_id = execution_id
         self.config = config or {}
         self.dry_run = dry_run
@@ -99,7 +94,6 @@ class PluginExecutor:
                         debug=self.debug,
                         debugger=self.debugger,
                         event_bus=self.event_bus,
-                        task_manager=self.task_manager,
                         api_response=api_response,
                         previous_results=match_data
                     )

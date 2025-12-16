@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from archiverr.events import EventBus
-    from archiverr.core.tasks import TaskManager
 
 
 @dataclass
@@ -47,8 +46,7 @@ class ExecutionContext:
     debugger: Optional[Any] = None
     event_bus: Optional['EventBus'] = None
     
-    # Task emission support (NEW - Phase 6)
-    task_manager: Optional['TaskManager'] = None
+    # API response for template rendering
     api_response: Optional[Dict[str, Any]] = None
     
     # Previous plugin results (read-only)
@@ -73,37 +71,7 @@ class ExecutionContext:
                 "message": message
             })
     
-    def emit_task(self, task_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Emit a task for immediate execution.
-        
-        Allows plugins to trigger tasks at their own pace instead of 
-        waiting for all plugins to complete.
-        
-        Args:
-            task_config: Task configuration (same format as config.yml tasks)
-                - type: "print" | "save"
-                - template: Jinja2 template string
-                - destination: For save tasks
-                - condition: Optional condition
-        
-        Returns:
-            Task result dict or None if task_manager not available
-        
-        Example:
-            context.emit_task({
-                "type": "print",
-                "template": "Found movie: {{ tmdb.movie.title }}"
-            })
-        """
-        if self.task_manager and self.api_response:
-            return self.task_manager._execute_task(
-                task_config, 
-                self.api_response, 
-                self.match_index,
-                self.dry_run
-            )
-        return None
+    # emit_task removed - tasks handled by tasker plugin
     
     def log(self, level: str, component: str, message: str, **kwargs):
         """Log message through debugger"""

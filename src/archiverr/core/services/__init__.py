@@ -10,9 +10,6 @@ Session 11 Update:
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
-# Legacy service
-from .execution_service import ExecutionService, ExecutionProgress, ExecutionResult
-
 # New protocol definitions
 from .protocols import (
     StateService,
@@ -129,11 +126,6 @@ def services_from_context(context, state_manager: 'StateManager') -> PluginServi
 
 
 __all__ = [
-    # Legacy
-    'ExecutionService',
-    'ExecutionProgress', 
-    'ExecutionResult',
-    
     # Protocols
     'StateService',
     'EventService',
