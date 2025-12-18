@@ -364,39 +364,29 @@ class StageExecutor:
             if result_data:
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
             
-            # Session 12: Update job.plugins carefully
-            # If plugin called services.updatePlugin(), data is already there - only update status
-            # If plugin didn't call updatePlugin(), create full structure
+            # Session 17: Flat plugin data structure
+            # - Plugin data stored flat in job.plugins[plugin_name] (no status/data wrapper)
+            # - Plugin status stored in job.status.plugins[plugin_name]
             if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                if plugin_name in job.plugins and isinstance(job.plugins[plugin_name], dict):
-                    # Plugin already has data (from services.updatePlugin()) - only update status
-                    self._log("debug", f"Plugin {plugin_name} data exists, updating status only")
-                    if 'status' not in job.plugins[plugin_name]:
-                        job.plugins[plugin_name]['status'] = {}
-                    job.plugins[plugin_name]['status'].update({
-                        'state': 'completed',
-                        'success': success
-                    })
-                    # Log existing data size for debugging
-                    data_keys = list(job.plugins[plugin_name].get('data', {}).keys()) if 'data' in job.plugins[plugin_name] else []
-                    self._log("debug", f"Preserved existing data keys: {data_keys}")
+                if plugin_name not in job.plugins or not job.plugins[plugin_name]:
+                    # Plugin didn't use updatePlugin() - store result data directly (flat)
+                    job.plugins[plugin_name] = result_data if result_data else {}
+                    self._log("debug", f"Plugin {plugin_name}: stored result data flat", 
+                             data_keys=list(result_data.keys()) if result_data else [])
                 else:
-                    # Plugin didn't use updatePlugin() or data missing - create full structure
-                    self._log("debug", f"Plugin {plugin_name} no existing data, creating new entry")
-                    job.plugins[plugin_name] = {
-                        'status': {
-                            'state': 'completed',
-                            'success': success
-                        },
-                        'data': result_data if result_data else {}
-                    }
-            elif hasattr(job, 'plugins'):
-                # Legacy MatchState
-                try:
-                    if plugin_name not in job.plugins:
-                        job.plugins[plugin_name] = result_data
-                except (TypeError, AttributeError):
-                    pass
+                    # Plugin already has data from updatePlugin() - keep it flat
+                    self._log("debug", f"Plugin {plugin_name}: data exists from updatePlugin",
+                             data_keys=list(job.plugins[plugin_name].keys()))
+            
+            # Session 17: Store plugin status in job.status.plugins
+            if hasattr(job, 'status') and hasattr(job.status, 'plugins'):
+                if not isinstance(job.status.plugins, dict):
+                    job.status.plugins = {}
+                job.status.plugins[plugin_name] = {
+                    'state': 'completed',
+                    'success': success,
+                    'duration_ms': duration_ms
+                }
             
             self._mark_executed(job, plugin_name, success)
             

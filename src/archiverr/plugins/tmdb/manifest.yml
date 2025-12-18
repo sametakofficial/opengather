@@ -9,9 +9,9 @@ stage: data
 class_name: TMDbPlugin
 entry_point: client.py
 
-# Requires parsed data from renamer (Session 12: plugin.{name}.data.* format)
+# Requires parsed data from renamer (Session 17: plugin.{name}.* flat format)
 requires:
-  - plugin.renamer.data.parsed:success
+  - plugin.renamer.parsed:success
 
 # FS lock for static paths only (no variables allowed)
 fs_lock: []

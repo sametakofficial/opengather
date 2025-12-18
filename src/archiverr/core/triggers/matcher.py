@@ -138,47 +138,63 @@ class ValueMatcher:
         """
         Check plugin status (success/fail).
         
-        For plugin paths, check plugin.{name}.status.success field.
+        Session 17: Status moved to job.status.plugins.{name}
+        For :success check, we verify:
+        1. Plugin data exists at the path
+        2. Plugin status in job.status.plugins.{name}.success
         
         Args:
             state: Global state dict
-            path: Plugin data path (e.g., "plugin.tmdb.data.movie")
+            path: Plugin data path (e.g., "plugin.renamer.parsed")
             check_value: "success" or "fail"
             
         Returns:
             (found, matches) tuple
         """
         # Extract plugin name from path
-        # plugin.tmdb.data.movie -> plugin.tmdb.status.success
+        # plugin.renamer.parsed -> renamer
         parts = path.split('.')
         
         if len(parts) < 2:
             return False, False
         
-        # Build status path
-        if parts[0] == 'plugin':
-            # plugin.{name}.data.* -> plugin.{name}.status.success
-            status_path = f"{parts[0]}.{parts[1]}.status.success"
-        elif parts[0] == 'plugins':
-            # plugins[].{name}.data.* -> would need index
-            # For now, not supported in simple case
-            return False, False
-        else:
-            return False, False
+        plugin_name = parts[1]  # e.g., "renamer" from "plugin.renamer.parsed"
         
-        # Resolve status
+        # Session 17: Check if plugin data exists at the path
+        data_found, data_value = ValueMatcher.resolve_value(state, path)
+        
+        if not data_found or data_value is None:
+            # Data doesn't exist - requirement not met
+            return True, False
+        
+        # Session 17: Check job.status.plugins.{name}.success
+        status_path = f"job.status.plugins.{plugin_name}.success"
         found, status_value = ValueMatcher.resolve_value(state, status_path)
         
-        if not found:
-            return False, False
+        if found:
+            # Status found in job.status.plugins
+            if check_value == 'success':
+                return True, bool(status_value)
+            elif check_value == 'fail':
+                return True, not bool(status_value)
         
-        # Check against requirement
+        # Fallback: Check old format plugin.{name}.status.success (backward compat)
+        old_status_path = f"plugin.{plugin_name}.status.success"
+        found, status_value = ValueMatcher.resolve_value(state, old_status_path)
+        
+        if found:
+            if check_value == 'success':
+                return True, bool(status_value)
+            elif check_value == 'fail':
+                return True, not bool(status_value)
+        
+        # Data exists but no status - consider it success if data is not empty
         if check_value == 'success':
-            return True, bool(status_value)
+            return True, bool(data_value)
         elif check_value == 'fail':
-            return True, not bool(status_value)
-        else:
-            return False, False
+            return True, not bool(data_value)
+        
+        return False, False
     
     @staticmethod
     def match(

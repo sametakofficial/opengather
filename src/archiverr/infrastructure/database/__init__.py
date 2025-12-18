@@ -20,6 +20,10 @@ Usage:
 
 from .interface import PersistenceInterface
 from .connection import DatabaseConnection, DatabaseConfig
+from .mock import MockPersistence
+
+# Mock persistence always available
+MOCK_AVAILABLE = True
 
 # PyMongo sync driver (for CLI) - NEW: Clean sync implementation
 try:
@@ -58,6 +62,7 @@ __all__ = [
     # Interfaces
     'PersistenceInterface',
     # Sync backends
+    'MockPersistence',     # In-memory for testing
     'PyMongoPersistence',  # Recommended for CLI
     'MongoDBPersistence',  # DEPRECATED: Use PyMongoPersistence
     # Async PyMongo (FastAPI)
@@ -69,6 +74,7 @@ __all__ = [
     'DatabaseConnection',
     'DatabaseConfig',
     # Availability flags
+    'MOCK_AVAILABLE',
     'PYMONGO_AVAILABLE',
     'ASYNC_PYMONGO_AVAILABLE',
     'MONGODB_AVAILABLE',  # DEPRECATED

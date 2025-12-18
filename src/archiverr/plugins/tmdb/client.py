@@ -86,19 +86,18 @@ class TMDbPlugin(OutputPlugin):
         if not self._initialized:
             self._sync_setup()
         
-        # Session 12: Get parsed data from plugin.renamer.data.parsed
+        # Session 17: Get parsed data from plugin.renamer.parsed (flat structure)
         parsed_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
             renamer_data = job.plugins.get('renamer', {})
-            # Session 12: Everything in data
-            renamer_data_content = renamer_data.get('data', {})
-            parsed_data = renamer_data_content.get('parsed', {})
+            # Session 17: Flat structure - parsed is directly in renamer data
+            parsed_data = renamer_data.get('parsed', {})
         
         # Fallback: try services.state
         if not parsed_data and hasattr(services, 'state'):
             renamer_data = services.state.get_plugin_data(job.id, 'renamer')
-            renamer_data_content = renamer_data.get('data', {})
-            parsed_data = renamer_data_content.get('parsed', {})
+            if renamer_data:
+                parsed_data = renamer_data.get('parsed', {})
         
         if not parsed_data:
             return PluginResult.error_result("No parsed data available", started_at=started_at)
@@ -141,14 +140,12 @@ class TMDbPlugin(OutputPlugin):
             
             # Add validation if result successful
             if result and result.get('status', {}).get('success'):
-                # Session 12: Get ffprobe data for validation
+                # Session 17: Get ffprobe data (flat structure)
                 ffprobe_data = {}
                 if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                    ffprobe_plugin = job.plugins.get('ffprobe', {})
-                    ffprobe_data = ffprobe_plugin.get('data', {})
+                    ffprobe_data = job.plugins.get('ffprobe', {})
                 elif hasattr(services, 'state'):
-                    ffprobe_plugin = services.state.get_plugin_data(job.id, 'ffprobe')
-                    ffprobe_data = ffprobe_plugin.get('data', {})
+                    ffprobe_data = services.state.get_plugin_data(job.id, 'ffprobe') or {}
                 result['validation'] = self._perform_validation(ffprobe_data, result)
                 
                 # Emit task example - notify about found metadata

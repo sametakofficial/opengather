@@ -385,17 +385,7 @@ class Orchestrator:
         """
         self._log("info", f"Finalizing run (success={success})")
         
-        # Session 12: Save JSON output via tasker plugin
-        try:
-            tasker_plugin = self._plugin_registry.get_plugin('tasker')
-            if tasker_plugin and hasattr(tasker_plugin, 'save_run_output'):
-                output_path = tasker_plugin.save_run_output(self._run_id)
-                if output_path:
-                    self._log("debug", f"Run output saved: {output_path}")
-        except Exception as e:
-            self._log("warn", f"Failed to save run output: {e}")
-        
-        # Session 16: Global state dump
+        # Session 17: Single global state dump (replaces tasker's save_run_output)
         self._dump_global_state()
         
         # Complete run in state
@@ -603,10 +593,17 @@ def build_orchestrator(
     state = GlobalStateManager()
     state.reset()
     
-    # Create persistence if not provided (REQUIRED - no fallback)
+    # Create persistence if not provided (fallback to mock if MongoDB unavailable)
     if persistence is None:
-        db_connection = DatabaseConnection.from_env()
-        persistence = db_connection.connect()
+        try:
+            db_connection = DatabaseConnection.from_env()
+            persistence = db_connection.connect()
+        except ImportError:
+            # MongoDB not available, use mock persistence
+            from archiverr.infrastructure.database import MockPersistence
+            persistence = MockPersistence()
+            persistence.connect()
+            debugger.warn("orchestrator", "Using mock persistence (MongoDB not available)")
     
     # Configure state with persistence
     state.configure(

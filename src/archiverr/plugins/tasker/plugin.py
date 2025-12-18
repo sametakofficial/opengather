@@ -152,19 +152,24 @@ class TaskerPlugin:
             'total': 1,  # Single job execution
         }
         
-        # Add plugin data - Session 12 format: plugin.{name}.data.*
+        # Session 17: Flat plugin data structure
+        # - plugin.{name}.* (direct access, no 'data' wrapper)
+        # - Also add plugin.{name}.data.* for backward compat with templates
         context['plugin'] = {}
         for plugin_name, plugin_info in plugins_data.items():
             if isinstance(plugin_info, dict):
-                # Session 12: {status, data}
-                if 'data' in plugin_info:
-                    context['plugin'][plugin_name] = {'data': plugin_info['data']}
-                    # Also add direct access for compatibility
-                    context[plugin_name] = plugin_info['data']
-                else:
-                    # Legacy format
-                    context['plugin'][plugin_name] = plugin_info
-                    context[plugin_name] = plugin_info
+                # Session 17: Flat structure - data is directly in plugin_info
+                # Skip 'status' key if present (legacy cleanup)
+                flat_data = {k: v for k, v in plugin_info.items() if k != 'status'}
+                
+                # Store in plugin.{name} for direct access
+                context['plugin'][plugin_name] = flat_data
+                
+                # Also add plugin.{name}.data.* wrapper for backward compat with old templates
+                context['plugin'][plugin_name]['data'] = flat_data
+                
+                # Add direct access at top level for convenience
+                context[plugin_name] = flat_data
         
         # Add config access (if services has state)
         if hasattr(services, 'state'):
@@ -174,9 +179,10 @@ class TaskerPlugin:
             except Exception:
                 context['config'] = {}
         
-        # Add renamer shortcuts for template compatibility (ONLY for context, aliases resolved in config)
+        # Add renamer shortcuts for template compatibility
         if 'renamer' in plugins_data:
-            renamer_data = plugins_data['renamer'].get('data', {}) if isinstance(plugins_data['renamer'], dict) else plugins_data['renamer']
+            # Session 17: Flat structure - parsed is directly in renamer data
+            renamer_data = plugins_data['renamer'] if isinstance(plugins_data['renamer'], dict) else {}
             parsed = renamer_data.get('parsed', {})
             category = renamer_data.get('category', 'unknown')
             
