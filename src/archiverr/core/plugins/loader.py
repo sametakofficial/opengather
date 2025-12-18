@@ -82,7 +82,7 @@ class PluginLoader:
             
             if not class_name:
                 # Convention: {Name}Plugin
-                # Convert plugin_name to PascalCase: mock_test -> MockTest
+                # Convert plugin_name to PascalCase
                 parts = plugin_name.split('_')
                 class_name = ''.join(part.capitalize() for part in parts) + 'Plugin'
             

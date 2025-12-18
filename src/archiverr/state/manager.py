@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 from uuid import uuid4
 
-from .models import RunState, JobState, InputData, StateEnum, PluginData, PluginStatus, PluginState
+from .models import RunState, JobState, InputData, StateEnum
 from .context import ExecutionContext
 
 if TYPE_CHECKING:
@@ -51,9 +51,6 @@ class GlobalStateManager:
         self._run: Optional[RunState] = None
         self._config: Dict[str, Any] = {}
         self._context: ExecutionContext = ExecutionContext()
-        
-        # legacy: for backward compatibility during migration
-        self._plugins_storage: Dict[str, Dict[str, PluginState]] = {}
     
     def configure(
         self, 
@@ -74,7 +71,6 @@ class GlobalStateManager:
         self._run = None
         self._config = {}
         self._context.reset()
-        self._plugins_storage = {}
     
     # ==================== SESSION 14: GLOBAL STATE PROPERTIES ====================
     
@@ -164,7 +160,7 @@ class GlobalStateManager:
         
         return run_id
     
-    def complete_run(self, branch_name: str = "main") -> RunState:
+    def complete_run(self) -> RunState:
         """
         Complete current run.
         
@@ -226,9 +222,6 @@ class GlobalStateManager:
         # session 14: add to context
         self._context.add_job(job)
         self._run.increment_jobs()
-        
-        # Initialize plugin storage for this job
-        self._plugins_storage[job.id] = {}
         
         if self._persistence:
             if hasattr(self._persistence, 'save_job'):
@@ -311,11 +304,13 @@ class GlobalStateManager:
             # Per-run plugin (e.g., scanner)
             run_id = target_id if target_id.startswith("run_") else f"run_{target_id}"
             
-            if run_id not in self._plugins_storage:
-                self._plugins_storage[run_id] = {}
-            
-            # Session 17: Store data directly (flat structure)
-            self._plugins_storage[run_id][plugin_name] = data
+            if self._run:
+                # Store directly in RunState.plugins
+                self._run.plugins[plugin_name] = data
+                
+                # Persist run (Session 17: Write-through)
+                if self._persistence and hasattr(self._persistence, 'save_run'):
+                    self._persistence.save_run(self._run)
             
             self._log("debug", "plugin_data",
                      f"Updated run plugin {plugin_name}",
@@ -325,16 +320,24 @@ class GlobalStateManager:
             # Per-job plugin
             job_id = target_id
             
-            if job_id not in self._plugins_storage:
-                self._plugins_storage[job_id] = {}
-            
-            # Session 17: Store data directly (flat structure)
-            self._plugins_storage[job_id][plugin_name] = data
-            
             # Update JobState.plugins with flat data
             job = self.get_job_by_id(job_id)
             if job:
                 job.plugins[plugin_name] = data
+                
+                # Persist plugin data (Session 17: Write-through)
+                if self._persistence and hasattr(self._persistence, 'save_plugin'):
+                    try:
+                        plugin_doc = {
+                            "job_id": job_id,
+                            "plugin_name": plugin_name,
+                            "data": data,
+                            "run_id": job.run_id,
+                            "job_index": job.index
+                        }
+                        self._persistence.save_plugin(plugin_doc)
+                    except Exception as e:
+                        self._log("error", "state", f"Failed to save plugin data: {e}")
                 
                 self._log("debug", "plugin_data", 
                          f"Updated plugin {plugin_name} for job {job_id}",
@@ -409,10 +412,6 @@ class GlobalStateManager:
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
             return list(job.plugins.keys())
         
-        # Also check _plugins_storage
-        if job_id in self._plugins_storage:
-            return list(self._plugins_storage[job_id].keys())
-        
         return []
     
     def get_all_plugin_names(self) -> List[str]:
@@ -429,9 +428,9 @@ class GlobalStateManager:
             if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
                 plugin_names.update(job.plugins.keys())
         
-        # Also check _plugins_storage
-        for job_plugins in self._plugins_storage.values():
-            plugin_names.update(job_plugins.keys())
+        # Collect from run state
+        if self._run and self._run.plugins:
+            plugin_names.update(self._run.plugins.keys())
         
         return sorted(list(plugin_names))
     
@@ -446,12 +445,6 @@ class GlobalStateManager:
         Returns:
             Plugin data dict or None
         """
-        if job_id not in self._plugins:
-            self._plugins[job_id] = {}
-        
-        if plugin_name in self._plugins[job_id]:
-            return self._plugins[job_id][plugin_name]
-        
         # Try from job.plugins
         job = self.get_job_by_id(job_id)
         if job:
@@ -468,62 +461,34 @@ class GlobalStateManager:
             plugin_name: Plugin name
             data: Plugin output data
         """
-        if job_id not in self._plugins:
-            self._plugins[job_id] = {}
-        
-        self._plugins[job_id][plugin_name] = data
-        
-        # Also update job.plugins for template access
+        # Update job.plugins for template access
         job = self.get_job_by_id(job_id)
         if job:
             job.plugins[plugin_name] = data
         
         # Persist to plugins collection
-        if self._persistence and hasattr(self._persistence, 'save_plugin_data'):
+        if self._persistence and hasattr(self._persistence, 'save_plugin'):
             try:
-                # Get job info
-                job_index = 0
-                run_id = ""
-                if job:
-                    job_index = job.index
-                    run_id = job.run_id
-                
-                plugin_data = PluginData(
-                    job_id=job_id,
-                    run_id=run_id,
-                    job_index=job_index,
-                    plugin_name=plugin_name,
-                    stage="",  # Could be passed in
-                    data=data
-                )
-                self._persistence.save_plugin_data(plugin_data)
-            except Exception:
-                pass
-    
-    def get_plugin_data(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
-        """Get plugin data for a job."""
-        if job_id in self._plugins:
-            return self._plugins[job_id].get(plugin_name)
-        
-        # Try from job.plugins
-        job = self.get_job_by_id(job_id)
-        if job:
-            return job.plugins.get(plugin_name)
-        
-        return None
-    
+                # Construct flat plugin document
+                # Session 17: No PluginData wrapper
+                plugin_doc = {
+                    "job_id": job_id,
+                    "plugin_name": plugin_name,
+                    "data": data,
+                    # Add metadata if available
+                    "run_id": job.run_id if job else (self._run.id if self._run else ""),
+                    "job_index": job.index if job else 0
+                }
+                self._persistence.save_plugin(plugin_doc)
+            except Exception as e:
+                self._log("error", "state", f"Failed to save plugin data: {e}")
+
     def get_all_plugin_data(self, job_id: str) -> Dict[str, Dict[str, Any]]:
         """Get all plugin data for a job."""
-        result = {}
-        
-        if job_id in self._plugins:
-            result.update(self._plugins[job_id])
-        
         job = self.get_job_by_id(job_id)
         if job:
-            result.update(job.plugins)
-        
-        return result
+            return job.plugins.copy()
+        return {}
     
     # Legacy plugin result method
     def update_plugin_result(self, job_index: int, plugin_name: str, result):

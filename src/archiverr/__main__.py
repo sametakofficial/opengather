@@ -56,7 +56,7 @@ def serve_api(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     )
 
 
-def cli_main():
+def cli_main(config_file: str = "config.yml"):
     """
     CLI entry point - Session 11 architecture.
     
@@ -68,10 +68,10 @@ def cli_main():
     """
     from archiverr.core.orchestrator import build_orchestrator
     
-    config_path = Path("config.yml")
+    config_path = Path(config_file)
     
     if not config_path.exists():
-        print("ERROR: config.yml not found", file=sys.stderr)
+        print(f"ERROR: {config_file} not found", file=sys.stderr)
         sys.exit(1)
     
     try:
@@ -156,7 +156,9 @@ Examples:
         """
     )
     
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    parser.add_argument("--config", default="config.yml", help="Path to config file (default: config.yml)")
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands", required=False)
     
     # Serve command
     serve_parser = subparsers.add_parser("serve", help="Start API server")
@@ -170,7 +172,7 @@ Examples:
         serve_api(host=args.host, port=args.port, reload=args.reload)
     else:
         # Default: CLI mode
-        cli_main()
+        cli_main(config_file=args.config)
 
 
 if __name__ == "__main__":

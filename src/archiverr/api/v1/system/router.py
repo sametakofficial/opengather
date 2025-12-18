@@ -177,29 +177,28 @@ async def get_diagnostics(
             query["component"] = component
         
         # Query MongoDB
-        if hasattr(db, '__getitem__'):  # MongoDB database
-            cursor = db["diagnostics"].find(query).sort("timestamp", -1).limit(limit)
-            docs = await cursor.to_list(length=limit)
-            
-            entries = [
-                DiagnosticsEntry(
-                    timestamp=doc.get("timestamp", ""),
-                    level=doc.get("level", ""),
-                    component=doc.get("component", ""),
-                    message=doc.get("message", ""),
-                    fields=doc.get("fields", {})
-                )
-                for doc in docs
-            ]
-            
-            # Get total count
-            total = await db["diagnostics"].count_documents(query)
-            
-            return DiagnosticsResponse(total_entries=total, entries=entries)
-        else:
-            # Mock database - return empty for now
+        if not hasattr(db, '__getitem__'):
             return DiagnosticsResponse(total_entries=0, entries=[])
-            
+        
+        cursor = db["diagnostics"].find(query).sort("timestamp", -1).limit(limit)
+        docs = await cursor.to_list(length=limit)
+        
+        entries = [
+            DiagnosticsEntry(
+                timestamp=doc.get("timestamp", ""),
+                level=doc.get("level", ""),
+                component=doc.get("component", ""),
+                message=doc.get("message", ""),
+                fields=doc.get("fields", {})
+            )
+            for doc in docs
+        ]
+        
+        # Get total count
+        total = await db["diagnostics"].count_documents(query)
+        
+        return DiagnosticsResponse(total_entries=total, entries=entries)
+             
     except Exception as e:
         # Collection doesn't exist yet
         return DiagnosticsResponse(total_entries=0, entries=[])

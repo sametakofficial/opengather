@@ -20,7 +20,6 @@ from .models import (
     RunStatus,
     JobState,
     RunState,
-    PluginData,
 )
 from .context import ExecutionContext
 
@@ -73,7 +72,6 @@ __all__ = [
     'RunStatus',
     'JobState',
     'RunState',
-    'PluginData',
     
     # Legacy aliases (deprecated)
     'ExecutionStatus',

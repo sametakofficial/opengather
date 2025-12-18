@@ -50,6 +50,7 @@ class DebugSystem:
     def __init__(self, enabled: bool = False, level: int = None, diagnostics_logger = None):
         # Level determines what gets logged to console
         # Default: INFO (show INFO, WARNING, ERROR, CRITICAL)
+        self.enabled = enabled
         if level is not None:
             self.level = level
         elif enabled:

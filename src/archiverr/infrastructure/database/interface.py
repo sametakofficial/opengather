@@ -2,14 +2,14 @@
 Persistence Interface
 
 Abstract base class for persistence backends.
-Supports both sync (Mock) and async (MongoDB) implementations.
+Supports MongoDB persistence implementations.
 """
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from archiverr.state.models import RunState, JobState, PluginData
+    from archiverr.state.models import RunState, JobState
 
 
 class PersistenceInterface(ABC):
@@ -17,7 +17,7 @@ class PersistenceInterface(ABC):
     Abstract persistence interface.
     
     All persistence backends must implement these methods.
-    This allows swapping between mock and MongoDB without code changes.
+    This allows swapping between MongoDB persistence implementations without code changes.
     """
     
     @abstractmethod
@@ -60,7 +60,7 @@ class PersistenceInterface(ABC):
         - Enables hot/cold tiering for large datasets
         
         Args:
-            plugin: PluginData.to_dict() output
+            plugin: Flat plugin data dict
         """
         pass
     

@@ -22,7 +22,7 @@ class PluginResultRepository(BaseRepository):
         Initialize repository.
         
         Args:
-            persistence: Persistence backend (Mock or MongoDB)
+            persistence: Persistence backend
         """
         self._persistence = persistence
     
@@ -31,71 +31,86 @@ class PluginResultRepository(BaseRepository):
         Save plugin result.
         
         Args:
-            result: Dict with execution_id, match_index, plugin_name, data
+            result: Dict with job_id, plugin_name, data (and optional run_id, job_index, stage, status)
         """
-        self._persistence.save_plugin_result(
-            execution_id=result["execution_id"],
-            match_index=result["match_index"],
-            plugin_name=result["plugin_name"],
-            result=result["data"]
-        )
+        job_id = result.get("job_id")
+        plugin_name = result.get("plugin_name")
+        data = result.get("data")
+        if not job_id or not plugin_name:
+            raise ValueError("Plugin result must include 'job_id' and 'plugin_name'")
+
+        plugin_doc = {
+            "job_id": job_id,
+            "plugin_name": plugin_name,
+            "data": data or {},
+        }
+        if "run_id" in result:
+            plugin_doc["run_id"] = result["run_id"]
+        if "job_index" in result:
+            plugin_doc["job_index"] = result["job_index"]
+        if "stage" in result:
+            plugin_doc["stage"] = result["stage"]
+        if "status" in result:
+            plugin_doc["status"] = result["status"]
+
+        self._persistence.save_plugin(plugin_doc)
     
     def save_result(
         self,
-        execution_id: str,
-        match_index: int,
+        job_id: str,
         plugin_name: str,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
+        run_id: Optional[str] = None,
+        job_index: Optional[int] = None,
+        stage: Optional[str] = None,
+        status: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Save plugin result with explicit parameters.
         
         Args:
-            execution_id: Execution ID
-            match_index: Match index
+            job_id: Job ID
             plugin_name: Plugin name
             data: Plugin result data
         """
-        self._persistence.save_plugin_result(
-            execution_id=execution_id,
-            match_index=match_index,
-            plugin_name=plugin_name,
-            result=data
-        )
+        doc: Dict[str, Any] = {
+            "job_id": job_id,
+            "plugin_name": plugin_name,
+            "data": data,
+        }
+        if run_id is not None:
+            doc["run_id"] = run_id
+        if job_index is not None:
+            doc["job_index"] = job_index
+        if stage is not None:
+            doc["stage"] = stage
+        if status is not None:
+            doc["status"] = status
+        self._persistence.save_plugin(doc)
     
     def get_by_id(self, result_id: str) -> Optional[Dict[str, Any]]:
         """
         Get plugin result by ID.
         
         Args:
-            result_id: Result ID (format: pr_{plugin}_{match}_{exec})
+            result_id: Result ID (format: pr_{plugin_name}_{job_id})
             
         Returns:
             Plugin result dict or None
         """
-        # Parse result_id to get components
-        # Format: pr_{plugin}_{match_index}_{execution_id}
         if result_id.startswith("pr_"):
-            parts = result_id[3:].rsplit("_", 2)
-            if len(parts) >= 3:
-                plugin_name = parts[0]
-                try:
-                    match_index = int(parts[1])
-                    execution_id = parts[2]
-                    
-                    results = self._persistence.get_plugin_results(
-                        execution_id, match_index
-                    )
-                    if plugin_name in results:
-                        return {
-                            "_id": result_id,
-                            "execution_id": execution_id,
-                            "match_index": match_index,
-                            "plugin_name": plugin_name,
-                            "data": results[plugin_name]
-                        }
-                except ValueError:
-                    pass
+            payload = result_id[3:]
+            parts = payload.split("_", 1)
+            if len(parts) == 2:
+                plugin_name, job_id = parts[0], parts[1]
+                doc = self._persistence.get_plugin(job_id, plugin_name)
+                if doc:
+                    return {
+                        "_id": result_id,
+                        "job_id": job_id,
+                        "plugin_name": plugin_name,
+                        "data": doc.get("data", {}),
+                    }
         
         return None
     
@@ -108,10 +123,6 @@ class PluginResultRepository(BaseRepository):
         Returns:
             List of plugin result dicts
         """
-        if hasattr(self._persistence, 'get_all_data'):
-            data = self._persistence.get_all_data()
-            return data.get("plugin_results", [])
-        
         return []
     
     def delete(self, result_id: str) -> bool:
@@ -128,8 +139,8 @@ class PluginResultRepository(BaseRepository):
         return False
     
     def get_for_match(
-        self, 
-        execution_id: str, 
+        self,
+        execution_id: str,
         match_index: int
     ) -> Dict[str, Dict[str, Any]]:
         """
@@ -142,7 +153,7 @@ class PluginResultRepository(BaseRepository):
         Returns:
             Dict of plugin_name -> data
         """
-        return self._persistence.get_plugin_results(execution_id, match_index)
+        raise NotImplementedError("Use job-based plugin queries instead")
     
     def get_by_plugin(self, plugin_name: str) -> List[Dict[str, Any]]:
         """
@@ -174,5 +185,4 @@ class PluginResultRepository(BaseRepository):
         Returns:
             Plugin data dict or None
         """
-        results = self.get_for_match(execution_id, match_index)
-        return results.get(plugin_name)
+        raise NotImplementedError("Use job-based plugin queries instead")

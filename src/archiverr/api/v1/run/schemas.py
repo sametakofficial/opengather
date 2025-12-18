@@ -15,10 +15,6 @@ class RunRequest(BaseModel):
         default=None,
         description="Optional config overrides"
     )
-    branch: Optional[str] = Field(
-        default=None,
-        description="Branch to commit results to"
-    )
     dry_run: Optional[bool] = Field(
         default=None,
         description="If true, don't persist results"

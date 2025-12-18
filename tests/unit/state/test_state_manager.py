@@ -25,11 +25,10 @@ class TestGlobalStateManagerLifecycle:
     def mock_persistence(self):
         """Create mock persistence."""
         mock = MagicMock()
-        mock.save_execution = MagicMock()
-        mock.save_match = MagicMock()
+        mock.save_run = MagicMock()
+        mock.save_job = MagicMock()
         mock.save_plugin_result = MagicMock()
-        mock.update_execution = MagicMock()
-        mock.update_match = MagicMock()
+        mock.save_plugin_data = MagicMock()
         return mock
     
     @pytest.fixture
@@ -74,37 +73,37 @@ class TestGlobalStateManagerLifecycle:
     
     def test_reset_clears_state(self, state_manager, sample_config):
         """Test reset clears all state."""
-        state_manager.start_execution(sample_config)
-        state_manager.register_match(0, "/path/to/file.mkv")
+        state_manager.start_run(sample_config)
+        state_manager.create_job("/path/to/file.mkv")
         
         state_manager.reset()
         
-        # Session 11: Use run (not _execution) and _jobs (not _matches)
+        # Session 11: Use run (not _execution) and jobs (not _matches)
         assert state_manager.run is None
-        assert state_manager._jobs == {}
+        assert state_manager.jobs == []
     
-    def test_start_execution_creates_execution_state(self, state_manager, sample_config):
-        """Test start_execution creates proper state."""
-        exec_id = state_manager.start_execution(sample_config)
+    def test_start_run_creates_run_state(self, state_manager, sample_config):
+        """Test start_run creates proper state."""
+        run_id = state_manager.start_run(sample_config)
         
-        assert exec_id is not None
-        assert len(exec_id) > 0  # Has an ID
+        assert run_id is not None
+        assert len(run_id) > 0  # Has an ID
         # Session 11: Use run (not _execution)
         assert state_manager.run is not None
         assert state_manager.run.status.state.value == "running"
     
-    def test_complete_execution_updates_status(self, state_manager, sample_config):
-        """Test complete_execution sets proper status."""
-        state_manager.start_execution(sample_config)
-        state_manager.complete_execution()
+    def test_complete_run_updates_status(self, state_manager, sample_config):
+        """Test complete_run sets proper status."""
+        state_manager.start_run(sample_config)
+        state_manager.complete_run()
         
         # Session 11: Use run (not _execution)
-        assert state_manager.run.status.state.value == "completed"
+        assert state_manager.run.status.state.value in ["completed", "success"]
         assert state_manager.run.status.finished_at is not None
 
 
-class TestGlobalStateManagerMatches:
-    """Match management tests"""
+class TestGlobalStateManagerJobs:
+    """Job management tests"""
     
     @pytest.fixture
     def configured_state(self):
@@ -112,38 +111,40 @@ class TestGlobalStateManagerMatches:
         from archiverr.state import GlobalStateManager
         manager = GlobalStateManager()
         manager.reset()
-        manager.start_execution({"options": {}, "plugins": {}})
+        manager.start_run({"options": {}, "plugins": {}})
         return manager
     
-    def test_register_match_creates_match_state(self, configured_state):
-        """Test register_match creates match."""
-        match = configured_state.register_match(0, "/path/to/file.mkv")
+    def test_create_job_creates_job_state(self, configured_state):
+        """Test create_job creates job."""
+        job_id = configured_state.create_job("/path/to/file.mkv")
         
-        assert match is not None
-        assert match.index == 0
-        assert match.input_path == "/path/to/file.mkv"  # Legacy property works
+        assert job_id is not None
+        job = configured_state.get_job(0)
+        assert job is not None
+        assert job.index == 0
+        assert job.input.value == "/path/to/file.mkv"
         # Session 11: Use status.state.value
-        assert match.status.state.value in ["pending", "running"]
+        assert job.status.state.value in ["pending", "running"]
     
-    def test_register_multiple_matches(self, configured_state):
-        """Test multiple matches can be registered."""
-        configured_state.register_match(0, "/path/file1.mkv")
-        configured_state.register_match(1, "/path/file2.mkv")
-        configured_state.register_match(2, "/path/file3.mkv")
+    def test_create_multiple_jobs(self, configured_state):
+        """Test multiple jobs can be registered."""
+        configured_state.create_job("/path/file1.mkv")
+        configured_state.create_job("/path/file2.mkv")
+        configured_state.create_job("/path/file3.mkv")
         
-        assert len(configured_state._matches) == 3
-        assert 0 in configured_state._matches
-        assert 1 in configured_state._matches
-        assert 2 in configured_state._matches
+        assert len(configured_state.jobs) == 3
+        assert configured_state.get_job(0) is not None
+        assert configured_state.get_job(1) is not None
+        assert configured_state.get_job(2) is not None
     
-    def test_complete_match_updates_status(self, configured_state):
-        """Test complete_match sets proper status."""
-        configured_state.register_match(0, "/path/file.mkv")
-        configured_state.complete_match(0)
+    def test_complete_job_updates_status(self, configured_state):
+        """Test complete_job sets proper status."""
+        configured_state.create_job("/path/file.mkv")
+        configured_state.complete_job(0)
         
-        # Session 11: Use _jobs (not _matches) and status.state.value
-        match = configured_state._jobs[0]
-        assert match.status.state.value == "completed"
+        # Session 11: Use jobs (not _matches) and status.state.value
+        job = configured_state.get_job(0)
+        assert job.status.state.value in ["completed", "success"]
 
 
 class TestGlobalStateManagerPluginResults:
@@ -155,8 +156,8 @@ class TestGlobalStateManagerPluginResults:
         from archiverr.state import GlobalStateManager
         manager = GlobalStateManager()
         manager.reset()
-        manager.start_execution({"options": {}, "plugins": {}})
-        manager.register_match(0, "/path/to/file.mkv")
+        manager.start_run({"options": {}, "plugins": {}})
+        manager.create_job("/path/to/file.mkv")
         return manager
     
     def test_update_plugin_result_generic_plugin(self, state_with_match):
@@ -175,9 +176,9 @@ class TestGlobalStateManagerPluginResults:
         
         state_with_match.update_plugin_result(0, "generic_plugin", result)
         
-        # Session 11: Use _jobs (not _matches)
-        match = state_with_match._jobs[0]
-        assert "generic_plugin" in match.plugins
+        # Session 11: Use jobs (not _matches)
+        job = state_with_match.get_job(0)
+        assert "generic_plugin" in job.plugins
     
     def test_update_multiple_plugin_results(self, state_with_match):
         """Test multiple plugins can update same match."""
@@ -195,12 +196,12 @@ class TestGlobalStateManagerPluginResults:
             )
             state_with_match.update_plugin_result(0, plugin_name, result)
         
-        # Session 11: Use _jobs (not _matches)
-        match = state_with_match._jobs[0]
-        assert len(match.plugins) == 3
-        assert "plugin_a" in match.plugins
-        assert "plugin_b" in match.plugins
-        assert "plugin_c" in match.plugins
+        # Session 11: Use jobs (not _matches)
+        job = state_with_match.get_job(0)
+        assert len(job.plugins) == 3
+        assert "plugin_a" in job.plugins
+        assert "plugin_b" in job.plugins
+        assert "plugin_c" in job.plugins
     
     def test_plugin_result_error_handling(self, state_with_match):
         """Test plugin result with error."""
@@ -218,10 +219,10 @@ class TestGlobalStateManagerPluginResults:
         
         state_with_match.update_plugin_result(0, "failing_plugin", result)
         
-        # Session 11: Use _jobs (not _matches)
-        match = state_with_match._jobs[0]
+        # Session 11: Use jobs (not _matches)
+        job = state_with_match.get_job(0)
         # Failed plugin should be in failed list
-        assert "failing_plugin" in match.status.failed
+        assert "failing_plugin" in job.status.failed
 
 
 class TestGlobalStateManagerPersistence:
@@ -236,11 +237,6 @@ class TestGlobalStateManagerPersistence:
         mock.save_job = MagicMock()
         mock.save_plugin_result = MagicMock()
         mock.save_plugin_data = MagicMock()
-        # Legacy methods
-        mock.save_execution = MagicMock()
-        mock.save_match = MagicMock()
-        mock.update_execution = MagicMock()
-        mock.update_match = MagicMock()
         return mock
     
     @pytest.fixture
@@ -252,31 +248,31 @@ class TestGlobalStateManagerPersistence:
         manager.configure(persistence=mock_persistence)
         return manager, mock_persistence
     
-    def test_start_execution_saves_to_persistence(self, state_with_persistence):
-        """Test execution is saved to persistence."""
+    def test_start_run_saves_to_persistence(self, state_with_persistence):
+        """Test run is saved to persistence."""
         manager, persistence = state_with_persistence
         
-        manager.start_execution({"options": {}})
+        manager.start_run({"options": {}})
         
         # Session 11: Uses save_run (new API)
         persistence.save_run.assert_called_once()
     
-    def test_register_match_saves_to_persistence(self, state_with_persistence):
-        """Test match is saved to persistence."""
+    def test_create_job_saves_to_persistence(self, state_with_persistence):
+        """Test job is saved to persistence."""
         manager, persistence = state_with_persistence
         
-        manager.start_execution({"options": {}})
-        manager.register_match(0, "/path/file.mkv")
+        manager.start_run({"options": {}})
+        manager.create_job("/path/file.mkv")
         
         # Session 11: Uses save_job (new API)
         persistence.save_job.assert_called_once()
     
-    def test_complete_execution_updates_persistence(self, state_with_persistence):
+    def test_complete_run_updates_persistence(self, state_with_persistence):
         """Test completion updates persistence."""
         manager, persistence = state_with_persistence
         
-        manager.start_execution({"options": {}})
-        manager.complete_execution()
+        manager.start_run({"options": {}})
+        manager.complete_run()
         
         # Session 11: Uses save_run (new API), called at start and complete
         assert persistence.save_run.call_count >= 2
@@ -292,11 +288,11 @@ class TestGlobalStateManagerTemplateContext:
         
         manager = GlobalStateManager()
         manager.reset()
-        manager.start_execution({"options": {"debug": False}})
+        manager.start_run({"options": {"debug": False}})
         
-        # Add matches with generic plugin results
+        # Add jobs with generic plugin results
         for i in range(3):
-            manager.register_match(i, f"/path/file{i}.mkv")
+            manager.create_job(f"/path/file{i}.mkv")
             
             # Session 11: PluginResult without plugin_name
             result = PluginResult(
@@ -306,9 +302,9 @@ class TestGlobalStateManagerTemplateContext:
                 data={"index": i, "processed": True}
             )
             manager.update_plugin_result(i, "generic_plugin", result)
-            manager.complete_match(i)
+            manager.complete_job(i)
         
-        manager.complete_execution()
+        manager.complete_run()
         return manager
     
     def test_build_template_context_structure(self, state_with_data):

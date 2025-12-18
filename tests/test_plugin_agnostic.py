@@ -44,11 +44,11 @@ class TestPluginAgnosticCore:
         
         # These patterns would indicate hardcoding
         hardcoded_patterns = [
-            f"\\['{name}'",      # ['scanner']
-            f'\\["{name}"',      # ["scanner"]
-            f"== '{name}'",      # == 'scanner'
-            f'== "{name}"',      # == "scanner"
-            f"plugin_name in \\['{name}'",  # plugin_name in ['scanner', ...]
+            "\\['{name}'",      # ['scanner']
+            "\\[\"{name}\"",      # ["scanner"]
+            "== '{name}'",      # == 'scanner'
+            '== "{name}"',      # == "scanner"
+            "plugin_name in \\['{name}'",  # plugin_name in ['scanner', ...]
         ]
         
         violations = []

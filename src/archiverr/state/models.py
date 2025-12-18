@@ -236,16 +236,20 @@ class RunState:
     Execution-level state.
     
     ID Format: run_{uuid8}
+    
+    Session 17: Added plugins dict for runtime plugin data access (flat structure).
     """
     id: str
     status: RunStatus = field(default_factory=RunStatus)
     config: Dict[str, Any] = field(default_factory=dict)
+    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
             "status": self.status.to_dict(),
-            "config": self.config
+            "config": self.config,
+            "plugins": self.plugins
         }
     
     def start(self):
@@ -273,84 +277,6 @@ class RunState:
     def increment_failed(self):
         """Increment failed job count."""
         self.status.failed += 1
-
-
-@dataclass
-class PluginStatus:
-    """
-    Plugin execution status (Session 12).
-    
-    Tracks plugin execution state and success.
-    """
-    state: StateEnum = StateEnum.PENDING
-    success: bool = False
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    duration_ms: int = 0
-    error: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "state": self.state.value,
-            "success": self.success,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration_ms": self.duration_ms,
-            "error": self.error
-        }
-
-
-@dataclass
-class PluginState:
-    """
-    Session 12 plugin state structure.
-    
-    Structure:
-        plugin.{name}:
-            status: PluginStatus
-            data: Dict (plugin's own data)
-    """
-    status: PluginStatus = field(default_factory=PluginStatus)
-    data: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "status": self.status.to_dict(),
-            "data": self.data
-        }
-
-
-@dataclass
-class PluginData:
-    """
-    Plugin execution data (stored in MongoDB).
-    
-    Session 12: Separates status and data.
-    ID Format: plugin_{job_id}_{plugin_name}
-    """
-    job_id: str
-    run_id: str
-    job_index: int
-    plugin_name: str
-    stage: str  # parse | data | output (no input)
-    status: PluginStatus = field(default_factory=PluginStatus)
-    data: Dict[str, Any] = field(default_factory=dict)
-    
-    @property
-    def id(self) -> str:
-        return f"plugin_{self.job_id}_{self.plugin_name}"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "job_id": self.job_id,
-            "run_id": self.run_id,
-            "job_index": self.job_index,
-            "plugin_name": self.plugin_name,
-            "stage": self.stage,
-            "status": self.status.to_dict(),
-            "data": self.data
-        }
 
 
 # NOTE: Legacy aliases (ExecutionStatus, MatchState, ExecutionState, PluginResult)

@@ -144,27 +144,18 @@ async def mongodb_lifespan(app):
     
     Sets:
         app.state.db: Database instance (or None if connection fails)
-    
-    Environment:
-        ARCHIVERR_DB_BACKEND: "mongodb" or "mock"
     """
     # Startup
-    backend = os.getenv("ARCHIVERR_DB_BACKEND", "mongodb")
-    
-    if backend == "mongodb":
-        try:
-            db = await AsyncMongoDB.connect()
-            app.state.db = db
-            logger.info("MongoDB ready in app.state.db (PyMongo Async)")
-        except Exception as e:
-            logger.warning(f"MongoDB connection failed: {e}")
-            app.state.db = None
-    else:
+    try:
+        db = await AsyncMongoDB.connect()
+        app.state.db = db
+        logger.info("MongoDB ready in app.state.db (PyMongo Async)")
+    except Exception as e:
+        logger.warning(f"MongoDB connection failed: {e}")
         app.state.db = None
-        logger.info("Using mock persistence (ARCHIVERR_DB_BACKEND != mongodb)")
-    
+     
     yield
-    
+     
     # Shutdown
     await AsyncMongoDB.disconnect()
 

@@ -20,7 +20,7 @@ class TestStateEnum:
         
         assert StateEnum.PENDING.value == "pending"
         assert StateEnum.RUNNING.value == "running"
-        assert StateEnum.COMPLETED.value == "completed"
+        assert StateEnum.SUCCESS.value == "success"
         assert StateEnum.FAILED.value == "failed"
     
     def test_enum_comparison(self):
@@ -35,7 +35,7 @@ class TestStateEnum:
         from archiverr.state.models import StateEnum
         
         assert StateEnum("pending") == StateEnum.PENDING
-        assert StateEnum("completed") == StateEnum.COMPLETED
+        assert StateEnum("success") == StateEnum.SUCCESS
 
 
 class TestInputData:
@@ -161,7 +161,7 @@ class TestJobStatus:
         from archiverr.state.models import JobStatus, StateEnum
         
         status = JobStatus(
-            state=StateEnum.COMPLETED,
+            state=StateEnum.SUCCESS,
             success=True,
             executed=["scanner", "renamer", "tmdb"],
             failed=[],
@@ -208,7 +208,7 @@ class TestRunStatus:
         from archiverr.state.models import RunStatus, StateEnum
         
         status = RunStatus(
-            state=StateEnum.COMPLETED,
+            state=StateEnum.SUCCESS,
             total_jobs=10,
             completed=9,
             failed=1,
@@ -316,7 +316,7 @@ class TestJobState:
         job.start()
         job.complete(success=True)
         
-        assert job.status.state == StateEnum.COMPLETED
+        assert job.status.state == StateEnum.SUCCESS
         assert job.status.success is True
         assert job.status.finished_at is not None
         assert job.status.duration_ms >= 0
@@ -424,7 +424,7 @@ class TestRunState:
         run.status.failed = 0
         run.complete()
         
-        assert run.status.state == StateEnum.COMPLETED
+        assert run.status.state == StateEnum.SUCCESS
         assert run.status.success is True
     
     def test_complete_method_with_failures(self):
@@ -457,85 +457,6 @@ class TestRunState:
         assert run.status.failed == 1
 
 
-class TestPluginData:
-    """PluginData dataclass tests"""
-    
-    def test_basic_creation(self):
-        """Test basic PluginData creation"""
-        from archiverr.state.models import PluginData
-        
-        plugin = PluginData(
-            job_id="job_run_abc123_0",
-            run_id="run_abc123",
-            job_index=0,
-            plugin_name="tmdb",
-            stage="data"
-        )
-        
-        assert plugin.job_id == "job_run_abc123_0"
-        assert plugin.plugin_name == "tmdb"
-        assert plugin.stage == "data"
-    
-    def test_id_property(self):
-        """Test PluginData id generation"""
-        from archiverr.state.models import PluginData
-        
-        plugin = PluginData(
-            job_id="job_run_abc123_0",
-            run_id="run_abc123",
-            job_index=0,
-            plugin_name="tmdb",
-            stage="data"
-        )
-        
-        assert plugin.id == "plugin_job_run_abc123_0_tmdb"
-    
-    def test_with_data(self):
-        """Test PluginData with plugin-specific data"""
-        from archiverr.state.models import PluginData
-        
-        plugin = PluginData(
-            job_id="job_run_abc123_0",
-            run_id="run_abc123",
-            job_index=0,
-            plugin_name="tmdb",
-            stage="data",
-            status={"success": True, "duration_ms": 800},
-            data={
-                "movie": {
-                    "id": 12345,
-                    "title": "Movie Title",
-                    "release_date": "2024-01-15"
-                }
-            }
-        )
-        
-        assert plugin.data["movie"]["title"] == "Movie Title"
-        assert plugin.status["success"] is True
-    
-    def test_to_dict(self):
-        """Test PluginData serialization for MongoDB"""
-        from archiverr.state.models import PluginData
-        
-        plugin = PluginData(
-            job_id="job_run_abc123_0",
-            run_id="run_abc123",
-            job_index=0,
-            plugin_name="tmdb",
-            stage="data",
-            data={"movie": {"title": "Test"}}
-        )
-        d = plugin.to_dict()
-        
-        assert d["id"] == "plugin_job_run_abc123_0_tmdb"
-        assert d["job_id"] == "job_run_abc123_0"
-        assert d["run_id"] == "run_abc123"
-        assert d["job_index"] == 0
-        assert d["plugin_name"] == "tmdb"
-        assert d["stage"] == "data"
-        assert d["data"]["movie"]["title"] == "Test"
-
-
 class TestBackwardCompatibility:
     """Backward compatibility tests for legacy imports"""
     
@@ -563,8 +484,7 @@ class TestBackwardCompatibility:
             JobStatus,
             RunStatus,
             JobState,
-            RunState,
-            PluginData
+            RunState
         )
         
         # Verify new models can be imported
@@ -575,7 +495,6 @@ class TestBackwardCompatibility:
         assert RunStatus is not None
         assert JobState is not None
         assert RunState is not None
-        assert PluginData is not None
     
     def test_state_manager_import(self):
         """Test StateManager and GlobalStateManager imports"""
@@ -610,7 +529,7 @@ class TestFinalDatasetsCompliance:
                 data={"tasks": {}}
             ),
             status=JobStatus(
-                state=StateEnum.COMPLETED,
+                state=StateEnum.SUCCESS,
                 success=True,
                 executed=["scanner", "renamer", "tmdb"],
                 skipped=["tvdb"]
@@ -626,7 +545,7 @@ class TestFinalDatasetsCompliance:
         assert d["input"]["value"] == "/data/movies/Movie.Name.2024.1080p.mkv"
         assert d["input"]["data"]["extension"] == "mkv"
         assert d["output"]["values"][0] == "/srv/archive/Movie (2024)/Movie.mkv"
-        assert d["status"]["state"] == "completed"
+        assert d["status"]["state"] == "success"
         assert "scanner" in d["status"]["executed"]
         assert "tvdb" in d["status"]["skipped"]
     
@@ -637,7 +556,7 @@ class TestFinalDatasetsCompliance:
         run = RunState(
             id="run_abc123",
             status=RunStatus(
-                state=StateEnum.COMPLETED,
+                state=StateEnum.SUCCESS,
                 success=True,
                 total_jobs=10,
                 completed=10,
@@ -650,7 +569,7 @@ class TestFinalDatasetsCompliance:
         
         # Structure checks matching FINAL_DATASETS.yml
         assert d["id"] == "run_abc123"
-        assert d["status"]["state"] == "completed"
+        assert d["status"]["state"] == "success"
         assert d["status"]["total_jobs"] == 10
         assert d["status"]["completed"] == 10
         assert d["config"]["options"]["debug"] is True

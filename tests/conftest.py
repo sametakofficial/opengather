@@ -62,17 +62,6 @@ def test_config() -> dict:
     }
 
 
-@pytest.fixture
-def mock_db():
-    """Mock database connection."""
-    mock = MagicMock()
-    mock.executions = MagicMock()
-    mock.matches = MagicMock()
-    mock.branches = MagicMock()
-    mock.commits = MagicMock()
-    return mock
-
-
 # ==================== HTTP CLIENT ====================
 
 @pytest.fixture

@@ -110,7 +110,7 @@ class Orchestrator:
         Args:
             event_bus: Event bus for loose coupling
             state: State manager for run/job state
-            persistence: Persistence layer for MongoDB/Mock
+            persistence: Persistence layer for MongoDB
             plugin_registry: Registry for plugin discovery and loading
             config: Full application configuration
             debugger: Optional debugger for logging
@@ -593,17 +593,12 @@ def build_orchestrator(
     state = GlobalStateManager()
     state.reset()
     
-    # Create persistence if not provided (fallback to mock if MongoDB unavailable)
+    # Create persistence if not provided
     if persistence is None:
-        try:
-            db_connection = DatabaseConnection.from_env()
-            persistence = db_connection.connect()
-        except ImportError:
-            # MongoDB not available, use mock persistence
-            from archiverr.infrastructure.database import MockPersistence
-            persistence = MockPersistence()
-            persistence.connect()
-            debugger.warn("orchestrator", "Using mock persistence (MongoDB not available)")
+        db_connection = DatabaseConnection.from_env()
+        persistence = db_connection.connect()
+        if persistence is None:
+            raise ImportError("MongoDB not available")
     
     # Configure state with persistence
     state.configure(

@@ -20,7 +20,12 @@ import os
 import signal
 from pathlib import Path
 
+import importlib.util
+
 import requests
+
+if importlib.util.find_spec("pymongo") is None:
+    pytest.skip("pymongo not installed", allow_module_level=True)
 
 # Test configuration
 API_URL = "http://localhost:8765"
@@ -409,8 +414,7 @@ class TestSubprocessExecution:
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
-            timeout=120,
-            env={**os.environ, "ARCHIVERR_DB_BACKEND": "mongodb"}
+            timeout=120
         )
         
         # Combined output

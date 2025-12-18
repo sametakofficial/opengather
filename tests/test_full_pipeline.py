@@ -19,6 +19,11 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 
+import importlib.util
+
+if importlib.util.find_spec("pymongo") is None:
+    pytest.skip("pymongo not installed", allow_module_level=True)
+
 
 PROJECT_ROOT = Path(__file__).parent.parent
 MONGODB_DATABASE = "archiverr"
@@ -47,8 +52,7 @@ class TestFullExecutionPipeline:
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
-            timeout=180,
-            env={**os.environ, "ARCHIVERR_DB_BACKEND": "mongodb"}
+            timeout=180
         )
         
         # Should complete
@@ -198,14 +202,14 @@ class TestConfigurationHandling:
         assert env_path.exists(), ".env file not found"
     
     def test_mongodb_backend_configured(self):
-        """Test MongoDB backend is configured"""
+        """Test MongoDB is configured"""
         env_path = PROJECT_ROOT / ".env"
         
         if env_path.exists():
             with open(env_path) as f:
                 content = f.read()
-            
-            assert "ARCHIVERR_DB_BACKEND" in content
+ 
+            assert "MONGODB_URI" in content or "MONGODB_DATABASE" in content
 
 
 class TestPluginSystem:
@@ -304,37 +308,3 @@ class TestAPIServerLifecycle:
 
 class TestEnvironmentVariables:
     """Test environment variable handling"""
-    
-    def test_mongodb_backend_env_var(self):
-        """Test ARCHIVERR_DB_BACKEND is respected"""
-        # Run with mock backend
-        result = subprocess.run(
-            ["python", "-c", """
-import os
-os.environ['ARCHIVERR_DB_BACKEND'] = 'mock'
-from archiverr.infrastructure.database import DatabaseConnection
-conn = DatabaseConnection.from_env()
-print(conn.config.backend)
-"""],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True
-        )
-        
-        assert "mock" in result.stdout
-    
-    def test_dotenv_is_loaded(self):
-        """Test .env file is loaded"""
-        result = subprocess.run(
-            ["python", "-c", """
-from dotenv import load_dotenv
-load_dotenv()
-import os
-print(os.getenv('ARCHIVERR_DB_BACKEND', 'not_set'))
-"""],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True
-        )
-        
-        assert result.stdout.strip() != "not_set" or True  # May not be set in test env

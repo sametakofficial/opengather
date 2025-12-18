@@ -78,8 +78,14 @@ def run_default(request: RunRequest = Body(None)):
     
     try:
         # Run archiverr as subprocess - EXACTLY like CLI
+        cmd = ['python', '-m', 'archiverr']
+        
+        # Pass config path if we're using a temp config
+        if temp_config_file:
+            cmd.extend(['--config', str(config_path)])
+            
         result = subprocess.run(
-            ['python', '-m', 'archiverr'],
+            cmd,
             cwd=str(PROJECT_ROOT),
             env=os.environ.copy(),
             capture_output=True,

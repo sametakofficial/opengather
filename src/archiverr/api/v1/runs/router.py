@@ -63,6 +63,11 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
     # Input/Output
     input_data = doc.get("input", {})
     output_data = doc.get("output", {})
+
+    if isinstance(output_data, dict):
+        values = output_data.get("values")
+        if isinstance(values, dict):
+            output_data = {**output_data, "values": list(values.values())}
     
     return RunResponse(
         id=run_id,
@@ -169,6 +174,7 @@ async def create_run(body: RunCreate, db: DatabaseDep):
     try:
         from archiverr.core.orchestrator import build_orchestrator
         from archiverr.utils.config_loader import load_config_with_tracking
+        from fastapi.concurrency import run_in_threadpool
         
         # Load config
         if body.config:
@@ -179,9 +185,12 @@ async def create_run(body: RunCreate, db: DatabaseDep):
         # Override dry_run
         config.setdefault('options', {})['dry_run'] = body.dry_run
         
-        # Build and run orchestrator
-        orchestrator = build_orchestrator(config)
-        result = orchestrator.run()
+        # Build and run orchestrator in thread pool to avoid blocking event loop
+        def _run_orchestrator():
+            orchestrator = build_orchestrator(config)
+            return orchestrator.run()
+            
+        result = await run_in_threadpool(_run_orchestrator)
         
         # Get run from database
         doc = await db["runs"].find_one({"id": result.run_id})

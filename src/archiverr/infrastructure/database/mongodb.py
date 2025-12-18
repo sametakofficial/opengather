@@ -96,9 +96,6 @@ class MongoDBPersistence(PersistenceInterface):
     MATCHES = "matches"
     PLUGIN_RESULTS = "plugin_results"
     
-    # Branch metadata
-    BRANCHES = "branches"
-    
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
     
@@ -229,33 +226,12 @@ class MongoDBPersistence(PersistenceInterface):
         await self._db[self.EXECUTIONS].create_index("started_at")
         await self._db[self.EXECUTIONS].create_index([("status", 1), ("started_at", -1)])
         
-        # Matches indexes
-        await self._db[self.MATCHES].create_index(
-            [("execution_id", 1), ("index", 1)], 
-            unique=True
-        )
-        await self._db[self.MATCHES].create_index("execution_id")
-        await self._db[self.MATCHES].create_index("category")
-        
-        # Plugin results indexes
-        await self._db[self.PLUGIN_RESULTS].create_index(
-            [("execution_id", 1), ("match_index", 1), ("plugin_name", 1)],
-            unique=True
-        )
-        await self._db[self.PLUGIN_RESULTS].create_index("match_id")
-        await self._db[self.PLUGIN_RESULTS].create_index("plugin_name")
         
         # TTL index for plugin results
         await self._db[self.PLUGIN_RESULTS].create_index(
             "expires_at",
             expireAfterSeconds=0
         )
-        
-        # Git-like versioning indexes
-        # Branches
-        await self._db[self.BRANCHES].create_index("name", unique=True)
-        await self._db[self.BRANCHES].create_index("created_at")
-        await self._db[self.BRANCHES].create_index("is_default")
     
     async def _save_execution_async(self, execution) -> None:
         """Async save execution with error handling. Accepts dict or object with to_dict()."""

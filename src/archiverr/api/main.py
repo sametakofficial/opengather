@@ -54,7 +54,6 @@ and git-like versioning for execution history.
 - **Real-time Updates**: WebSocket support for live progress streaming
 - **Plugin System**: Extensible architecture with configurable plugin execution
 - **Task Templates**: Jinja2-based output formatting and file operations
-- **Git-like Versioning**: Branches and commits for execution history tracking
 
 ### API Endpoints
 
@@ -63,7 +62,6 @@ and git-like versioning for execution history.
 | `/api/v1/run` | Execute processing pipeline |
 | `/api/v1/executions` | Execution CRUD operations |
 | `/api/v1/matches` | Query processed matches |
-| `/api/v1/versioning/branches` | Branch management |
 | `/api/v1/system` | Health and system status |
         """,
         version="1.0.0",

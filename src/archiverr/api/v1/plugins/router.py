@@ -87,9 +87,7 @@ async def list_plugin_data(
                 job_id=doc.get("job_id", ""),
                 run_id=doc.get("run_id", ""),
                 plugin_name=doc.get("plugin_name", ""),
-                stage=doc.get("stage", ""),
                 data=doc.get("data", {}),
-                status=doc.get("status", {}),
                 created_at=doc.get("created_at")
             )
             for doc in docs

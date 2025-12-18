@@ -64,7 +64,7 @@ class TestRunSchemas:
     def test_output_data_defaults(self):
         """Test OutputData defaults."""
         data = OutputData()
-        assert data.values == {}
+        assert data.values == []
         assert data.data == {}
     
     def test_run_create_defaults(self):
@@ -103,7 +103,7 @@ class TestRunSchemas:
                 completed=5
             ),
             input=InputData(value="/path/to/input"),
-            output=OutputData(values={"result": "ok"}),
+            output=OutputData(values=["ok"]),
             jobs=["job_1", "job_2", "job_3"],
             config={"debug": True},
             options={"dry_run": False},
@@ -149,7 +149,7 @@ class TestRunResponseConversion:
                 "duration_ms": 1234
             },
             "input": {"value": "/test"},
-            "output": {"values": {"key": "value"}},
+            "output": {"values": ["value"]},
             "jobs": ["job_1", "job_2"],
             "config": {"debug": True},
             "created_at": datetime.now(timezone.utc)

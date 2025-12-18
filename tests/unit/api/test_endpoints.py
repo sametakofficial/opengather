@@ -7,6 +7,11 @@ Uses TestClient with mocked database.
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
+
+# Starlette/FastAPI TestClient requires httpx. If it's not installed,
+# skip this module to avoid collection-time RuntimeError.
+pytest.importorskip("httpx")
+
 from fastapi.testclient import TestClient
 
 

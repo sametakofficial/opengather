@@ -22,7 +22,7 @@ class MatchRepository(BaseRepository):
         Initialize repository.
         
         Args:
-            persistence: Persistence backend (Mock or MongoDB)
+            persistence: Persistence backend
         """
         self._persistence = persistence
     
@@ -31,37 +31,21 @@ class MatchRepository(BaseRepository):
         Save match state.
         
         Args:
-            match: MatchState object
+            match: JobState/job dict
         """
-        self._persistence.save_match(match)
+        self._persistence.save_job(match)
     
     def get_by_id(self, match_id: str) -> Optional[Dict[str, Any]]:
         """
         Get match by ID.
         
         Args:
-            match_id: Match ID (format: match_{index}_{execution_id})
+            match_id: Job ID
             
         Returns:
             Match dict or None
         """
-        # Parse match_id to get execution_id and index
-        # Format: match_{index}_{execution_id}
-        if match_id.startswith("match_"):
-            parts = match_id[6:].split("_", 1)
-            if len(parts) == 2:
-                try:
-                    index = int(parts[0])
-                    execution_id = parts[1]
-                    
-                    matches = self._persistence.get_matches(execution_id)
-                    for m in matches:
-                        if m.get("index") == index:
-                            return m
-                except ValueError:
-                    pass
-        
-        return None
+        return self._persistence.get_job(match_id)
     
     def get_all(self) -> List[Dict[str, Any]]:
         """
@@ -73,10 +57,6 @@ class MatchRepository(BaseRepository):
         Returns:
             List of match dicts
         """
-        if hasattr(self._persistence, 'get_all_data'):
-            data = self._persistence.get_all_data()
-            return data.get("matches", [])
-        
         return []
     
     def delete(self, match_id: str) -> bool:
@@ -86,7 +66,7 @@ class MatchRepository(BaseRepository):
         Note: This should also delete related plugin results.
         
         Args:
-            match_id: Match ID
+            match_id: Job ID
             
         Returns:
             True if deleted
@@ -99,12 +79,12 @@ class MatchRepository(BaseRepository):
         Get all matches for an execution.
         
         Args:
-            execution_id: Execution ID
+            execution_id: Run ID
             
         Returns:
             List of match dicts
         """
-        return self._persistence.get_matches(execution_id)
+        return self._persistence.get_jobs(execution_id)
     
     def get_by_category(self, category: str) -> List[Dict[str, Any]]:
         """

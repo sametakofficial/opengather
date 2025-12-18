@@ -173,13 +173,13 @@ class TestManifestValidatorAll:
                 "name": "plugin1",
                 "stage": "data",
                 "class_name": "Plugin1",
-                "provides": ["http.request"]
+                "provides": ["fs.write"]
             },
             "plugin2": {
                 "name": "plugin2",
                 "stage": "data",
                 "class_name": "Plugin2",
-                "provides": ["http.request"]  # CONFLICT!
+                "provides": ["fs.write"]  # CONFLICT!
             }
         }
         result = validator.validate_all(manifests)

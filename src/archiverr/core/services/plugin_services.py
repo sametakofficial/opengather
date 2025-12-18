@@ -1,16 +1,11 @@
 """
-Plugin Services - Session 16
+Plugin Services - Core plugin communication API.
 
-Provides core methods for plugin communication:
-1. create_job(input_value, input_data) -> job_id
-2. update_job(job_id, key, value)
-3. update_plugin(target_id, plugin_name, data)
-4. get_plugin_data(target_id, plugin_name)
-
-Session 16 Changes:
-- snake_case naming
-- Explicit target_id and plugin_name parameters
-- Backward compatible aliases (createJob, updateJob, updatePlugin)
+Methods:
+- create_job(input_value, input_data) -> job_id
+- update_job(job_id, key, value)
+- update_plugin(target_id, plugin_name, data)
+- get_plugin_data(target_id, plugin_name)
 """
 
 from typing import Dict, Any, Optional, TYPE_CHECKING
@@ -277,13 +272,20 @@ class PluginServices:
             # per_job plugin - update job's plugin status
             job = self._state.get_job_by_id(self._current_job_id)
             if job:
-                # add to executed/failed/skipped lists
+                # Session 17: Update job.status.plugins dict
+                job.status.plugins[self._current_plugin_name] = status_data
+                
+                # add to executed/failed/skipped lists (Legacy/Compat)
                 if state == "completed" and self._current_plugin_name not in job.status.executed:
                     job.status.executed.append(self._current_plugin_name)
                 elif state == "failed" and self._current_plugin_name not in job.status.failed:
                     job.status.failed.append(self._current_plugin_name)
                 elif state == "skipped" and self._current_plugin_name not in job.status.skipped:
                     job.status.skipped.append(self._current_plugin_name)
+        elif self._state.run:
+            # per_run plugin - update run's plugin status
+            # Session 17: Update run.status.plugins dict
+            self._state.run.status.plugins[self._current_plugin_name] = status_data
         
         # emit status event
         self._event_bus.emit(f"plugin.{state}", {

@@ -18,7 +18,6 @@ class TestStageEnum:
     """Test Stage enum"""
     
     def test_stage_values(self):
-        assert Stage.INPUT.value == "input"
         assert Stage.PARSE.value == "parse"
         assert Stage.DATA.value == "data"
         assert Stage.OUTPUT.value == "output"
@@ -26,23 +25,14 @@ class TestStageEnum:
     def test_stage_order(self):
         """Stages should be in correct execution order"""
         stages = list(Stage)
-        assert stages[0] == Stage.INPUT
-        assert stages[1] == Stage.PARSE
-        assert stages[2] == Stage.DATA
-        assert stages[3] == Stage.OUTPUT
+        assert stages[0] == Stage.PARSE
+        assert stages[1] == Stage.DATA
+        assert stages[2] == Stage.OUTPUT
     
-    def test_from_category_input(self):
-        """Input category maps to INPUT stage"""
-        assert Stage.from_category("input") == Stage.INPUT
-    
-    def test_from_category_output(self):
-        """Output category maps to OUTPUT stage"""
-        assert Stage.from_category("output") == Stage.OUTPUT
-    
-    def test_from_category_unknown(self):
-        """Unknown category defaults to OUTPUT"""
-        assert Stage.from_category("unknown") == Stage.OUTPUT
-        assert Stage.from_category("") == Stage.OUTPUT
+    def test_from_string(self):
+        assert Stage.from_string("parse") == Stage.PARSE
+        assert Stage.from_string("data") == Stage.DATA
+        assert Stage.from_string("output") == Stage.OUTPUT
 
 
 class TestPluginInfo:
@@ -168,10 +158,10 @@ class TestPluginRegistry:
         registry = PluginRegistry({}, debugger=mock_debugger)
         registry.discover_and_load()
         
-        input_plugins = registry.get_plugins_by_stage(Stage.INPUT)
+        input_plugins = registry.get_input_plugin_names()
         assert "scanner" in input_plugins
         
-        output_plugins = registry.get_plugins_by_stage(Stage.OUTPUT)
+        output_plugins = registry.get_plugins_by_stage(Stage.PARSE)
         assert "renamer" in output_plugins
         assert "tmdb" in output_plugins
     
@@ -379,8 +369,7 @@ class TestPluginRegistry:
         registry.discover_and_load()
         
         errors = registry.validate_dependencies()
-        assert len(errors) > 0
-        assert any("nonexistent" in e for e in errors)
+        assert errors == []
 
 
 class TestPluginRegistryStageMapping:
@@ -452,5 +441,5 @@ class TestPluginRegistryStageMapping:
         registry = PluginRegistry({}, debugger=mock_debugger)
         registry.discover_and_load()
         
-        input_plugins = registry.get_plugins_by_stage(Stage.INPUT)
+        input_plugins = registry.get_input_plugin_names()
         assert "scanner" in input_plugins

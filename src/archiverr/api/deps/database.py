@@ -53,11 +53,6 @@ async def get_async_db():
     if _async_db is not None:
         return _async_db
     
-    backend = os.getenv("ARCHIVERR_DB_BACKEND", "mongodb")
-    
-    if backend != "mongodb":
-        return None
-    
     try:
         from pymongo import AsyncMongoClient
         
@@ -126,11 +121,6 @@ def get_sync_db():
     
     if _pymongo_db is not None:
         return _pymongo_db
-    
-    backend = os.getenv("ARCHIVERR_DB_BACKEND", "mongodb")
-    
-    if backend != "mongodb":
-        return None
     
     try:
         from pymongo import MongoClient

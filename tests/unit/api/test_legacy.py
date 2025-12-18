@@ -6,6 +6,11 @@ Tests backward compatibility redirects.
 
 import pytest
 
+import importlib.util
+
+if importlib.util.find_spec("archiverr.api.v1.legacy") is None:
+    pytest.skip("Legacy API router removed", allow_module_level=True)
+
 
 class TestLegacyRedirects:
     """Test legacy endpoint redirects."""

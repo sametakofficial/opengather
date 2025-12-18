@@ -128,11 +128,11 @@ class TestPluginLoader:
     def mock_plugin_metadata(self):
         """Mock plugin metadata."""
         return {
-            "mock_test": {
-                "name": "mock_test",
+            "sample_plugin": {
+                "name": "sample_plugin",
                 "version": "1.0.0",
                 "category": "output",
-                "class_name": "MockTestPlugin",
+                "class_name": "SamplePlugin",
                 "depends_on": [],
                 "expects": []
             }
@@ -145,12 +145,12 @@ class TestPluginLoader:
         # Disabled plugin should not be loaded
         config = {
             "plugins": {
-                "mock_test": {"enabled": False}
+                "sample_plugin": {"enabled": False}
             }
         }
         
         loader = PluginLoader(mock_plugin_metadata, config)
-        result = loader.load_plugin("mock_test")
+        result = loader.load_plugin("sample_plugin")
         
         # Should return None for disabled plugin
         assert result is None
