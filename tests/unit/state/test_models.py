@@ -149,43 +149,52 @@ class TestJobStatus:
         
         assert status.state == StateEnum.PENDING
         assert status.success is True
-        assert status.executed == []
-        assert status.failed == []
-        assert status.skipped == []
+        assert status.plugins == {}
         assert status.started_at is None
         assert status.finished_at is None
         assert status.duration_ms == 0
     
-    def test_with_plugin_lists(self):
-        """Test JobStatus with plugin execution results"""
+    def test_with_plugins_dict(self):
+        """Test JobStatus with plugin status tracking"""
         from archiverr.state.models import JobStatus, StateEnum
         
         status = JobStatus(
             state=StateEnum.SUCCESS,
             success=True,
-            executed=["scanner", "renamer", "tmdb"],
-            failed=[],
-            skipped=["tvdb"]
+            plugins={
+                "scanner": {"state": "completed", "success": True},
+                "renamer": {"state": "completed", "success": True},
+                "tmdb": {"state": "completed", "success": True},
+                "tvdb": {"state": "skipped", "success": True}
+            }
         )
         
-        assert "scanner" in status.executed
-        assert "tvdb" in status.skipped
-        assert len(status.failed) == 0
+        assert "scanner" in status.plugins
+        assert status.plugins["tvdb"]["state"] == "skipped"
+        assert len(status.plugins) == 4
     
-    def test_to_dict(self):
-        """Test JobStatus serialization"""
+    def test_to_dict_derives_lists_from_plugins(self):
+        """Test JobStatus.to_dict() derives executed/failed/skipped from plugins dict"""
         from archiverr.state.models import JobStatus, StateEnum
         
         now = datetime.now()
         status = JobStatus(
-            state=StateEnum.RUNNING,
-            started_at=now
+            state=StateEnum.SUCCESS,
+            started_at=now,
+            plugins={
+                "scanner": {"state": "completed", "success": True},
+                "tmdb": {"state": "failed", "success": False},
+                "tvdb": {"state": "skipped", "success": True}
+            }
         )
         d = status.to_dict()
         
-        assert d["state"] == "running"
+        assert d["state"] == "success"
         assert d["success"] is True
         assert d["started_at"] == now.isoformat()
+        assert "scanner" in d["executed"]
+        assert "tmdb" in d["failed"]
+        assert "tvdb" in d["skipped"]
 
 
 class TestRunStatus:
@@ -332,39 +341,42 @@ class TestJobState:
         assert job.status.state == StateEnum.FAILED
         assert job.status.success is False
     
-    def test_add_executed(self):
-        """Test adding executed plugin"""
+    def test_plugin_status_tracking(self):
+        """Test plugin status is tracked in job.status.plugins dict"""
         from archiverr.state.models import JobState
         
         job = JobState(index=0, run_id="run_test")
-        job.add_executed("tmdb")
-        job.add_executed("renamer")
-        job.add_executed("tmdb")  # Duplicate - should be ignored
         
-        assert "tmdb" in job.status.executed
-        assert "renamer" in job.status.executed
-        assert len(job.status.executed) == 2
+        # Plugins are tracked via job.status.plugins dict
+        job.status.plugins["tmdb"] = {"state": "completed", "success": True}
+        job.status.plugins["renamer"] = {"state": "completed", "success": True}
+        
+        assert "tmdb" in job.status.plugins
+        assert "renamer" in job.status.plugins
+        assert len(job.status.plugins) == 2
     
-    def test_add_failed_sets_success_false(self):
-        """Test adding failed plugin sets success to false"""
+    def test_failed_plugin_in_status(self):
+        """Test failed plugin tracking in status.plugins"""
         from archiverr.state.models import JobState
         
         job = JobState(index=0, run_id="run_test")
         assert job.status.success is True
         
-        job.add_failed("broken_plugin")
+        # Failed plugins are tracked in job.status.plugins
+        job.status.plugins["broken_plugin"] = {"state": "failed", "success": False}
+        job.status.success = False  # Job success is set separately
         
-        assert "broken_plugin" in job.status.failed
+        assert job.status.plugins["broken_plugin"]["state"] == "failed"
         assert job.status.success is False
     
-    def test_add_skipped(self):
-        """Test adding skipped plugin"""
+    def test_skipped_plugin_in_status(self):
+        """Test skipped plugin tracking in status.plugins"""
         from archiverr.state.models import JobState
         
         job = JobState(index=0, run_id="run_test")
-        job.add_skipped("tvdb")
+        job.status.plugins["tvdb"] = {"state": "skipped", "success": True}
         
-        assert "tvdb" in job.status.skipped
+        assert job.status.plugins["tvdb"]["state"] == "skipped"
         assert job.status.success is True  # Skipped doesn't affect success
 
 
@@ -460,21 +472,6 @@ class TestRunState:
 class TestBackwardCompatibility:
     """Backward compatibility tests for legacy imports"""
     
-    def test_legacy_imports_work(self):
-        """Test legacy model imports still work"""
-        from archiverr.state import (
-            ExecutionState,
-            ExecutionStatus,
-            MatchState,
-            PluginResult
-        )
-        
-        # Just verify imports work
-        assert ExecutionState is not None
-        assert ExecutionStatus is not None
-        assert MatchState is not None
-        assert PluginResult is not None
-    
     def test_new_imports_work(self):
         """Test new model imports work"""
         from archiverr.state import (
@@ -531,8 +528,12 @@ class TestFinalDatasetsCompliance:
             status=JobStatus(
                 state=StateEnum.SUCCESS,
                 success=True,
-                executed=["scanner", "renamer", "tmdb"],
-                skipped=["tvdb"]
+                plugins={
+                    "scanner": {"state": "completed", "success": True},
+                    "renamer": {"state": "completed", "success": True},
+                    "tmdb": {"state": "completed", "success": True},
+                    "tvdb": {"state": "skipped", "success": True}
+                }
             )
         )
         
@@ -546,6 +547,7 @@ class TestFinalDatasetsCompliance:
         assert d["input"]["data"]["extension"] == "mkv"
         assert d["output"]["values"][0] == "/srv/archive/Movie (2024)/Movie.mkv"
         assert d["status"]["state"] == "success"
+        # executed/failed/skipped are derived from plugins dict in to_dict()
         assert "scanner" in d["status"]["executed"]
         assert "tvdb" in d["status"]["skipped"]
     

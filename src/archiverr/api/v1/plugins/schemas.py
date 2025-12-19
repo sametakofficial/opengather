@@ -1,8 +1,4 @@
-"""
-Plugin Schemas - Session 11 Phase 8
-
-Pydantic models for plugin information and data.
-"""
+"""Plugin Schemas - Pydantic models for plugin information and data."""
 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Optional

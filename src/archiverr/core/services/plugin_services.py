@@ -17,34 +17,7 @@ if TYPE_CHECKING:
 
 
 class PluginServices:
-    """
-    Session 12 Plugin Services.
-    
-    Provides controlled access to state management for plugins.
-    Enforces per_run vs per_job access rules.
-    Maintains current job/plugin context internally.
-    
-    Usage:
-        # For per_run plugins
-        services = PluginServices(
-            state=state,
-            event_bus=event_bus,
-            logger=logger,
-            config=config,
-            mode="per_run"
-        )
-        
-        # For per_job plugins
-        services = PluginServices(
-            state=state,
-            event_bus=event_bus,
-            logger=logger,
-            config=config,
-            mode="per_job",
-            current_job_id="job_abc_0",
-            current_plugin_name="tmdb"
-        )
-    """
+    """Controlled access to state management for plugins."""
     
     def __init__(
         self,
@@ -76,8 +49,6 @@ class PluginServices:
         self._current_job_id = current_job_id
         self._current_plugin_name = current_plugin_name
     
-    # ==================== CORE METHODS ====================
-    
     def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
         """
         Create new job.
@@ -103,10 +74,6 @@ class PluginServices:
         
         return job_id
     
-    def createJob(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
-        """Backward compatible alias for create_job."""
-        return self.create_job(input_value, input_data)
-    
     def update_job(self, job_id: str = None, key: str = None, value: Any = None) -> None:
         """
         Update job state.
@@ -128,10 +95,6 @@ class PluginServices:
             key=key,
             plugin=self._current_plugin_name
         )
-    
-    def updateJob(self, key: str, value: Any) -> None:
-        """Backward compatible alias for update_job."""
-        self.update_job(self._current_job_id, key, value)
     
     def update_plugin(self, target_id: str = None, plugin_name: str = None, data: Dict[str, Any] = None) -> None:
         """
@@ -159,10 +122,6 @@ class PluginServices:
             data_keys=list(data.keys()) if data else []
         )
     
-    def updatePlugin(self, data: Dict[str, Any]) -> None:
-        """Backward compatible alias for update_plugin."""
-        self.update_plugin(self._current_job_id, self._current_plugin_name, data)
-    
     def get_plugin_data(self, target_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
         """
         Get plugin data.
@@ -175,8 +134,6 @@ class PluginServices:
             Plugin data dict or None
         """
         return self._state.get_plugin_data(target_id, plugin_name)
-    
-    # ==================== STATE ACCESS ====================
     
     def get_run(self):
         """Get run state (read-only for all plugins)."""
@@ -210,8 +167,6 @@ class PluginServices:
         """
         return self._state.plugins
     
-    # ==================== EVENT BUS ====================
-    
     def emit(self, event: str, data: Dict[str, Any] = None) -> None:
         """
         Emit event (both modes).
@@ -228,8 +183,6 @@ class PluginServices:
             plugin=self._current_plugin_name,
             mode=self._mode
         )
-    
-    # ==================== PLUGIN STATUS REPORTING ====================
     
     def update_status(
         self,
@@ -272,16 +225,8 @@ class PluginServices:
             # per_job plugin - update job's plugin status
             job = self._state.get_job_by_id(self._current_job_id)
             if job:
-                # Session 17: Update job.status.plugins dict
+                # Update job.status.plugins dict
                 job.status.plugins[self._current_plugin_name] = status_data
-                
-                # add to executed/failed/skipped lists (Legacy/Compat)
-                if state == "completed" and self._current_plugin_name not in job.status.executed:
-                    job.status.executed.append(self._current_plugin_name)
-                elif state == "failed" and self._current_plugin_name not in job.status.failed:
-                    job.status.failed.append(self._current_plugin_name)
-                elif state == "skipped" and self._current_plugin_name not in job.status.skipped:
-                    job.status.skipped.append(self._current_plugin_name)
         elif self._state.run:
             # per_run plugin - update run's plugin status
             # Session 17: Update run.status.plugins dict
@@ -303,8 +248,6 @@ class PluginServices:
             success=success,
             message=message
         )
-    
-    # ==================== PROPERTIES ====================
     
     @property
     def mode(self) -> str:

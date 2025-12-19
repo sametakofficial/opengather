@@ -1,14 +1,4 @@
-"""
-Global State Manager - Session 12 Refactored
-
-Session 12: 6 Global State Objects
-- run: RunState (read-only for all)
-- config: Dict (frozen, read-only for all)
-- job: JobState (current job, per_job only)
-- jobs: List[JobState] (all jobs, per_job read-only)
-- plugin: Dict (current job plugins, per_job only)
-- plugins: List[Dict] (all jobs plugins, per_job read-only)
-"""
+"""Global State Manager - Unified state management for runs and jobs."""
 
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
@@ -22,20 +12,7 @@ if TYPE_CHECKING:
 
 
 class GlobalStateManager:
-    """
-    session 14 global state manager - normalized.
-    
-    manages 3 global state objects (reduced from 6):
-    1. run: runstate (read-only for all plugins)
-    2. config: dict (frozen config, read-only for all)
-    3. context: executioncontext (unified job + plugin state)
-    
-    context contains:
-        - job: current job (read-write)
-        - jobs: all jobs (read-only)
-        - plugin: current job plugins (read-write)
-        - plugins: all jobs plugins (read-only)
-    """
+    """Unified state manager for runs, jobs, and plugin data."""
     
     def __init__(
         self,
@@ -47,7 +24,6 @@ class GlobalStateManager:
         self._debugger = debugger
         self._event_bus = event_bus
         
-        # session 14: 3 global state objects
         self._run: Optional[RunState] = None
         self._config: Dict[str, Any] = {}
         self._context: ExecutionContext = ExecutionContext()
@@ -72,41 +48,39 @@ class GlobalStateManager:
         self._config = {}
         self._context.reset()
     
-    # ==================== SESSION 14: GLOBAL STATE PROPERTIES ====================
-    
     @property
     def run(self) -> Optional[RunState]:
-        """global state 1: run (read-only for all plugins)"""
+        """Current run state (read-only for plugins)."""
         return self._run
     
     @property
     def config(self) -> Dict[str, Any]:
-        """global state 2: config (frozen, read-only for all plugins)"""
+        """Frozen config (read-only for plugins)."""
         return self._config
     
     @property
     def context(self) -> ExecutionContext:
-        """global state 3: context (unified execution context)"""
+        """Unified execution context."""
         return self._context
     
     @property
     def job(self) -> Optional[JobState]:
-        """current job (via context) - backward compat property"""
+        """Current job state."""
         return self._context._current_job
     
     @property
     def jobs(self) -> List[JobState]:
-        """all jobs (via context) - backward compat property"""
+        """All jobs in current run."""
         return self._context.jobs
     
     @property
     def plugin(self) -> Dict[str, Dict]:
-        """current job plugins (via context) - backward compat property"""
+        """Current job's plugin data."""
         return self._context.plugin
     
     @property
-    def plugins(self) -> List[Dict]:
-        """all jobs plugins (via context) - backward compat property"""
+    def plugins(self) -> Dict[str, Dict]:
+        """All plugin data by target_id."""
         return self._context.plugins
     
     def _emit(self, event_name: str, data: Dict[str, Any] = None, source: str = "state"):
@@ -124,22 +98,11 @@ class GlobalStateManager:
         """Generate unique ID."""
         return str(uuid4())[:8]
     
-    # ==================== RUN (was EXECUTION) ====================
-    
     def start_run(self, config: Dict[str, Any]) -> str:
-        """
-        Start new run (Session 12).
-        
-        Args:
-            config: Full config.yml content (frozen)
-            
-        Returns:
-            Run ID
-        """
+        """Start new run with given config. Returns run ID."""
         run_id = self._generate_id()
         
-        # Session 12: Store frozen config
-        self._config = config.copy()  # Frozen copy
+        self._config = config.copy()
         
         self._run = RunState(
             id=run_id,
@@ -191,19 +154,8 @@ class GlobalStateManager:
         
         return self._run
     
-    # ==================== JOBS ====================
-    
     def create_job(self, input_value: str, input_data: Dict[str, Any] = None) -> str:
-        """
-        create new job (session 14).
-        
-        args:
-            input_value: input path or virtual identifier
-            input_data: plugin-specific data (best practice: include 'source' field)
-            
-        returns:
-            job id (string)
-        """
+        """Create new job. Returns job ID."""
         if not self._run:
             raise RuntimeError("no active run")
         
@@ -219,7 +171,6 @@ class GlobalStateManager:
         )
         job.start()
         
-        # session 14: add to context
         self._context.add_job(job)
         self._run.increment_jobs()
         
@@ -241,32 +192,20 @@ class GlobalStateManager:
         return job.id
     
     def set_current_job(self, job_id: str) -> None:
-        """
-        set current job context (session 14).
-        
-        used by orchestrator to set current job before executing per_job plugins.
-        """
+        """Set current job context for per_job plugin execution."""
         job = self.get_job_by_id(job_id)
         if not job:
             raise ValueError(f"job {job_id} not found")
         self._context.set_current_job(job)
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            self._context._current_plugins = job.plugins
     
     def clear_current_job(self) -> None:
-        """clear current job context (session 14)."""
+        """Clear current job context."""
         self._context.clear_current_job()
     
     def update_job(self, job_id: str, key: str, value: Any) -> None:
-        """
-        Update job state (Session 12 internal method).
-        
-        Called by PluginServices.updateJob(key, value).
-        PluginServices provides job_id internally.
-        
-        Args:
-            job_id: Job ID
-            key: Dot-notation path (e.g., "output.values", "status.state")
-            value: New value
-        """
+        """Update job state using dot-notation path."""
         job = self.get_job_by_id(job_id)
         if not job:
             raise ValueError(f"Job {job_id} not found")
@@ -285,18 +224,7 @@ class GlobalStateManager:
         })
     
     def update_plugin(self, target_id: str, plugin_name: str, data: Dict[str, Any]) -> None:
-        """
-        Update plugin data (Session 17 refactored).
-        
-        Session 17: Flat data structure, no status/data wrapper.
-        - Plugin data stored directly: plugins[target_id][plugin_name] = data
-        - Plugin status stored in job.status.plugins or run.status.plugins
-        
-        Args:
-            target_id: Job ID (job_xxx) or Run ID (run_xxx or just the run id)
-            plugin_name: Plugin name
-            data: Plugin data (stored directly, no wrapper)
-        """
+        """Update plugin data for a job or run target."""
         # Determine if this is a run or job target
         is_run_target = target_id.startswith("run_") or (self._run and target_id == self._run.id)
         
@@ -307,8 +235,16 @@ class GlobalStateManager:
             if self._run:
                 # Store directly in RunState.plugins
                 self._run.plugins[plugin_name] = data
+
+                # Store in unified context plugins map
+                self._context._all_plugins.setdefault(run_id, {})[plugin_name] = data
+
+                if self._persistence and hasattr(self._persistence, 'update_plugin_doc'):
+                    try:
+                        self._persistence.update_plugin_doc(run_id, plugin_name, data)
+                    except Exception as e:
+                        self._log("error", "state", f"Failed to update plugin doc: {e}")
                 
-                # Persist run (Session 17: Write-through)
                 if self._persistence and hasattr(self._persistence, 'save_run'):
                     self._persistence.save_run(self._run)
             
@@ -324,8 +260,20 @@ class GlobalStateManager:
             job = self.get_job_by_id(job_id)
             if job:
                 job.plugins[plugin_name] = data
+
+                # Store in unified context plugins map
+                self._context._all_plugins.setdefault(job_id, {})[plugin_name] = data
+
+                if self._persistence and hasattr(self._persistence, 'update_plugin_doc'):
+                    try:
+                        self._persistence.update_plugin_doc(job_id, plugin_name, data)
+                    except Exception as e:
+                        self._log("error", "state", f"Failed to update plugin doc: {e}")
+
+                # Keep current job plugin view in sync
+                if self._context._current_job and self._context._current_job.id == job_id:
+                    self._context._current_plugins = job.plugins
                 
-                # Persist plugin data (Session 17: Write-through)
                 if self._persistence and hasattr(self._persistence, 'save_plugin'):
                     try:
                         plugin_doc = {
@@ -351,19 +299,19 @@ class GlobalStateManager:
         })
     
     def get_job(self, index: int) -> Optional[JobState]:
-        """get job by index (session 17: via context helper)."""
+        """Get job by index."""
         return self._context.get_job_by_index(index)
     
     def get_job_by_id(self, job_id: str) -> Optional[JobState]:
-        """get job by id (session 17: direct dict lookup)."""
+        """Get job by ID."""
         return self._context.get_job(job_id)
     
     def get_all_jobs(self) -> List[JobState]:
-        """get all jobs (session 14: via context)."""
+        """Get all jobs in current run."""
         return self._context.jobs
     
     def complete_job(self, index: int):
-        """Mark job as completed (Session 12)."""
+        """Mark job as completed."""
         job = self.get_job(index)
         if not job:
             raise ValueError(f"Job {index} not found")
@@ -381,16 +329,24 @@ class GlobalStateManager:
         self._log("debug", "job", f"Job {index} completed",
                  success=job.status.success, duration_ms=job.status.duration_ms)
         
+        # Calculate executed/failed from job.status.plugins
+        executed_plugins = []
+        failed_plugins = []
+        for pname, pstatus in job.status.plugins.items():
+            if isinstance(pstatus, dict):
+                if pstatus.get('state') == 'failed' or not pstatus.get('success', True):
+                    failed_plugins.append(pname)
+                elif pstatus.get('state') in ('completed', 'skipped'):
+                    executed_plugins.append(pname)
+        
         event_name = "job.completed" if job.status.success else "job.failed"
         self._emit(event_name, {
             "index": index,
             "success": job.status.success,
             "duration_ms": job.status.duration_ms,
-            "executed_plugins": job.status.executed,
-            "failed_plugins": job.status.failed
+            "executed_plugins": executed_plugins,
+            "failed_plugins": failed_plugins
         })
-    
-    # ==================== PLUGIN DATA ====================
     
     def get_job_plugin_names(self, job_id: str) -> List[str]:
         """
@@ -423,7 +379,6 @@ class GlobalStateManager:
         """
         plugin_names = set()
         
-        # Collect from all jobs (Session 17: via context)
         for job in self._context.jobs:
             if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
                 plugin_names.update(job.plugins.keys())
@@ -469,8 +424,6 @@ class GlobalStateManager:
         # Persist to plugins collection
         if self._persistence and hasattr(self._persistence, 'save_plugin'):
             try:
-                # Construct flat plugin document
-                # Session 17: No PluginData wrapper
                 plugin_doc = {
                     "job_id": job_id,
                     "plugin_name": plugin_name,
@@ -490,9 +443,8 @@ class GlobalStateManager:
             return job.plugins.copy()
         return {}
     
-    # Legacy plugin result method
     def update_plugin_result(self, job_index: int, plugin_name: str, result):
-        """Legacy: Update plugin result for a job."""
+        """Update plugin result for a job."""
         job = self.get_job(job_index)
         if not job:
             raise ValueError(f"Job {job_index} not found")
@@ -507,16 +459,7 @@ class GlobalStateManager:
         # Update job.plugins
         job.plugins[plugin_name] = data
         
-        # Update status
-        success = True
-        if hasattr(result, 'success'):
-            success = result.success
-        
-        if success:
-            job.add_executed(plugin_name)
-        else:
-            job.add_failed(plugin_name)
-        
+                
         # Persist
         if self._persistence:
             if hasattr(self._persistence, 'save_plugin_result'):
@@ -529,15 +472,12 @@ class GlobalStateManager:
     
     def mark_plugin_not_supported(self, job_index: int, plugin_name: str):
         """Mark plugin as skipped."""
-        job = self.get_job(job_index)
-        if job:
-            job.add_skipped(plugin_name)
-            
-            self._emit("plugin.skipped", {
-                "job_index": job_index,
-                "plugin_name": plugin_name,
-                "reason": "not_supported"
-            })
+        # Legacy method - no longer needed with job.status.plugins
+        self._emit("plugin.skipped", {
+            "job_index": job_index,
+            "plugin_name": plugin_name,
+            "reason": "not_supported"
+        })
     
     def add_task_result(self, job_index: int, task_result: Dict[str, Any]):
         """Add task result to job output."""
@@ -554,8 +494,6 @@ class GlobalStateManager:
                 dest = task_result.get('destination')
                 if dest:
                     job.output.values.append(dest)
-    
-    # ==================== TEMPLATE CONTEXT ====================
     
     def build_template_context(self, job_index: int) -> Dict[str, Any]:
         """Build Jinja2 template context from state."""
@@ -575,13 +513,26 @@ class GlobalStateManager:
             "config": self._run.config if self._run else {}
         }
         
+        # Build executed/failed/skipped from job.status.plugins
+        executed = []
+        failed = []
+        skipped = []
+        for pname, pstatus in job.status.plugins.items():
+            if isinstance(pstatus, dict):
+                state = pstatus.get('state', '')
+                if state == 'failed' or not pstatus.get('success', True):
+                    failed.append(pname)
+                elif state == 'skipped':
+                    skipped.append(pname)
+                elif state == 'completed':
+                    executed.append(pname)
+        
         # Job context
         job_context = {
             "index": job.index,
             "id": job.id,
             "input": {
                 "value": job.input.value,
-                "path": job.input.value,  # Legacy alias
                 "data": job.input.data
             },
             "output": {
@@ -590,9 +541,10 @@ class GlobalStateManager:
             },
             "status": {
                 "success": job.status.success,
-                "executed": job.status.executed,
-                "failed": job.status.failed,
-                "skipped": job.status.skipped
+                "executed": executed,
+                "failed": failed,
+                "skipped": skipped,
+                "plugins": job.status.plugins
             },
             "plugins": job.plugins
         }
@@ -602,13 +554,6 @@ class GlobalStateManager:
             "run": run_context,
             "job": job_context,
             "jobs": [self._job_to_context(j) for j in self._context.jobs],
-            
-            # Legacy aliases
-            "globals": run_context,
-            "match_globals": job_context,
-            "match": job_context,
-            
-            # Config access
             "config": self._run.config if self._run else {},
             "options": self._run.config.get('options', {}) if self._run else {}
         }

@@ -63,6 +63,7 @@ class PluginLoader:
             else:
                 # Use validated config with defaults applied
                 plugin_config = validation_result.config
+                self._store_validated_config(plugin_name, plugin_config)
                 self.debugger.debug("loader", "Config validation passed", plugin=plugin_name)
         
         try:
@@ -111,6 +112,15 @@ class PluginLoader:
         except Exception as e:
             self.debugger.error("loader", f"Failed to load plugin", plugin=plugin_name, error=str(e))
             return None
+
+    def _store_validated_config(self, plugin_name: str, validated_config: Dict[str, Any]) -> None:
+        if '_plugins' in self.config and isinstance(self.config.get('_plugins'), dict):
+            existing = self.config['_plugins'].get(plugin_name, {})
+            if not isinstance(existing, dict):
+                existing = {}
+            internal = {k: v for k, v in existing.items() if isinstance(k, str) and k.startswith('_')}
+            merged = {**internal, **{k: v for k, v in validated_config.items() if not str(k).startswith('_')}}
+            self.config['_plugins'][plugin_name] = merged
     
     def load_all(self) -> Dict[str, Any]:
         """Load all enabled plugins"""

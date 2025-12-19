@@ -1,8 +1,4 @@
-"""
-Job Schemas - Aligned with FINAL_DATASETS.yml
-
-Session 11 - Phase 8: Pydantic v2 models for jobs (formerly matches).
-"""
+"""Job Schemas - Pydantic models for jobs."""
 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any

@@ -53,24 +53,38 @@ class Events:
     Event name constants for type safety.
     
     Naming convention: COMPONENT_ACTION
+    
+    Usage:
+        from archiverr.events import Events
+        event_bus.emit(Events.RUN_STARTED, {"run_id": "abc123"})
     """
     
-    # ==================== EXECUTION LIFECYCLE ====================
-    EXECUTION_STARTED = "execution.started"
-    EXECUTION_COMPLETED = "execution.completed"
-    EXECUTION_FAILED = "execution.failed"
+    # ==================== RUN LIFECYCLE ====================
+    RUN_STARTED = "run.started"
+    RUN_COMPLETED = "run.completed"
+    RUN_FAILED = "run.failed"
+    RUN_ERROR = "run.error"
     
-    # ==================== MATCH LIFECYCLE ====================
-    MATCH_STARTED = "match.started"
-    MATCH_COMPLETED = "match.completed"
-    MATCH_FAILED = "match.failed"
+    # ==================== STAGE LIFECYCLE ====================
+    STAGE_STARTED = "stage.started"
+    STAGE_COMPLETED = "stage.completed"
+    STAGE_FAILED = "stage.failed"
+    
+    # ==================== JOB LIFECYCLE ====================
+    JOB_CREATED = "job.created"
+    JOB_STARTED = "job.started"
+    JOB_COMPLETED = "job.completed"
+    JOB_FAILED = "job.failed"
+    JOB_UPDATED = "job.updated"
+    JOB_STAGE_COMPLETED = "job.stage_completed"
     
     # ==================== PLUGIN LIFECYCLE ====================
     PLUGIN_STARTED = "plugin.started"
     PLUGIN_COMPLETED = "plugin.completed"
     PLUGIN_FAILED = "plugin.failed"
-    PLUGIN_SKIPPED = "plugin.skipped"  # Not supported for this match
-    PLUGIN_PROGRESS = "plugin.progress"  # For long-running plugins
+    PLUGIN_SKIPPED = "plugin.skipped"
+    PLUGIN_PROGRESS = "plugin.progress"
+    PLUGIN_UPDATED = "plugin.updated"
     
     # ==================== TASK LIFECYCLE ====================
     TASK_STARTED = "task.started"
@@ -89,6 +103,14 @@ class Events:
     # ==================== VALIDATION ====================
     VALIDATION_PASSED = "validation.passed"
     VALIDATION_FAILED = "validation.failed"
+    
+    # ==================== LEGACY (backward compatibility) ====================
+    EXECUTION_STARTED = "execution.started"
+    EXECUTION_COMPLETED = "execution.completed"
+    EXECUTION_FAILED = "execution.failed"
+    MATCH_STARTED = "match.started"
+    MATCH_COMPLETED = "match.completed"
+    MATCH_FAILED = "match.failed"
 
 
 # Type alias for event handlers

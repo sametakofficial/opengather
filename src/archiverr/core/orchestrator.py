@@ -1,17 +1,5 @@
 """
-Orchestrator - Main execution coordinator
-
-Session 12: Central coordinator for plugin execution.
-
-Responsibilities:
-- Run lifecycle management (start → execute → finalize)
-- 3-stage execution (parse → data → output)
-- Per-run plugin execution (outside stages)
-- Error handling and recovery
-- Event emission for observability
-- Persistence coordination
-
-Note: INPUT stage removed. Input plugins run as per_run mode.
+Orchestrator - Main execution coordinator for plugin execution.
 """
 
 from dataclasses import dataclass, field
@@ -20,7 +8,7 @@ from typing import Dict, Any, Optional, List
 
 from archiverr.state.models import RunState, JobState, StateEnum
 from archiverr.state.manager import GlobalStateManager
-from archiverr.events import EventBus
+from archiverr.events import EventBus, Events
 from archiverr.utils.debug import Debugger, get_debugger
 from archiverr.core.plugins.registry import PluginRegistry, Stage
 from archiverr.core.plugins.stage_executor import StageExecutor
@@ -92,7 +80,6 @@ class Orchestrator:
         5. RunResult is returned
     """
     
-    # Stage execution order (Session 12: 3 stages only)
     STAGES = [Stage.PARSE, Stage.DATA, Stage.OUTPUT]
     
     def __init__(
@@ -122,7 +109,6 @@ class Orchestrator:
         self._config = config
         self._debugger = debugger or get_debugger()
         
-        # Session 12: FS Lock Manager
         self._fs_lock_manager = FSLockManager()
         
         # Runtime state (set during run)
@@ -153,7 +139,6 @@ class Orchestrator:
             # Phase 1: Initialize
             self._initialize()
             
-            # Phase 1.5: Execute per_run plugins (Session 12: before stages)
             self._execute_per_run_plugins()
             
             # Phase 2: Execute stages (per_job plugins)
@@ -205,7 +190,6 @@ class Orchestrator:
                 {"discovered": discovered_count, "enabled": 0}
             )
         
-        # Session 12: Validate fs_lock paths (static paths only)
         manifests = self._plugin_registry.get_all_manifests()
         is_valid, fs_errors = self._fs_lock_manager.validate_all_manifests(manifests)
         
@@ -244,7 +228,7 @@ class Orchestrator:
         )
         
         # Emit run.started event
-        self._event_bus.emit("run.started", {
+        self._event_bus.emit(Events.RUN_STARTED, {
             "run_id": self._run_id,
             "config": self._summarize_config(),
             "plugins": self._plugin_registry.enabled_plugins
@@ -254,12 +238,7 @@ class Orchestrator:
         self._register_event_handlers()
     
     def _execute_per_run_plugins(self) -> None:
-        """
-        Execute per_run plugins (Session 12).
-        
-        Per_run plugins execute once per run, before stages.
-        They typically create jobs (e.g., input/discovery plugins).
-        """
+        """Execute per_run plugins before stages."""
         # Get all loaded plugins and filter for run_mode: per_run
         all_plugins = self._plugin_registry.get_all_plugins()
         per_run_plugins = []
@@ -290,24 +269,8 @@ class Orchestrator:
                     mode="per_run"
                 )
                 
-                # Execute plugin (input plugins create jobs via services.createJob)
-                if hasattr(plugin_instance, 'execute_run'):
-                    result = plugin_instance.execute_run(services)
-                    self._log("info", f"{plugin_name} completed: {result.get('data', {}).get('count', 0)} jobs created")
-                elif hasattr(plugin_instance, 'get_matches'):
-                    # Legacy: some input plugins use get_matches
-                    matches = plugin_instance.get_matches()
-                    self._log("debug", f"{plugin_name} returned {len(matches)} matches")
-                    
-                    # Create jobs from matches
-                    for match in matches:
-                        job_id = self._state.create_job(
-                            input_value=match.get('path', match.get('value', '')),
-                            input_data=match
-                        )
-                        self._log("info", f"Created job: {job_id} from {plugin_name}")
-                
-                self._log("info", f"Per_run plugin {plugin_name} completed")
+                result = plugin_instance.execute_run(services)
+                self._log("info", f"{plugin_name} completed: {result.get('count', 0)} jobs created")
                 
             except Exception as e:
                 self._log("error", f"Per_run plugin {plugin_name} failed: {e}")
@@ -325,7 +288,7 @@ class Orchestrator:
             stage_name = stage.value
             self._log("info", f"Executing stage: {stage_name}")
             
-            self._event_bus.emit("stage.started", {
+            self._event_bus.emit(Events.STAGE_STARTED, {
                 "run_id": self._run_id,
                 "stage": stage_name
             })
@@ -334,7 +297,7 @@ class Orchestrator:
                 self._execute_single_stage(stage)
                 
                 self._stages_completed.append(stage_name)
-                self._event_bus.emit("stage.completed", {
+                self._event_bus.emit(Events.STAGE_COMPLETED, {
                     "run_id": self._run_id,
                     "stage": stage_name
                 })
@@ -343,7 +306,7 @@ class Orchestrator:
             except StageError as e:
                 # Stage failed but continue (best effort)
                 self._stages_failed.append(stage_name)
-                self._event_bus.emit("stage.failed", {
+                self._event_bus.emit(Events.STAGE_FAILED, {
                     "run_id": self._run_id,
                     "stage": stage_name,
                     "error": str(e)
@@ -354,7 +317,7 @@ class Orchestrator:
             except Exception as e:
                 # Unexpected error in stage
                 self._stages_failed.append(stage_name)
-                self._event_bus.emit("stage.failed", {
+                self._event_bus.emit(Events.STAGE_FAILED, {
                     "run_id": self._run_id,
                     "stage": stage_name,
                     "error": str(e)
@@ -380,12 +343,11 @@ class Orchestrator:
         
         - Completes run in state manager
         - Persists final state to database
-        - Saves JSON output (Session 12)
+        - Saves JSON output
         - Emits run.completed event
         """
         self._log("info", f"Finalizing run (success={success})")
         
-        # Session 17: Single global state dump (replaces tasker's save_run_output)
         self._dump_global_state()
         
         # Complete run in state
@@ -396,7 +358,7 @@ class Orchestrator:
         # Will use RunState directly after full migration
         
         # Emit run.completed event
-        self._event_bus.emit("run.completed", {
+        self._event_bus.emit(Events.RUN_COMPLETED, {
             "run_id": self._run_id,
             "success": success,
             "stages_completed": self._stages_completed,
@@ -469,7 +431,7 @@ class Orchestrator:
     
     def _emit_error(self, error: Exception, critical: bool) -> None:
         """Emit error event."""
-        self._event_bus.emit("run.error", {
+        self._event_bus.emit(Events.RUN_ERROR, {
             "run_id": self._run_id,
             "error": str(error),
             "error_type": error.__class__.__name__,
@@ -482,14 +444,7 @@ class Orchestrator:
         log_func("orchestrator", message, **kwargs)
     
     def _dump_global_state(self) -> None:
-        """
-        Session 16: Dump complete global state to output folder.
-        
-        Creates output/run_{run_id}_state.json with:
-        - run: RunState
-        - jobs: All JobState objects
-        - plugins: All plugin data by target_id
-        """
+        """Dump complete global state to output folder."""
         import json
         from pathlib import Path
         from datetime import datetime
@@ -504,7 +459,6 @@ class Orchestrator:
             
             run_dict = run.to_dict() if hasattr(run, 'to_dict') else {}
             
-            # Session 17: Jobs as key-based dict (like plugins)
             jobs_dict = {}
             for job in self._state.get_all_jobs():
                 job_dict = job.to_dict() if hasattr(job, 'to_dict') else {
@@ -518,16 +472,18 @@ class Orchestrator:
                 jobs_dict[job.id] = job_dict
             
             plugins_data = {}
-            if hasattr(self._state, '_plugins_storage'):
-                for target_id, plugins in self._state._plugins_storage.items():
-                    plugins_data[target_id] = {}
-                    for plugin_name, plugin_state in plugins.items():
-                        if hasattr(plugin_state, 'to_dict'):
-                            plugins_data[target_id][plugin_name] = plugin_state.to_dict()
-                        elif hasattr(plugin_state, 'data'):
-                            plugins_data[target_id][plugin_name] = plugin_state.data
-                        else:
-                            plugins_data[target_id][plugin_name] = plugin_state
+            if hasattr(self._state, 'plugins') and isinstance(self._state.plugins, dict):
+                plugins_data = self._state.plugins
+            
+            # Ensure run-level plugin data is included under run_<id>
+            if hasattr(run, 'plugins') and isinstance(run.plugins, dict) and run.plugins:
+                run_target_id = f"run_{run.id}" if not str(run.id).startswith("run_") else str(run.id)
+                plugins_data.setdefault(run_target_id, {}).update(run.plugins)
+            
+            # Ensure each job's plugin data is included under job.id
+            for job in self._state.get_all_jobs():
+                if hasattr(job, 'plugins') and isinstance(job.plugins, dict) and job.plugins:
+                    plugins_data.setdefault(job.id, {}).update(job.plugins)
             
             state_dump = {
                 "dump_type": "global_state",

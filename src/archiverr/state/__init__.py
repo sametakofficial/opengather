@@ -1,15 +1,4 @@
-"""
-State Management Module
-
-Session 11 - Clean state management.
-
-Terminology:
-- RunState (was ExecutionState)
-- JobState (was MatchState)
-- StateEnum (was ExecutionStatus)
-
-Legacy aliases are provided for backward compatibility during transition.
-"""
+"""State Management Module."""
 
 from .manager import StateManager, GlobalStateManager
 from .models import (
@@ -23,10 +12,6 @@ from .models import (
 )
 from .context import ExecutionContext
 
-# Legacy aliases - will be removed after test migration
-ExecutionStatus = StateEnum  # Legacy: use StateEnum
-MatchState = JobState        # Legacy: use JobState
-ExecutionState = RunState    # Legacy: use RunState
 
 # PluginResult re-export for backward compatibility
 try:
@@ -61,7 +46,6 @@ except ImportError:
             }
 
 __all__ = [
-    # New API
     'StateManager',
     'GlobalStateManager',
     'ExecutionContext',
@@ -72,10 +56,5 @@ __all__ = [
     'RunStatus',
     'JobState',
     'RunState',
-    
-    # Legacy aliases (deprecated)
-    'ExecutionStatus',
-    'MatchState',
-    'ExecutionState',
     'PluginResult',
 ]

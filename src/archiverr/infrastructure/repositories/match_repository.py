@@ -1,7 +1,7 @@
 """
-Match Repository
+Job Repository
 
-Repository for MatchState persistence operations.
+Repository for JobState persistence operations.
 """
 
 from typing import List, Optional, Dict, Any

@@ -65,6 +65,7 @@ class PyMongoPersistence(PersistenceInterface):
     RUNS = "runs"
     JOBS = "jobs"
     PLUGINS = "plugins"
+    PLUGIN_DOCS = "plugin_docs"
     
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
@@ -134,7 +135,7 @@ class PyMongoPersistence(PersistenceInterface):
             logger.debug("PyMongo connection closed")
     
     def _create_indexes(self) -> None:
-        """Create database indexes (Session 12 - CLEAN!)."""
+        """Create database indexes."""
         # Runs indexes
         self._db[self.RUNS].create_index("started_at")
         self._db[self.RUNS].create_index([("status", 1), ("started_at", -1)])
@@ -145,22 +146,16 @@ class PyMongoPersistence(PersistenceInterface):
         # Note: (run_id, index) unique index created in _create_new_indexes()
         # _id is already unique by default!
         
-        # Plugins indexes (ALL plugin data here!)
-        self._db[self.PLUGINS].create_index(
-            [("run_id", 1), ("job_id", 1), ("plugin_name", 1)],
-            unique=True
-        )
+        # Plugins indexes - SESSION 16V2: Target-based schema
+        # Legacy collection kept for backward compatibility during migration
         self._db[self.PLUGINS].create_index("run_id")
         self._db[self.PLUGINS].create_index("job_id")
-        self._db[self.PLUGINS].create_index("plugin_name")
-        self._db[self.PLUGINS].create_index("stage")
+
+        # Plugin docs indexes (_id is target_id, unique by default)
+        self._db[self.PLUGIN_DOCS].create_index("created_at")
+        self._db[self.PLUGIN_DOCS].create_index("updated_at")
         
-        # Create new collection indexes (Session 11)
         self._create_new_indexes()
-    
-    # =========================================================================
-    # NEW METHODS (Session 11 - FINAL_DATASETS.yml compliant)
-    # =========================================================================
     
     def save_run(self, run: Dict[str, Any]) -> None:
         """Save or update run state."""
@@ -237,6 +232,29 @@ class PyMongoPersistence(PersistenceInterface):
         except OperationFailure as e:
             logger.error(f"Failed to save plugin: {e}")
             raise
+
+    def update_plugin_doc(self, target_id: str, plugin_name: str, data: Dict[str, Any]) -> None:
+        """Update target-level plugin document."""
+        if not target_id:
+            raise ValueError("target_id is required")
+        if not plugin_name:
+            raise ValueError("plugin_name is required")
+
+        self._db[self.PLUGIN_DOCS].update_one(
+            {"_id": target_id},
+            {
+                "$set": {plugin_name: data or {}},
+                "$setOnInsert": {"created_at": datetime.utcnow()},
+                "$currentDate": {"updated_at": True}
+            },
+            upsert=True
+        )
+
+    def get_plugin_doc(self, target_id: str) -> Optional[Dict[str, Any]]:
+        """Get target-level plugin document by target_id."""
+        if not target_id:
+            return None
+        return self._db[self.PLUGIN_DOCS].find_one({"_id": target_id})
     
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Get run by ID."""
@@ -276,7 +294,7 @@ class PyMongoPersistence(PersistenceInterface):
         return result.deleted_count > 0
     
     def _create_new_indexes(self) -> None:
-        """Create indexes for new collections (Session 11)."""
+        """Create indexes for collections."""
         try:
             # runs indexes
             self._db[self.RUNS].create_index("id", unique=True)

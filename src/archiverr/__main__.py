@@ -1,17 +1,4 @@
-"""
-Archiverr - Config-Driven Media Organizer
-
-Session 11 Architecture - 4-Stage Plugin System:
-  INPUT  → File discovery (per_run)
-  PARSE  → Filename parsing (per_job)
-  DATA   → External data fetching (per_job)
-  OUTPUT → Output generation (per_job)
-
-Usage:
-    python -m archiverr           # CLI mode (default)
-    python -m archiverr serve     # API server mode
-    python -m archiverr serve --port 8080 --reload
-"""
+"""Archiverr - Config-Driven Media Organizer."""
 import sys
 from pathlib import Path
 
@@ -57,15 +44,7 @@ def serve_api(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
 
 
 def cli_main(config_file: str = "config.yml"):
-    """
-    CLI entry point - Session 11 architecture.
-    
-    Uses Orchestrator for 4-stage execution:
-    1. INPUT: File discovery (scanner) - per_run
-    2. PARSE: Filename parsing (renamer) - per_job
-    3. DATA: External data fetching (tmdb, tvdb) - per_job
-    4. OUTPUT: Output generation (tasker) - per_job
-    """
+    """CLI entry point."""
     from archiverr.core.orchestrator import build_orchestrator
     
     config_path = Path(config_file)
@@ -102,7 +81,7 @@ def cli_main(config_file: str = "config.yml"):
             sys.exit(1)
         debugger.debug("config", "Configuration validated")
     
-    debugger.info("system", "Archiverr starting (Session 11 - 4-stage architecture)")
+    debugger.info("system", "Archiverr starting")
     
     try:
         # Build orchestrator with all dependencies

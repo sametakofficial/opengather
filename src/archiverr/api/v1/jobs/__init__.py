@@ -1,4 +1,4 @@
-"""Jobs API - Session 11 Phase 8"""
+"""Jobs API."""
 from .router import router
 from .schemas import JobResponse, JobListResponse, JobStatus, JobPluginResponse
 

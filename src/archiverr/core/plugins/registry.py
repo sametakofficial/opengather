@@ -181,22 +181,33 @@ class PluginRegistry:
             stages={s.value: len(p) for s, p in self._plugins_by_stage.items() if p}
         )
     
-    def _determine_stage(self, manifest: Dict[str, Any]) -> Stage:
+    def _determine_stage(self, manifest: Dict[str, Any]) -> Optional[Stage]:
         """
         Determine plugin stage from manifest.
         
         Priority:
         1. Explicit 'stage' field (new format)
         2. Infer from 'category' field (legacy)
-        3. Default to OUTPUT
+        3. Default to PARSE
+        
+        Returns None for input stage plugins (they run as per_run, not in stages).
         """
         # New format: explicit stage
         stage_str = manifest.get('stage')
         if stage_str:
+            # Input stage plugins don't belong in _plugins_by_stage
+            # They run via orchestrator._execute_per_run_plugins()
+            if stage_str == 'input':
+                return None
             try:
                 return Stage(stage_str)
             except ValueError:
                 pass
+        
+        # Check category for input plugins
+        category = manifest.get('category')
+        if category == 'input':
+            return None
         
         # Legacy: Default to PARSE if not specified
         # Session 12: All plugins should have explicit stage in manifest

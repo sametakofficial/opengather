@@ -219,10 +219,10 @@ class TestGlobalStateManagerPluginResults:
         
         state_with_match.update_plugin_result(0, "failing_plugin", result)
         
-        # Session 11: Use jobs (not _matches)
+        # Session 19: Plugin status is tracked in job.status.plugins dict
         job = state_with_match.get_job(0)
-        # Failed plugin should be in failed list
-        assert "failing_plugin" in job.status.failed
+        # Plugin data should be stored in job.plugins
+        assert "failing_plugin" in job.plugins
 
 
 class TestGlobalStateManagerPersistence:

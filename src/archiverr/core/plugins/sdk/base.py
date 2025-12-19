@@ -22,20 +22,7 @@ class ValidationResult:
 
 
 class BasePlugin(ABC):
-    """
-    Base class for all plugins.
-    
-    Plugins should:
-    1. Inherit from InputPlugin or OutputPlugin
-    2. Implement execute() method
-    3. Use context for logging, events, and task emission
-    
-    Example:
-        class MyPlugin(OutputPlugin):
-            async def execute(self, match_data: Dict) -> PluginResult:
-                self.log("info", "Processing...")  # Uses context internally
-                return PluginResult(success=True, data={...})
-    """
+    """Base class for all plugins."""
     
     def __init__(self, config: Dict[str, Any]):
         """
@@ -215,16 +202,7 @@ class BasePlugin(ABC):
 
 
 class InputPlugin(BasePlugin):
-    """
-    Base class for input plugins.
-    
-    Input plugins collect targets to process (files, URLs, etc.)
-    
-    Example:
-        class ScannerPlugin(InputPlugin):
-            def execute(self) -> List[Dict[str, Any]]:
-                return [{"status": {...}, "input": {"path": "/path/to/file.mkv"}}]
-    """
+    """Base class for input plugins (per_run mode)."""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -242,16 +220,7 @@ class InputPlugin(BasePlugin):
 
 
 class OutputPlugin(BasePlugin):
-    """
-    Base class for output plugins.
-    
-    Output plugins process individual matches and add data.
-    
-    Example:
-        class TMDbPlugin(OutputPlugin):
-            def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
-                return {"status": {...}, "movie": {...}}
-    """
+    """Base class for output plugins (per_job mode)."""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)

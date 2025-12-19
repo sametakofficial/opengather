@@ -1,8 +1,4 @@
-"""
-Run Schemas - Aligned with FINAL_DATASETS.yml
-
-Session 11 - Phase 8: Pydantic v2 models for runs.
-"""
+"""Run Schemas - Pydantic models for runs."""
 
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any

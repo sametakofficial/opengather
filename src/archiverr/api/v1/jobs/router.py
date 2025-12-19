@@ -1,9 +1,4 @@
-"""
-Jobs API Router - Session 11 Phase 8
-
-Replaces /matches with /jobs terminology.
-Async endpoints using Motor MongoDB driver.
-"""
+"""Jobs API Router."""
 
 from datetime import datetime, timezone
 from typing import Optional, List

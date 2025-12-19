@@ -3,7 +3,7 @@ Scanner Plugin - File/Directory Discovery
 
 Per-run input plugin that discovers media files from configured targets.
 """
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
 from archiverr.core.plugins.sdk import InputPlugin
@@ -18,6 +18,13 @@ class ScannerPlugin(InputPlugin):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.name = "scanner"
+    
+    def execute(self) -> List[Dict[str, Any]]:
+        """
+        Abstract method implementation - not used directly.
+        Scanner uses execute_run() which is called by orchestrator.
+        """
+        raise NotImplementedError("Scanner uses execute_run() instead")
     
     def execute_run(self, services: Any) -> Dict[str, Any]:
         """Execute scanner - discovers files and creates jobs."""

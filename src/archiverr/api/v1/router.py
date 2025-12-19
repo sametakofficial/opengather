@@ -1,15 +1,4 @@
-"""
-API v1 Main Router
-
-Session 15 - Cleaned up (removed legacy endpoints)
-
-Endpoints:
-- /runs - Run management
-- /jobs - Job management  
-- /plugins - Plugin information
-- /run - Execute archiverr
-- /system - Health and status
-"""
+"""API v1 Main Router."""
 
 from fastapi import APIRouter
 
@@ -41,7 +30,6 @@ def system_info():
         "name": "Archiverr API",
         "version": "1.2.0",
         "api_version": "v1",
-        "session": "15 - Permission-free, cleaned up",
         "endpoints": {
             "runs": "/v1/runs",
             "jobs": "/v1/jobs",

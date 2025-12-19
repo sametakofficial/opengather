@@ -1,11 +1,4 @@
-"""
-execution context - unified job and plugin state container
-
-consolidates job, jobs, plugin, plugins into single context object.
-reduces 6 global state objects to 3.
-
-Session 17: Changed _jobs from List to Dict (key-based like plugins).
-"""
+"""Execution context - unified job and plugin state container."""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -15,14 +8,7 @@ from .models import JobState
 
 @dataclass
 class ExecutionContext:
-    """
-    unified execution context for job-level state.
-    
-    replaces separate job, jobs, plugin, plugins objects with single unified container.
-    provides clear read-only vs read-write boundaries.
-    
-    Session 17: jobs is now key-based Dict[job_id, JobState] like plugins.
-    """
+    """Unified execution context for job-level state."""
     
     _current_job: Optional[JobState] = None
     _jobs: Dict[str, JobState] = field(default_factory=dict)
@@ -48,7 +34,7 @@ class ExecutionContext:
     
     @property
     def jobs_dict(self) -> Dict[str, JobState]:
-        """all jobs as key-based dict (Session 17)."""
+        """All jobs as key-based dict."""
         return self._jobs
     
     @property
@@ -71,11 +57,11 @@ class ExecutionContext:
         self._current_plugins = {}
     
     def add_job(self, job: JobState) -> None:
-        """add job to jobs dict (Session 17: key-based)."""
+        """Add job to jobs dict."""
         self._jobs[job.id] = job
     
     def get_job(self, job_id: str) -> Optional[JobState]:
-        """get job by id (Session 17)."""
+        """Get job by ID."""
         return self._jobs.get(job_id)
     
     def get_job_by_index(self, index: int) -> Optional[JobState]:

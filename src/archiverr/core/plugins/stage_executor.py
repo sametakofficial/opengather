@@ -18,7 +18,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from archiverr.state.models import JobState, RunState
-from archiverr.events import EventBus
+from archiverr.events import EventBus, Events
 from archiverr.utils.debug import Debugger, get_debugger
 from archiverr.core.exceptions import StageError, PluginError
 from archiverr.core.services.plugin_services import PluginServices
@@ -181,7 +181,15 @@ class StageExecutor:
                 if hasattr(plugin, 'execute_run'):
                     result = plugin.execute_run(services)
                 elif hasattr(plugin, 'get_matches'):
-                    # Legacy: input plugins use get_matches
+                    # Legacy: input plugins use get_matches (guarded)
+                    allow_legacy = bool(self._config.get('options', {}).get('allow_legacy_get_matches', False))
+                    if not allow_legacy:
+                        self._log(
+                            "warn",
+                            f"Plugin {plugin_name} has legacy get_matches() but legacy mode is disabled",
+                            hint="Enable options.allow_legacy_get_matches to allow this"
+                        )
+                        continue
                     matches = plugin.get_matches()
                     result = self._create_jobs_from_matches(matches)
                 else:
@@ -248,7 +256,7 @@ class StageExecutor:
                     self._execute_plugin_for_job(group[0], job, stage)
             
             # Emit job stage progress
-            self._event_bus.emit("job.stage_completed", {
+            self._event_bus.emit(Events.JOB_STAGE_COMPLETED, {
                 "job_id": job.id,
                 "stage": stage.value
             })
@@ -658,7 +666,7 @@ class StageExecutor:
         if hasattr(self._state, 'get_all_jobs'):
             return self._state.get_all_jobs()
         elif hasattr(self._state, '_matches'):
-            # Legacy: convert MatchState to JobState-like
+            # Fallback for older state manager implementations
             return list(self._state._matches.values())
         return []
     
@@ -701,32 +709,42 @@ class StageExecutor:
         }
     
     def _mark_executed(self, job: JobState, plugin_name: str, success: bool) -> None:
-        """Mark plugin as executed in job status"""
-        if success:
-            if hasattr(job, 'add_executed'):
-                job.add_executed(plugin_name)
-            elif hasattr(job.status, 'executed'):
-                if plugin_name not in job.status.executed:
-                    job.status.executed.append(plugin_name)
-        else:
+        """Mark plugin as executed in job.status.plugins."""
+        if not success:
             self._mark_failed(job, plugin_name)
+            return
+        
+        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
+            job.status.plugins = {}
+        
+        if plugin_name not in job.status.plugins:
+            job.status.plugins[plugin_name] = {'state': 'completed', 'success': True}
+        else:
+            job.status.plugins[plugin_name]['state'] = 'completed'
+            job.status.plugins[plugin_name]['success'] = True
     
     def _mark_failed(self, job: JobState, plugin_name: str) -> None:
-        """Mark plugin as failed in job status"""
-        if hasattr(job, 'add_failed'):
-            job.add_failed(plugin_name)
-        elif hasattr(job.status, 'failed'):
-            if plugin_name not in job.status.failed:
-                job.status.failed.append(plugin_name)
-            job.status.success = False
+        """Mark plugin as failed in job.status.plugins."""
+        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
+            job.status.plugins = {}
+        
+        if plugin_name not in job.status.plugins:
+            job.status.plugins[plugin_name] = {'state': 'failed', 'success': False}
+        else:
+            job.status.plugins[plugin_name]['state'] = 'failed'
+            job.status.plugins[plugin_name]['success'] = False
+        
+        job.status.success = False
     
     def _mark_skipped(self, job: JobState, plugin_name: str) -> None:
-        """Mark plugin as skipped in job status"""
-        if hasattr(job, 'add_skipped'):
-            job.add_skipped(plugin_name)
-        elif hasattr(job.status, 'skipped'):
-            if plugin_name not in job.status.skipped:
-                job.status.skipped.append(plugin_name)
+        """Mark plugin as skipped in job.status.plugins."""
+        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
+            job.status.plugins = {}
+        
+        if plugin_name not in job.status.plugins:
+            job.status.plugins[plugin_name] = {'state': 'skipped', 'success': True}
+        else:
+            job.status.plugins[plugin_name]['state'] = 'skipped'
     
     def _calc_duration(self, start_time: datetime) -> int:
         """Calculate duration in milliseconds"""
@@ -755,7 +773,7 @@ class StageExecutor:
         if job_id:
             event_data["job_id"] = job_id
         
-        self._event_bus.emit("plugin.completed", event_data)
+        self._event_bus.emit(Events.PLUGIN_COMPLETED, event_data)
     
     def _emit_plugin_failed(
         self,
@@ -775,7 +793,7 @@ class StageExecutor:
         if job_id:
             event_data["job_id"] = job_id
         
-        self._event_bus.emit("plugin.failed", event_data)
+        self._event_bus.emit(Events.PLUGIN_FAILED, event_data)
     
     def _log(self, level: str, message: str, **kwargs) -> None:
         """Log message with debugger"""

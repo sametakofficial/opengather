@@ -1,4 +1,4 @@
-"""Plugins API - Session 11 Phase 8"""
+"""Plugins API."""
 from .router import router
 from .schemas import PluginInfo, PluginData, PluginListResponse
 

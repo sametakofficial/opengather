@@ -166,11 +166,9 @@ class StateServiceImpl:
         if hasattr(self._manager, '_run') and self._manager._run:
             return self._manager._run
         
-        # Try legacy-style manager
+        # Fallback for older manager implementations
         if hasattr(self._manager, '_execution') and self._manager._execution:
-            # Convert ExecutionState to RunState-like object
-            exec_state = self._manager._execution
-            return exec_state
+            return self._manager._execution
         
         raise RuntimeError("No active run")
     

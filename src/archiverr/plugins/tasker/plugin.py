@@ -103,14 +103,14 @@ class TaskerPlugin:
         
         # Write to job.output via services (Session 12 pattern)
         if output_values:
-            services.updateJob("output.values", output_values)
+            services.update_job(key="output.values", value=output_values)
         
         if task_results:
             # Store task results in output.data under 'tasks' key
-            services.updateJob("output.data", {"tasks": task_results})
+            services.update_job(key="output.data", value={"tasks": task_results})
         
         # Also store in plugin data (plugin.tasker.data)
-        services.updatePlugin({
+        services.update_plugin(data={
             "tasks": task_results,
             "output_values": output_values
         })

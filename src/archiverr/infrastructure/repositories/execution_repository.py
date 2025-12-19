@@ -1,7 +1,7 @@
 """
-Execution Repository
+Run Repository
 
-Repository for ExecutionState persistence operations.
+Repository for RunState persistence operations.
 """
 
 from typing import List, Optional, Dict, Any
@@ -31,7 +31,7 @@ class ExecutionRepository(BaseRepository):
         Save execution state.
         
         Args:
-            execution: ExecutionState object
+            execution: RunState object
         """
         self._persistence.save_run(execution)
     

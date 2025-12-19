@@ -1,9 +1,4 @@
-"""
-Runs API Router - Session 11 Phase 8
-
-Replaces /executions with /runs terminology.
-Async endpoints using Motor MongoDB driver.
-"""
+"""Runs API Router."""
 
 from datetime import datetime, timezone
 from typing import Optional
