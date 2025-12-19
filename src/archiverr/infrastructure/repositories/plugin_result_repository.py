@@ -4,7 +4,7 @@ Plugin Result Repository
 Repository for plugin result persistence operations.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 from ..database.interface import PersistenceInterface
 from .base import BaseRepository
@@ -16,7 +16,7 @@ class PluginResultRepository(BaseRepository):
     
     Wraps PersistenceInterface for plugin result operations.
     """
-    
+
     def __init__(self, persistence: PersistenceInterface):
         """
         Initialize repository.
@@ -25,8 +25,8 @@ class PluginResultRepository(BaseRepository):
             persistence: Persistence backend
         """
         self._persistence = persistence
-    
-    def save(self, result: Dict[str, Any]) -> None:
+
+    def save(self, result: dict[str, Any]) -> None:
         """
         Save plugin result.
         
@@ -54,16 +54,16 @@ class PluginResultRepository(BaseRepository):
             plugin_doc["status"] = result["status"]
 
         self._persistence.save_plugin(plugin_doc)
-    
+
     def save_result(
         self,
         job_id: str,
         plugin_name: str,
-        data: Dict[str, Any],
-        run_id: Optional[str] = None,
-        job_index: Optional[int] = None,
-        stage: Optional[str] = None,
-        status: Optional[Dict[str, Any]] = None
+        data: dict[str, Any],
+        run_id: str | None = None,
+        job_index: int | None = None,
+        stage: str | None = None,
+        status: dict[str, Any] | None = None
     ) -> None:
         """
         Save plugin result with explicit parameters.
@@ -73,7 +73,7 @@ class PluginResultRepository(BaseRepository):
             plugin_name: Plugin name
             data: Plugin result data
         """
-        doc: Dict[str, Any] = {
+        doc: dict[str, Any] = {
             "job_id": job_id,
             "plugin_name": plugin_name,
             "data": data,
@@ -87,8 +87,8 @@ class PluginResultRepository(BaseRepository):
         if status is not None:
             doc["status"] = status
         self._persistence.save_plugin(doc)
-    
-    def get_by_id(self, result_id: str) -> Optional[Dict[str, Any]]:
+
+    def get_by_id(self, result_id: str) -> dict[str, Any] | None:
         """
         Get plugin result by ID.
         
@@ -111,10 +111,10 @@ class PluginResultRepository(BaseRepository):
                         "plugin_name": plugin_name,
                         "data": doc.get("data", {}),
                     }
-        
+
         return None
-    
-    def get_all(self) -> List[Dict[str, Any]]:
+
+    def get_all(self) -> list[dict[str, Any]]:
         """
         Get all plugin results.
         
@@ -124,7 +124,7 @@ class PluginResultRepository(BaseRepository):
             List of plugin result dicts
         """
         return []
-    
+
     def delete(self, result_id: str) -> bool:
         """
         Delete plugin result.
@@ -137,12 +137,12 @@ class PluginResultRepository(BaseRepository):
         """
         # Not implemented for current backends
         return False
-    
+
     def get_for_match(
         self,
         execution_id: str,
         match_index: int
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """
         Get all plugin results for a match.
         
@@ -154,8 +154,8 @@ class PluginResultRepository(BaseRepository):
             Dict of plugin_name -> data
         """
         raise NotImplementedError("Use job-based plugin queries instead")
-    
-    def get_by_plugin(self, plugin_name: str) -> List[Dict[str, Any]]:
+
+    def get_by_plugin(self, plugin_name: str) -> list[dict[str, Any]]:
         """
         Get all results for a specific plugin.
         
@@ -167,13 +167,13 @@ class PluginResultRepository(BaseRepository):
         """
         all_results = self.get_all()
         return [r for r in all_results if r.get("plugin_name") == plugin_name]
-    
+
     def get_plugin_data(
         self,
         execution_id: str,
         match_index: int,
         plugin_name: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get specific plugin data for a match.
         

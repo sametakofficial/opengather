@@ -20,18 +20,11 @@ This pattern:
 """
 
 from typing import Annotated, Any
+
 from fastapi import Depends
 
-from .database import (
-    get_async_db,
-    get_sync_db,
-    get_database,
-    close_connections
-)
-from .common import (
-    AsyncPersistenceWrapper,
-    get_persistence
-)
+from .common import AsyncPersistenceWrapper, get_persistence
+from .database import close_connections, get_async_db, get_database, get_sync_db
 
 # ============================================================================
 # ANNOTATED DEPENDENCIES (Modern FastAPI Pattern)
@@ -61,7 +54,7 @@ __all__ = [
     'SyncDbDep',
     # Legacy function-based dependencies
     'get_async_db',
-    'get_sync_db', 
+    'get_sync_db',
     'get_database',
     'close_connections',
     # Persistence

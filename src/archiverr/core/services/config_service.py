@@ -4,7 +4,7 @@ Config Service Implementation
 Provides read-only access to configuration for plugins.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 
 class ConfigServiceImpl:
@@ -13,8 +13,8 @@ class ConfigServiceImpl:
     
     Provides read-only access to configuration with dot-notation support.
     """
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         """
         Initialize config service.
         
@@ -22,7 +22,7 @@ class ConfigServiceImpl:
             config: Full config dictionary
         """
         self._config = config
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get config value using dot notation.
@@ -41,7 +41,7 @@ class ConfigServiceImpl:
         """
         keys = key.split('.')
         value = self._config
-        
+
         for k in keys:
             if isinstance(value, dict):
                 value = value.get(k)
@@ -49,10 +49,10 @@ class ConfigServiceImpl:
                 return default
             if value is None:
                 return default
-        
+
         return value
-    
-    def get_plugin(self, plugin_name: str) -> Dict[str, Any]:
+
+    def get_plugin(self, plugin_name: str) -> dict[str, Any]:
         """
         Get plugin configuration.
         
@@ -63,7 +63,7 @@ class ConfigServiceImpl:
             Plugin config dict or empty dict
         """
         return self._config.get(plugin_name, {})
-    
+
     def get_option(self, option: str, default: Any = None) -> Any:
         """
         Get from options section.
@@ -78,7 +78,7 @@ class ConfigServiceImpl:
             Option value or default
         """
         return self._config.get('options', {}).get(option, default)
-    
+
     def get_alias(self, alias: str) -> str:
         """
         Get alias definition.
@@ -90,8 +90,8 @@ class ConfigServiceImpl:
             Alias path or empty string
         """
         return self._config.get('aliases', {}).get(alias, '')
-    
-    def get_all(self) -> Dict[str, Any]:
+
+    def get_all(self) -> dict[str, Any]:
         """
         Get full config dict.
         
@@ -101,18 +101,18 @@ class ConfigServiceImpl:
             Full config dictionary (read-only copy)
         """
         return self._config.copy()
-    
+
     @property
-    def config(self) -> Dict[str, Any]:
+    def config(self) -> dict[str, Any]:
         """Get full config dict (read-only copy)."""
         return self._config.copy()
-    
+
     @property
-    def options(self) -> Dict[str, Any]:
+    def options(self) -> dict[str, Any]:
         """Get options section."""
         return self._config.get('options', {})
-    
+
     @property
-    def aliases(self) -> Dict[str, str]:
+    def aliases(self) -> dict[str, str]:
         """Get aliases section."""
         return self._config.get('aliases', {})

@@ -1,5 +1,5 @@
 """Jobs API."""
 from .router import router
-from .schemas import JobResponse, JobListResponse, JobStatus, JobPluginResponse
+from .schemas import JobListResponse, JobPluginResponse, JobResponse, JobStatus
 
 __all__ = ['router', 'JobResponse', 'JobListResponse', 'JobStatus', 'JobPluginResponse']

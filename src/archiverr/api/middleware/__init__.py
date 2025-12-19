@@ -7,6 +7,6 @@ Contains:
 - Error Handling
 """
 
-from .rate_limit import RateLimitMiddleware, RateLimiter
+from .rate_limit import RateLimiter, RateLimitMiddleware
 
 __all__ = ["RateLimitMiddleware", "RateLimiter"]

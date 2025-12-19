@@ -1,7 +1,7 @@
 """
 Alias resolution for template context.
 
-Session 11 - Phase 6: Template shorthand support.
+- Phase 6: Template shorthand support.
 
 Aliases allow users to define shortcuts for template access:
     aliases:
@@ -18,13 +18,12 @@ Priority (high to low):
 4. System aliases (job, run, options)
 """
 
-from typing import Dict, Any, List, Optional
-
+from typing import Any
 
 # System-injected aliases - always available, cannot be overridden
 # TRUTH SOURCE: HUMAN/FINAL_DATASETS.yml default_aliases.system
 # EXACTLY 8 aliases - NO MORE, NO LESS
-SYSTEM_ALIASES: Dict[str, str] = {
+SYSTEM_ALIASES: dict[str, str] = {
     'run': 'run',            # Run state
     'job': 'job',            # Current job state
     'jobs': 'jobs',          # All jobs list
@@ -38,7 +37,7 @@ SYSTEM_ALIASES: Dict[str, str] = {
 # NO SHORT ALIASES PROVIDED BY SYSTEM
 # Users define their own aliases in config.aliases
 # See FINAL_DATASETS.yml default_aliases.user: config.aliases
-SHORT_ALIASES: Dict[str, str] = {}
+SHORT_ALIASES: dict[str, str] = {}
 
 
 class AliasResolver:
@@ -56,8 +55,8 @@ class AliasResolver:
         context = resolver.build_context({"job": {...}})
         # context["m"] = job.plugins.tmdb.movie value
     """
-    
-    def __init__(self, user_aliases: Dict[str, str] = None):
+
+    def __init__(self, user_aliases: dict[str, str] = None):
         """
         Initialize resolver with user-defined aliases.
         
@@ -65,7 +64,7 @@ class AliasResolver:
             user_aliases: Dict of alias -> path mappings from config.aliases
         """
         self._user_aliases = user_aliases or {}
-        
+
         # Validate user aliases don't override system aliases
         for alias in self._user_aliases:
             if alias in SYSTEM_ALIASES:
@@ -73,7 +72,7 @@ class AliasResolver:
                 warnings.warn(
                     f"Alias '{alias}' shadows a system alias and will be ignored"
                 )
-    
+
     def resolve(self, alias: str) -> str:
         """
         Resolve an alias to its full path.
@@ -92,19 +91,19 @@ class AliasResolver:
         # Check user aliases first (highest priority)
         if alias in self._user_aliases:
             return self._user_aliases[alias]
-        
+
         # Check short aliases
         if alias in SHORT_ALIASES:
             return SHORT_ALIASES[alias]
-        
+
         # Check system aliases
         if alias in SYSTEM_ALIASES:
             return SYSTEM_ALIASES[alias]
-        
+
         # No alias found, return as-is
         return alias
-    
-    def build_context(self, base_context: Dict[str, Any]) -> Dict[str, Any]:
+
+    def build_context(self, base_context: dict[str, Any]) -> dict[str, Any]:
         """
         Build template context with aliases injected.
         
@@ -124,27 +123,27 @@ class AliasResolver:
             # context["j"] == base["job"]
         """
         context = base_context.copy()
-        
+
         # Inject user aliases
         for alias, path in self._user_aliases.items():
             # Skip if would override system alias
             if alias in SYSTEM_ALIASES:
                 continue
-            
+
             value = self._get_value_by_path(base_context, path)
             if value is not None:
                 context[alias] = value
-        
+
         # Inject short aliases (if not overridden by user)
         for alias, path in SHORT_ALIASES.items():
             if alias not in context and alias not in self._user_aliases:
                 value = self._get_value_by_path(base_context, path)
                 if value is not None:
                     context[alias] = value
-        
+
         return context
-    
-    def _get_value_by_path(self, context: Dict[str, Any], path: str) -> Any:
+
+    def _get_value_by_path(self, context: dict[str, Any], path: str) -> Any:
         """
         Get value from context using dot notation path.
         
@@ -157,10 +156,10 @@ class AliasResolver:
         """
         if not path:
             return None
-        
+
         parts = path.split('.')
         current = context
-        
+
         for part in parts:
             if isinstance(current, dict):
                 if part in current:
@@ -176,10 +175,10 @@ class AliasResolver:
                     return None
             else:
                 return None
-        
+
         return current
-    
-    def get_all_aliases(self) -> Dict[str, str]:
+
+    def get_all_aliases(self) -> dict[str, str]:
         """
         Get all available aliases (user + short + system).
         
@@ -187,21 +186,21 @@ class AliasResolver:
             Dict of alias -> path mappings
         """
         all_aliases = {}
-        
+
         # Add in reverse priority order (so higher priority overwrites)
         all_aliases.update(SYSTEM_ALIASES)
         all_aliases.update(SHORT_ALIASES)
         all_aliases.update(self._user_aliases)
-        
+
         return all_aliases
-    
+
     @property
-    def user_aliases(self) -> Dict[str, str]:
+    def user_aliases(self) -> dict[str, str]:
         """Get user-defined aliases."""
         return self._user_aliases.copy()
 
 
-def create_alias_resolver(config: Dict[str, Any]) -> AliasResolver:
+def create_alias_resolver(config: dict[str, Any]) -> AliasResolver:
     """
     Create AliasResolver from config.
     
@@ -216,7 +215,7 @@ def create_alias_resolver(config: Dict[str, Any]) -> AliasResolver:
         resolver = create_alias_resolver(config)
     """
     user_aliases = config.get('aliases', {})
-    
+
     # Validate alias format
     validated = {}
     for alias, path in user_aliases.items():
@@ -225,7 +224,7 @@ def create_alias_resolver(config: Dict[str, Any]) -> AliasResolver:
             warnings.warn(f"Invalid alias definition: {alias}={path}")
             continue
         validated[alias] = path
-    
+
     return AliasResolver(validated)
 
 
@@ -247,12 +246,12 @@ def expand_alias_in_path(path: str, resolver: AliasResolver) -> str:
     """
     if not path:
         return path
-    
+
     parts = path.split('.', 1)
     first = parts[0]
-    
+
     resolved = resolver.resolve(first)
-    
+
     if len(parts) == 1:
         return resolved
     else:

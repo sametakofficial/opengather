@@ -5,24 +5,24 @@ TMDb Response Normalizer
 Converts RAW TMDb API responses to standardized normalized format.
 Uses normalized_schema.json for field mappings.
 """
-from typing import Dict, Any, List, Optional
 import json
 import os
+from typing import Any
 
 
 class TMDbNormalizer:
     """Normalize TMDb API responses to community standard format"""
-    
+
     def __init__(self):
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.json')
-        with open(schema_path, 'r') as f:
+        with open(schema_path) as f:
             self.schema = json.load(f)
-    
-    def normalize_movie(self, movie_data: Dict[str, Any], extras: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    def normalize_movie(self, movie_data: dict[str, Any], extras: dict[str, Any] = None) -> dict[str, Any]:
         """Normalize movie response"""
         if not movie_data:
             return {}
-        
+
         normalized = {
             'media_type': 'movie',
             'identifiers': {
@@ -57,29 +57,29 @@ class TMDbNormalizer:
                 'backdrop': movie_data.get('backdrop_path')
             }
         }
-        
+
         # Add extras if provided
         if extras:
             if extras.get('movie_credits'):
                 normalized['people'] = self._normalize_credits(extras['movie_credits'])
-            
+
             if extras.get('movie_images'):
                 normalized['images'].update(self._normalize_images(extras['movie_images']))
-            
+
             if extras.get('movie_videos'):
                 normalized['videos'] = self._normalize_videos(extras['movie_videos'])
-            
+
             if extras.get('movie_keywords'):
                 normalized['keywords'] = self._normalize_keywords(extras['movie_keywords'])
-        
+
         return normalized
-    
-    def normalize_show(self, show_data: Dict[str, Any], season_data: Dict[str, Any] = None,
-                      episode_data: Dict[str, Any] = None, extras: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    def normalize_show(self, show_data: dict[str, Any], season_data: dict[str, Any] = None,
+                      episode_data: dict[str, Any] = None, extras: dict[str, Any] = None) -> dict[str, Any]:
         """Normalize TV show response"""
         if not show_data:
             return {}
-        
+
         normalized = {
             'media_type': 'show',
             'identifiers': {
@@ -120,28 +120,28 @@ class TMDbNormalizer:
                 'backdrop': show_data.get('backdrop_path')
             }
         }
-        
+
         # Add extras if provided
         if extras:
             if extras.get('tv_credits'):
                 normalized['people'] = self._normalize_credits(extras['tv_credits'])
-            
+
             if extras.get('tv_images'):
                 normalized['images'].update(self._normalize_images(extras['tv_images']))
-            
+
             if extras.get('tv_videos'):
                 normalized['videos'] = self._normalize_videos(extras['tv_videos'])
-            
+
             if extras.get('tv_keywords'):
                 normalized['keywords'] = self._normalize_keywords(extras['tv_keywords'])
-        
+
         return normalized
-    
-    def normalize_episode(self, episode_data: Dict[str, Any], extras: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    def normalize_episode(self, episode_data: dict[str, Any], extras: dict[str, Any] = None) -> dict[str, Any]:
         """Normalize episode response"""
         if not episode_data:
             return {}
-        
+
         normalized = {
             'media_type': 'episode',
             'identifiers': {
@@ -167,18 +167,18 @@ class TMDbNormalizer:
                 'still': episode_data.get('still_path')
             }
         }
-        
+
         # Add extras if provided
         if extras:
             if extras.get('tv_episode_credits'):
                 normalized['people'] = self._normalize_episode_credits(extras['tv_episode_credits'])
-            
+
             if extras.get('tv_episode_images'):
                 normalized['images'].update(self._normalize_episode_images(extras['tv_episode_images']))
-        
+
         return normalized
-    
-    def _normalize_credits(self, credits: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _normalize_credits(self, credits: dict[str, Any]) -> dict[str, Any]:
         """Normalize cast and crew"""
         return {
             'cast': [
@@ -202,8 +202,8 @@ class TMDbNormalizer:
                 for p in credits.get('crew', [])
             ]
         }
-    
-    def _normalize_episode_credits(self, credits: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _normalize_episode_credits(self, credits: dict[str, Any]) -> dict[str, Any]:
         """Normalize episode credits including guest stars"""
         result = self._normalize_credits(credits)
         result['guest_stars'] = [
@@ -217,8 +217,8 @@ class TMDbNormalizer:
             for p in credits.get('guest_stars', [])
         ]
         return result
-    
-    def _normalize_images(self, images: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _normalize_images(self, images: dict[str, Any]) -> dict[str, Any]:
         """Normalize images"""
         return {
             'posters': [
@@ -242,8 +242,8 @@ class TMDbNormalizer:
                 for img in images.get('backdrops', [])
             ]
         }
-    
-    def _normalize_episode_images(self, images: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _normalize_episode_images(self, images: dict[str, Any]) -> dict[str, Any]:
         """Normalize episode stills"""
         return {
             'stills': [
@@ -256,8 +256,8 @@ class TMDbNormalizer:
                 for img in images.get('stills', [])
             ]
         }
-    
-    def _normalize_videos(self, videos: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def _normalize_videos(self, videos: dict[str, Any]) -> list[dict[str, Any]]:
         """Normalize videos"""
         return [
             {
@@ -270,8 +270,8 @@ class TMDbNormalizer:
             }
             for v in videos.get('results', [])
         ]
-    
-    def _normalize_keywords(self, keywords: Dict[str, Any]) -> List[str]:
+
+    def _normalize_keywords(self, keywords: dict[str, Any]) -> list[str]:
         """Normalize keywords"""
         kw_list = keywords.get('keywords', keywords.get('results', []))
         return [k.get('name') for k in kw_list if k.get('name')]

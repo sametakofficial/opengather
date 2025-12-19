@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter
 
-from .runs.router import router as runs_router
 from .jobs.router import router as jobs_router
 from .plugins.router import router as plugins_router
 from .run.router import router as run_router
+from .runs.router import router as runs_router
 
 router = APIRouter()
 

@@ -1,15 +1,15 @@
 """OMDb Response Normalizer"""
-from typing import Dict, Any
+from typing import Any
 
 
 class OMDbNormalizer:
     """Normalize OMDb API responses to community standard format"""
-    
-    def normalize_movie(self, movie_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def normalize_movie(self, movie_data: dict[str, Any]) -> dict[str, Any]:
         """Normalize movie response with ALL OMDb fields"""
         if not movie_data:
             return {}
-        
+
         normalized = {
             'media_type': 'movie',
             'identifiers': {
@@ -37,7 +37,7 @@ class OMDbNormalizer:
             'production': {
                 'company': movie_data.get('Production') if movie_data.get('Production') != 'N/A' else None,
                 'country': [c.strip() for c in movie_data.get('Country', '').split(',') if c.strip()],
-                'language': [l.strip() for l in movie_data.get('Language', '').split(',') if l.strip()]
+                'language': [lang.strip() for lang in movie_data.get('Language', '').split(',') if lang.strip()]
             },
             'financial': {
                 'box_office': movie_data.get('BoxOffice') if movie_data.get('BoxOffice') != 'N/A' else None
@@ -45,14 +45,14 @@ class OMDbNormalizer:
             'awards': movie_data.get('Awards') if movie_data.get('Awards') != 'N/A' else None,
             'website': movie_data.get('Website') if movie_data.get('Website') != 'N/A' else None
         }
-        
+
         return normalized
-    
-    def normalize_show(self, show_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def normalize_show(self, show_data: dict[str, Any]) -> dict[str, Any]:
         """Normalize TV show response with ALL OMDb fields"""
         if not show_data:
             return {}
-        
+
         normalized = {
             'media_type': 'show',
             'identifiers': {
@@ -81,14 +81,14 @@ class OMDbNormalizer:
             },
             'production': {
                 'country': [c.strip() for c in show_data.get('Country', '').split(',') if c.strip()],
-                'language': [l.strip() for l in show_data.get('Language', '').split(',') if l.strip()]
+                'language': [lang.strip() for lang in show_data.get('Language', '').split(',') if lang.strip()]
             },
             'awards': show_data.get('Awards') if show_data.get('Awards') != 'N/A' else None,
             'website': show_data.get('Website') if show_data.get('Website') != 'N/A' else None
         }
-        
+
         return normalized
-    
+
     def _parse_runtime(self, runtime_str: str) -> int:
         """Parse runtime string like '120 min' to integer"""
         if not runtime_str or runtime_str == 'N/A':
@@ -97,11 +97,11 @@ class OMDbNormalizer:
             return int(runtime_str.split()[0])
         except (ValueError, IndexError):
             return None
-    
-    def _parse_ratings(self, data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _parse_ratings(self, data: dict[str, Any]) -> dict[str, Any]:
         """Parse all ratings sources (IMDb, Rotten Tomatoes, Metacritic)"""
         ratings = {}
-        
+
         # IMDb rating
         imdb_rating = data.get('imdbRating')
         imdb_votes = data.get('imdbVotes', '').replace(',', '')
@@ -110,20 +110,20 @@ class OMDbNormalizer:
                 'score': float(imdb_rating),
                 'votes': imdb_votes
             }
-        
+
         # Metacritic score
         metascore = data.get('Metascore')
         if metascore and metascore != 'N/A':
             ratings['metacritic'] = {
                 'score': int(metascore)
             }
-        
+
         # Ratings array (Rotten Tomatoes, etc.)
         ratings_array = data.get('Ratings', [])
         for rating in ratings_array:
             source = rating.get('Source', '')
             value = rating.get('Value', '')
-            
+
             if source == 'Rotten Tomatoes':
                 # Parse percentage like "87%"
                 try:
@@ -138,5 +138,5 @@ class OMDbNormalizer:
                     ratings['metacritic'] = {'score': score}
                 except (ValueError, IndexError):
                     pass
-        
+
         return ratings

@@ -1,18 +1,18 @@
 # plugins/tvdb/normalize/normalizer.py
 """TVDb Response Normalizer"""
-from typing import Dict, Any, List
+from typing import Any
 
 
 class TVDbNormalizer:
     """Normalize TVDb API responses to community standard format"""
-    
-    def normalize_movie(self, movie_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def normalize_movie(self, movie_data: dict[str, Any]) -> dict[str, Any]:
         """Normalize movie response from /movies/{id}/extended"""
         if not movie_data or not movie_data.get('data'):
             return {}
-        
+
         data = movie_data['data']
-        
+
         # Extract IDs from remoteIds
         imdb_id = None
         tmdb_id = None
@@ -21,7 +21,7 @@ class TVDbNormalizer:
                 imdb_id = remote.get('id')
             elif remote.get('sourceName') == 'TheMovieDB.com':
                 tmdb_id = remote.get('id')
-        
+
         normalized = {
             'media_type': 'movie',
             'identifiers': {
@@ -46,16 +46,16 @@ class TVDbNormalizer:
             'genres': [g.get('name') for g in data.get('genres', [])],
             'people': self._normalize_characters(data.get('characters', []))
         }
-        
+
         return normalized
-    
-    def normalize_show(self, show_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def normalize_show(self, show_data: dict[str, Any]) -> dict[str, Any]:
         """Normalize show response from /series/{id}/extended"""
         if not show_data or not show_data.get('data'):
             return {}
-        
+
         data = show_data['data']
-        
+
         # Extract IDs
         imdb_id = None
         tmdb_id = None
@@ -64,7 +64,7 @@ class TVDbNormalizer:
                 imdb_id = remote.get('id')
             elif remote.get('sourceName') == 'TheMovieDB.com':
                 tmdb_id = remote.get('id')
-        
+
         normalized = {
             'media_type': 'show',
             'identifiers': {
@@ -95,27 +95,27 @@ class TVDbNormalizer:
             } if data.get('network') else {},
             'people': self._normalize_characters(data.get('characters', []))
         }
-        
+
         return normalized
-    
-    def _normalize_characters(self, characters: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+    def _normalize_characters(self, characters: list[dict[str, Any]]) -> dict[str, Any]:
         """Normalize characters into cast and crew"""
         cast = []
         crew = []
-        
+
         for char in characters:
             person = {
                 'id': str(char.get('peopleId', '')),
                 'name': char.get('personName'),
                 'character': char.get('name')
             }
-            
+
             # type 3 is actor/cast
             if char.get('type') == 3:
                 cast.append(person)
             else:
                 crew.append(person)
-        
+
         return {
             'cast': cast,
             'crew': crew

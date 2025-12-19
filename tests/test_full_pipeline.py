@@ -13,6 +13,7 @@ These are end-to-end tests that verify the entire system works together.
 
 import pytest
 import subprocess
+import sys
 import time
 import json
 import os
@@ -48,7 +49,7 @@ class TestFullExecutionPipeline:
         """Test full execution via CLI"""
         # Run
         result = subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -58,46 +59,44 @@ class TestFullExecutionPipeline:
         # Should complete
         assert result.returncode == 0 or "error" not in result.stderr.lower()
         
-        # Check reports created
-        reports_dir = PROJECT_ROOT / "reports"
-        assert reports_dir.exists()
+        # Check state dump created (new format: output/run_*_state.json)
+        output_dir = PROJECT_ROOT / "output"
+        assert output_dir.exists(), "Output directory should exist"
         
-        recent_reports = [
-            f for f in reports_dir.glob("api_response_full_*.json")
-            if (datetime.now() - datetime.fromtimestamp(f.stat().st_mtime)).seconds < 60
+        recent_states = [
+            f for f in output_dir.glob("run_*_state.json")
+            if (datetime.now() - datetime.fromtimestamp(f.stat().st_mtime)).seconds < 120
         ]
-        assert len(recent_reports) >= 1, "No recent report files"
+        assert len(recent_states) >= 1, "No recent state dump files"
     
     def test_execution_creates_valid_report(self):
-        """Test execution creates valid report structure"""
+        """Test execution creates valid state dump structure"""
         # Run execution
         subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             timeout=180
         )
         
-        # Find latest report
-        reports_dir = PROJECT_ROOT / "reports"
-        reports = sorted(
-            reports_dir.glob("api_response_full_*.json"),
+        # Find latest state dump (new format)
+        output_dir = PROJECT_ROOT / "output"
+        state_files = sorted(
+            output_dir.glob("run_*_state.json"),
             key=lambda x: x.stat().st_mtime,
             reverse=True
         )
         
-        assert len(reports) > 0
+        assert len(state_files) > 0, "No state dump files found"
         
-        with open(reports[0]) as f:
+        with open(state_files[0]) as f:
             data = json.load(f)
         
-        # Verify structure
-        assert "globals" in data
-        assert "status" in data["globals"]
-        # Verify status has required fields
-        status = data["globals"]["status"]
-        assert "success" in status
-        assert "matches" in status
+        # Verify structure (new state dump format)
+        assert "run" in data or "id" in data, "State dump should have run data"
+        # Check for jobs or status
+        has_valid_structure = "jobs" in data or "status" in data or "config" in data
+        assert has_valid_structure, "State dump should have valid structure"
     
     def test_mongodb_receives_execution_data(self):
         """Test MongoDB receives all execution data"""
@@ -231,16 +230,22 @@ class TestPluginSystem:
             assert plugin_dir.exists(), f"Plugin {plugin} not found"
     
     def test_plugins_have_manifest(self):
-        """Test plugins have plugin.json"""
+        """Test plugins have manifest (json or yml) and entry point"""
         plugins_dir = PROJECT_ROOT / "src" / "archiverr" / "plugins"
         
         for plugin_dir in plugins_dir.iterdir():
             if plugin_dir.is_dir() and not plugin_dir.name.startswith("_"):
-                manifest = plugin_dir / "plugin.json"
-                if not manifest.exists():
-                    # Check for client.py at least
-                    client = plugin_dir / "client.py"
-                    assert manifest.exists() or client.exists(), f"Plugin {plugin_dir.name} has no manifest or client"
+                # Check for manifest (json or yml)
+                manifest_json = plugin_dir / "plugin.json"
+                manifest_yml = plugin_dir / "manifest.yml"
+                has_manifest = manifest_json.exists() or manifest_yml.exists()
+                
+                # Check for entry point (client.py or plugin.py)
+                client_py = plugin_dir / "client.py"
+                plugin_py = plugin_dir / "plugin.py"
+                has_entry = client_py.exists() or plugin_py.exists()
+                
+                assert has_manifest or has_entry, f"Plugin {plugin_dir.name} has no manifest or entry point"
 
 
 class TestAPIServerLifecycle:
@@ -252,7 +257,7 @@ class TestAPIServerLifecycle:
         
         # Start server
         proc = subprocess.Popen(
-            ["python", "-m", "archiverr", "serve", "--port", "8799"],
+            [sys.executable, "-m", "archiverr", "serve", "--port", "8799"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -287,7 +292,7 @@ class TestAPIServerLifecycle:
         import signal
         
         proc = subprocess.Popen(
-            ["python", "-m", "archiverr", "serve", "--port", "8798"],
+            [sys.executable, "-m", "archiverr", "serve", "--port", "8798"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE

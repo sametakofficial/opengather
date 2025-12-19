@@ -1,19 +1,29 @@
 """Runs API Router."""
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
 from archiverr.api.deps import DatabaseDep
+
+# Import PyMongo exceptions for specific error handling
+try:
+    from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
+    PYMONGO_AVAILABLE = True
+except ImportError:
+    PYMONGO_AVAILABLE = False
+    ConnectionFailure = Exception
+    ServerSelectionTimeoutError = Exception
+    OperationFailure = Exception
+
 from .schemas import (
-    RunResponse,
+    InputData,
+    OutputData,
     RunCreate,
     RunListResponse,
+    RunResponse,
     RunStatus,
     StateEnum,
-    InputData,
-    OutputData
 )
 
 router = APIRouter()
@@ -25,18 +35,18 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
     run_id = doc.get("id") or doc.get("_id", "")
     if run_id.startswith("exec_"):
         run_id = run_id.replace("exec_", "run_")
-    
+
     # Handle datetime conversion
     created_at = doc.get("created_at") or doc.get("started_at")
     if isinstance(created_at, str):
         created_at = datetime.fromisoformat(created_at)
     elif created_at is None:
         created_at = datetime.now(timezone.utc)
-    
+
     completed_at = doc.get("completed_at") or doc.get("finished_at")
     if isinstance(completed_at, str):
         completed_at = datetime.fromisoformat(completed_at)
-    
+
     # Build status from various legacy formats
     status_data = doc.get("status", {})
     if isinstance(status_data, str):
@@ -54,7 +64,7 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
         )
     else:
         status = RunStatus()
-    
+
     # Input/Output
     input_data = doc.get("input", {})
     output_data = doc.get("output", {})
@@ -63,7 +73,7 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
         values = output_data.get("values")
         if isinstance(values, dict):
             output_data = {**output_data, "values": list(values.values())}
-    
+
     return RunResponse(
         id=run_id,
         status=status,
@@ -82,7 +92,7 @@ async def list_runs(
     db: DatabaseDep,
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
-    state: Optional[StateEnum] = Query(default=None, description="Filter by state")
+    state: StateEnum | None = Query(default=None, description="Filter by state")
 ):
     """
     List all runs with pagination and optional filtering.
@@ -94,29 +104,33 @@ async def list_runs(
         query = {}
         if state:
             query["status.state"] = state.value
-        
+
         # Calculate skip
         skip = (page - 1) * page_size
-        
+
         # Query both 'runs' and 'executions' collections for backward compat
         # Try 'runs' first (new), fallback to 'executions' (legacy)
         collection_name = "runs"
         count = await db[collection_name].count_documents({})
         if count == 0:
             collection_name = "executions"
-        
+
         cursor = db[collection_name].find(query).sort("created_at", -1).skip(skip).limit(page_size)
         docs = await cursor.to_list(length=page_size)
-        
+
         total = await db[collection_name].count_documents(query)
-        
+
         return RunListResponse(
             items=[_doc_to_run_response(doc) for doc in docs],
             total=total,
             page=page,
             page_size=page_size
         )
-        
+
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except OperationFailure as e:
+        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -135,7 +149,7 @@ async def get_run(run_id: str, db: DatabaseDep):
             ids_to_try.append(run_id.replace("run_", "exec_"))
         elif not run_id.startswith("exec_"):
             ids_to_try.extend([f"run_{run_id}", f"exec_{run_id}"])
-        
+
         doc = None
         for collection in ["runs", "executions"]:
             for id_variant in ids_to_try:
@@ -147,14 +161,18 @@ async def get_run(run_id: str, db: DatabaseDep):
                     break
             if doc:
                 break
-        
+
         if not doc:
             raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-        
+
         return _doc_to_run_response(doc)
-        
+
     except HTTPException:
         raise
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except OperationFailure as e:
+        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -167,34 +185,32 @@ async def create_run(body: RunCreate, db: DatabaseDep):
     This starts an asynchronous run process.
     """
     try:
+        from fastapi.concurrency import run_in_threadpool
+
         from archiverr.core.orchestrator import build_orchestrator
         from archiverr.utils.config_loader import load_config_with_tracking
-        from fastapi.concurrency import run_in_threadpool
-        
+
         # Load config
-        if body.config:
-            config = body.config
-        else:
-            config = load_config_with_tracking("config.yml")
-        
+        config = body.config or load_config_with_tracking("config.yml")
+
         # Override dry_run
         config.setdefault('options', {})['dry_run'] = body.dry_run
-        
+
         # Build and run orchestrator in thread pool to avoid blocking event loop
         def _run_orchestrator():
             orchestrator = build_orchestrator(config)
             return orchestrator.run()
-            
+
         result = await run_in_threadpool(_run_orchestrator)
-        
+
         # Get run from database
         doc = await db["runs"].find_one({"id": result.run_id})
         if not doc:
             doc = await db["executions"].find_one({"_id": f"exec_{result.run_id}"})
-        
+
         if doc:
             return _doc_to_run_response(doc)
-        
+
         # Fallback: create response from result
         return RunResponse(
             id=result.run_id,
@@ -209,7 +225,11 @@ async def create_run(body: RunCreate, db: DatabaseDep):
             ),
             created_at=datetime.now(timezone.utc)
         )
-        
+
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except OperationFailure as e:
+        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -223,7 +243,7 @@ async def delete_run(run_id: str, db: DatabaseDep):
         # Find the run first
         doc = None
         actual_id = run_id
-        
+
         for collection in ["runs", "executions"]:
             for id_variant in [run_id, f"run_{run_id}", f"exec_{run_id}"]:
                 doc = await db[collection].find_one({"_id": id_variant})
@@ -232,24 +252,28 @@ async def delete_run(run_id: str, db: DatabaseDep):
                     break
             if doc:
                 break
-        
+
         if not doc:
             raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
-        
+
         # Delete associated jobs/matches
         await db["jobs"].delete_many({"run_id": actual_id})
         await db["matches"].delete_many({"execution_id": actual_id})
-        
+
         # Delete associated plugins
         await db["plugins"].delete_many({"run_id": actual_id})
         await db["plugin_results"].delete_many({"execution_id": actual_id})
-        
+
         # Delete run
         await db["runs"].delete_one({"_id": actual_id})
         await db["executions"].delete_one({"_id": actual_id})
-        
+
     except HTTPException:
         raise
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except OperationFailure as e:
+        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -286,10 +310,10 @@ async def get_run_jobs(
         run_id_variants = [run_id]
         if run_id.startswith("run_"):
             run_id_variants.append(run_id.replace("run_", "exec_"))
-        
+
         jobs = []
         total = 0
-        
+
         # Try jobs collection first
         for variant in run_id_variants:
             cursor = db["jobs"].find({"run_id": variant}).skip(offset).limit(limit)
@@ -297,7 +321,7 @@ async def get_run_jobs(
             if jobs:
                 total = await db["jobs"].count_documents({"run_id": variant})
                 break
-        
+
         # Fallback to matches collection
         if not jobs:
             for variant in run_id_variants:
@@ -306,12 +330,16 @@ async def get_run_jobs(
                 if jobs:
                     total = await db["matches"].count_documents({"execution_id": variant})
                     break
-        
+
         return {
             "run_id": run_id,
             "total": total,
             "jobs": jobs
         }
-        
+
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except OperationFailure as e:
+        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

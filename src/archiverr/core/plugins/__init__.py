@@ -1,27 +1,27 @@
 """Plugin System - Discovery, Loading, Resolution, Execution, SDK"""
 from .discovery import PluginDiscovery
-from .loader import PluginLoader
-from .resolver import DependencyResolver
 from .executor import PluginExecutor
+from .loader import PluginLoader
 
-# Session 11 additions
-from .registry import PluginRegistry, Stage, PluginInfo
-from .stage_executor import StageExecutor, ExecutionMode, STAGE_MODES
-from .requires_validator import RequiresValidator, RequiresResult
+# additions
+from .registry import PluginInfo, PluginRegistry, Stage
+from .requires_validator import RequiresResult, RequiresValidator
+from .resolver import DependencyResolver
 
 # SDK exports (for convenience: from archiverr.core.plugins import BasePlugin)
 from .sdk import (
+    BasePlugin,
+    ExecutionContext,
+    InputPlugin,
+    MediaCategory,
+    OutputPlugin,
+    PluginCategory,
     PluginManifest,
     PluginResult,
-    BasePlugin,
-    InputPlugin,
-    OutputPlugin,
-    ExecutionContext,
-    ValidationResult,
-    PluginCategory,
     PluginStatus,
-    MediaCategory,
+    ValidationResult,
 )
+from .stage_executor import STAGE_MODES, ExecutionMode, StageExecutor
 
 __all__ = [
     # System (legacy)
@@ -29,8 +29,8 @@ __all__ = [
     'PluginLoader',
     'DependencyResolver',
     'PluginExecutor',
-    
-    # Session 11: Registry & Execution
+
+    # Registry & Execution
     'PluginRegistry',
     'Stage',
     'PluginInfo',
@@ -39,7 +39,7 @@ __all__ = [
     'STAGE_MODES',
     'RequiresValidator',
     'RequiresResult',
-    
+
     # SDK
     'PluginManifest',
     'PluginResult',

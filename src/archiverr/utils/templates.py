@@ -1,8 +1,8 @@
 """Template rendering with $ syntax and filters"""
 import re
-from typing import Any, Dict, List
-from .filters import apply_filter
+from typing import Any
 
+from .filters import apply_filter
 
 # Pattern: $path.to.value or $path.to.value:filter or $path.to.value:filter:arg
 # Enhanced to support complex modifiers like :loop:field|sep, :filter:key=val
@@ -11,7 +11,7 @@ from .filters import apply_filter
 VARIABLE_REGEX = re.compile(r'\$([a-zA-Z0-9_\.]+)(?::([\s\S]+?))?(?=\s|\||$|\)|\]|,|/)')
 
 
-def resolve_variable_path(path: str, api_response: Dict[str, Any]) -> Any:
+def resolve_variable_path(path: str, api_response: dict[str, Any]) -> Any:
     """
     Resolve $ prefixed path to actual value from api_response.
     
@@ -37,17 +37,17 @@ def resolve_variable_path(path: str, api_response: Dict[str, Any]) -> Any:
     """
     if not path.startswith('$'):
         return None
-    
+
     # Remove $, split by dots
     parts = path[1:].split('.')
     if not parts:
         return None
-    
+
     first_key = parts[0]
-    
+
     # Globals shortcuts: parsed, execution, summary
     GLOBALS_SHORTCUTS = ['parsed', 'execution', 'summary']
-    
+
     if first_key in GLOBALS_SHORTCUTS:
         # $parsed.x → api_response['globals']['parsed']['x']
         current = api_response.get('globals', {}).get(first_key, {})
@@ -56,10 +56,10 @@ def resolve_variable_path(path: str, api_response: Dict[str, Any]) -> Any:
         # $show.x → api_response['show']['x']
         current = api_response.get(first_key)
         remaining_parts = parts[1:]
-    
+
     if current is None:
         return None
-    
+
     # Traverse remaining path
     for part in remaining_parts:
         if isinstance(current, dict):
@@ -69,14 +69,14 @@ def resolve_variable_path(path: str, api_response: Dict[str, Any]) -> Any:
             current = current[idx] if 0 <= idx < len(current) else None
         else:
             return None
-        
+
         if current is None:
             return None
-    
+
     return current
 
 
-def render_template(template: str, api_response: Dict[str, Any]) -> str:
+def render_template(template: str, api_response: dict[str, Any]) -> str:
     """
     Render template string with $ variable substitution.
     
@@ -100,7 +100,7 @@ def render_template(template: str, api_response: Dict[str, Any]) -> str:
     def replacer(match):
         var_path = match.group(1)  # path.to.value
         modifiers = match.group(2)  # everything after first :
-        
+
         # Check for prefix functions (all:, avg:, total:, max:, min:)
         prefix_func = None
         if ':' in var_path:
@@ -108,23 +108,23 @@ def render_template(template: str, api_response: Dict[str, Any]) -> str:
             if first_part in ['all', 'avg', 'total', 'max', 'min']:
                 prefix_func = first_part
                 var_path = var_path.split(':', 1)[1]
-        
+
         # Resolve value
         value = resolve_variable_path(f'${var_path}', api_response)
-        
+
         if value is None:
             return ''
-        
+
         # Apply prefix function if specified
         if prefix_func:
             value = apply_prefix_function(value, prefix_func)
-        
+
         # Apply modifiers if specified
         if modifiers:
             value = apply_modifiers(value, modifiers)
-        
+
         return str(value) if value is not None else ''
-    
+
     return VARIABLE_REGEX.sub(replacer, template)
 
 
@@ -148,36 +148,36 @@ def apply_prefix_function(value: Any, func: str) -> Any:
     """
     if not isinstance(value, list):
         return value
-    
+
     if func == 'all':
         return value
-    
+
     elif func == 'avg':
         try:
             numeric_values = [float(v) for v in value if isinstance(v, (int, float))]
             return sum(numeric_values) / len(numeric_values) if numeric_values else 0
         except (ValueError, ZeroDivisionError):
             return 0
-    
+
     elif func == 'total':
         try:
             numeric_values = [float(v) for v in value if isinstance(v, (int, float))]
             return sum(numeric_values)
         except ValueError:
             return 0
-    
+
     elif func == 'max':
         try:
             return max(value)
         except (ValueError, TypeError):
             return None
-    
+
     elif func == 'min':
         try:
             return min(value)
         except (ValueError, TypeError):
             return None
-    
+
     return value
 
 
@@ -201,20 +201,17 @@ def apply_modifiers(value: Any, modifiers: str) -> Any:
     """
     # Parse modifiers
     parts = modifiers.split(':')
-    
+
     for i, part in enumerate(parts):
         part = part.strip()
-        
+
         if not part:
             continue
-        
+
         # Count modifier
         if part == 'count':
-            if isinstance(value, (list, dict)):
-                value = len(value)
-            else:
-                value = 0
-        
+            value = len(value) if isinstance(value, (list, dict)) else 0
+
         # Filter modifier: filter:key=val
         elif part == 'filter' and i + 1 < len(parts):
             filter_expr = parts[i + 1]
@@ -222,7 +219,7 @@ def apply_modifiers(value: Any, modifiers: str) -> Any:
                 key, expected = filter_expr.split('=', 1)
                 value = [item for item in value if isinstance(item, dict) and item.get(key) == expected]
                 parts[i + 1] = ''  # Mark as consumed
-        
+
         # Loop modifier: loop:field|sep
         elif part == 'loop' and i + 1 < len(parts):
             loop_spec = parts[i + 1]
@@ -230,7 +227,7 @@ def apply_modifiers(value: Any, modifiers: str) -> Any:
                 field, separator = loop_spec.rsplit('|', 1)
                 field = field.strip()
                 separator = separator.strip()
-                
+
                 if isinstance(value, list):
                     # Extract field from each item
                     items = []
@@ -248,13 +245,13 @@ def apply_modifiers(value: Any, modifiers: str) -> Any:
                         elif isinstance(item, str):
                             items.append(item)
                         # Skip non-dict, non-str items
-                    
+
                     value = separator.join(items)
                 elif isinstance(value, str):
                     value = value  # Already a string
                 else:
                     value = str(value)
-                
+
                 parts[i + 1] = ''  # Mark as consumed
             else:
                 # Simple loop without field extraction
@@ -271,21 +268,19 @@ def apply_modifiers(value: Any, modifiers: str) -> Any:
                         else:
                             items.append(str(item))
                     value = ', '.join(items)
-        
+
         # Max modifier: max:N (limit array or string length)
         elif part == 'max' and i + 1 < len(parts):
             try:
                 limit = int(parts[i + 1])
-                if isinstance(value, list):
-                    value = value[:limit]
-                elif isinstance(value, str):
+                if isinstance(value, (list, str)):
                     value = value[:limit]
                 parts[i + 1] = ''  # Mark as consumed
             except (ValueError, IndexError):
                 pass
-        
+
         # Standard filters (year, upper, lower, format, etc.)
         elif part not in ['', 'filter', 'loop', 'max']:
             value = apply_filter(value, part)
-    
+
     return value

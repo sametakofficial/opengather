@@ -18,8 +18,8 @@ Usage:
     app = FastAPI(lifespan=mongodb_lifespan)
 """
 
+from .connection import DatabaseConfig, DatabaseConnection
 from .interface import PersistenceInterface
-from .connection import DatabaseConnection, DatabaseConfig
 
 # PyMongo sync driver (for CLI) - NEW: Clean sync implementation
 try:
@@ -39,7 +39,7 @@ except ImportError:
 
 # PyMongo Async driver (for FastAPI) - Replaces Motor (deprecated May 2025)
 try:
-    from .async_client import AsyncMongoDB, mongodb_lifespan, get_database
+    from .async_client import AsyncMongoDB, get_database, mongodb_lifespan
     # Backward compatibility alias
     MongoDB = AsyncMongoDB
     ASYNC_PYMONGO_AVAILABLE = True

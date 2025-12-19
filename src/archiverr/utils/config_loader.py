@@ -24,14 +24,15 @@ Usage:
 
 import os
 import re
-from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
+from typing import Any
+
 import yaml
 
-# Import new Phase 6 modules
-from .yaml_loader import load_yaml_with_includes, IncludeError
-from .config_normalizer import normalize_config, detect_config_format
+from .config_normalizer import normalize_config
 
+# Import new Phase 6 modules
+from .yaml_loader import IncludeError, load_yaml_with_includes
 
 # Pattern to match ${ENV_VAR} or $ENV_VAR
 ENV_VAR_PATTERN = re.compile(r'\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)')
@@ -64,15 +65,15 @@ def expand_env_vars(value: Any) -> Any:
         def replace_env(match):
             var_name = match.group(1) or match.group(2)
             return os.environ.get(var_name, match.group(0))
-        
+
         return ENV_VAR_PATTERN.sub(replace_env, value)
-    
+
     elif isinstance(value, dict):
         return {k: expand_env_vars(v) for k, v in value.items()}
-    
+
     elif isinstance(value, list):
         return [expand_env_vars(v) for v in value]
-    
+
     return value
 
 
@@ -89,29 +90,29 @@ def mask_env_vars(value: Any, original_value: Any = None) -> Any:
     """
     if original_value is None:
         return value
-    
+
     if isinstance(value, str) and isinstance(original_value, str):
         # Check if original had env var syntax
         if ENV_VAR_PATTERN.search(original_value):
             return original_value
         return value
-    
+
     elif isinstance(value, dict) and isinstance(original_value, dict):
         result = {}
         for k, v in value.items():
             orig_v = original_value.get(k)
             result[k] = mask_env_vars(v, orig_v)
         return result
-    
+
     elif isinstance(value, list) and isinstance(original_value, list):
         if len(value) == len(original_value):
             return [mask_env_vars(v, orig_v) for v, orig_v in zip(value, original_value)]
         return value
-    
+
     return value
 
 
-def find_env_var_for_value(value: str) -> Optional[str]:
+def find_env_var_for_value(value: str) -> str | None:
     """
     Find an environment variable that matches the given value.
     
@@ -123,7 +124,7 @@ def find_env_var_for_value(value: str) -> Optional[str]:
     return None
 
 
-def mask_sensitive_fields(config: Dict[str, Any], original_config: Dict[str, Any] = None) -> Dict[str, Any]:
+def mask_sensitive_fields(config: dict[str, Any], original_config: dict[str, Any] = None) -> dict[str, Any]:
     """
     Mask sensitive fields in config.
     
@@ -140,7 +141,7 @@ def mask_sensitive_fields(config: Dict[str, Any], original_config: Dict[str, Any
     """
     if original_config:
         return mask_env_vars(config, original_config)
-    
+
     # No original - try to detect and mask
     return _mask_sensitive_recursive(config)
 
@@ -152,10 +153,10 @@ def _mask_sensitive_recursive(obj: Any, field_name: str = None) -> Any:
         for k, v in obj.items():
             result[k] = _mask_sensitive_recursive(v, k)
         return result
-    
+
     elif isinstance(obj, list):
         return [_mask_sensitive_recursive(item) for item in obj]
-    
+
     elif isinstance(obj, str):
         # Check if this is a sensitive field
         if field_name and field_name.lower() in SENSITIVE_FIELDS:
@@ -164,7 +165,7 @@ def _mask_sensitive_recursive(obj: Any, field_name: str = None) -> Any:
             if env_ref:
                 return env_ref
         return obj
-    
+
     return obj
 
 
@@ -173,7 +174,7 @@ def load_config(
     expand: bool = True,
     use_includes: bool = True,
     normalize: bool = False
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Load config from YAML file.
     
@@ -189,10 +190,10 @@ def load_config(
         - original_config: Config with ${ENV_VAR} syntax preserved (for snapshots)
     """
     config_path = Path(path)
-    
+
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
-    
+
     # Load with or without include support
     if use_includes:
         try:
@@ -200,28 +201,25 @@ def load_config(
         except IncludeError as e:
             raise ValueError(f"Config include error: {e}")
     else:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, encoding='utf-8') as f:
             original_config = yaml.safe_load(f)
-    
+
     if original_config is None:
         original_config = {}
-    
-    if expand:
-        expanded_config = expand_env_vars(original_config)
-    else:
-        expanded_config = original_config.copy()
-    
+
+    expanded_config = expand_env_vars(original_config) if expand else original_config.copy()
+
     # Normalize if requested
     if normalize:
         expanded_config = normalize_config(expanded_config)
-    
+
     return expanded_config, original_config
 
 
 def create_config_snapshot(
-    config: Dict[str, Any], 
-    original_config: Dict[str, Any] = None
-) -> Dict[str, Any]:
+    config: dict[str, Any],
+    original_config: dict[str, Any] = None
+) -> dict[str, Any]:
     """
     Create config snapshot for storage (MongoDB, API response).
     
@@ -242,31 +240,31 @@ def create_config_snapshot(
         "plugins": {},
         "tasks": config.get("tasks", [])
     }
-    
+
     # Get original plugins if available
     orig_plugins = original_config.get("plugins", {}) if original_config else {}
-    
+
     # Copy all plugin configs with masked sensitive values
     for plugin_name, plugin_config in config.get("plugins", {}).items():
         if isinstance(plugin_config, dict):
             orig_plugin = orig_plugins.get(plugin_name, {})
-            
+
             # Mask sensitive fields
             masked_config = mask_env_vars(plugin_config, orig_plugin)
-            
+
             # Also try to detect and mask any remaining sensitive values
             masked_config = _mask_sensitive_recursive(masked_config)
-            
+
             snapshot["plugins"][plugin_name] = masked_config
         else:
             snapshot["plugins"][plugin_name] = plugin_config
-    
+
     return snapshot
 
 
 # Convenience functions for __main__.py
 
-def load_config_simple(path: str = "config.yml") -> Dict[str, Any]:
+def load_config_simple(path: str = "config.yml") -> dict[str, Any]:
     """
     Simple config loader - returns only expanded config.
     Use when you don't need original config reference.
@@ -276,10 +274,10 @@ def load_config_simple(path: str = "config.yml") -> Dict[str, Any]:
 
 
 # Store original config in module for snapshot access
-_original_config: Dict[str, Any] = {}
+_original_config: dict[str, Any] = {}
 
 
-def resolve_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
+def resolve_aliases(config: dict[str, Any]) -> dict[str, Any]:
     """
     Resolve all aliases in config.
     
@@ -299,11 +297,11 @@ def resolve_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
     aliases = config.get('aliases', {})
     if not aliases:
         return config
-    
+
     # Build replacement map: alias_prefix → full_path
     # Sort by length descending to match longest first
     replacements = sorted(aliases.items(), key=lambda x: len(x[0]), reverse=True)
-    
+
     def resolve_value(value: Any) -> Any:
         """Recursively resolve aliases in any value"""
         if isinstance(value, str):
@@ -314,12 +312,12 @@ def resolve_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
                 # 1. {{ alias.field }} or {{ alias }}
                 # 2. At start of line or after whitespace: alias.field
                 # But NOT: something.alias.field (don't match in middle of path)
-                
+
                 # Pattern 1: alias.field → target.field
                 # Use negative lookbehind to avoid matching .alias (in middle of path)
                 pattern_with_dot = r'(?<![.\w])' + re.escape(alias) + r'\.'
                 result = re.sub(pattern_with_dot, target + '.', result)
-                
+
                 # Pattern 2: Standalone alias ({{ alias }} or {% if alias %})
                 # Replace only if it's a whole word, not part of larger identifier
                 standalone_pattern = r'(?<![.\w])' + re.escape(alias) + r'(?![.\w])'
@@ -330,7 +328,7 @@ def resolve_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
         elif isinstance(value, list):
             return [resolve_value(v) for v in value]
         return value
-    
+
     # Resolve aliases in entire config (except aliases section itself)
     resolved = {}
     for key, value in config.items():
@@ -339,14 +337,14 @@ def resolve_aliases(config: Dict[str, Any]) -> Dict[str, Any]:
             resolved[key] = value
         else:
             resolved[key] = resolve_value(value)
-    
+
     return resolved
 
 
 def load_config_with_tracking(
     path: str = "config.yml",
     normalize: bool = True
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Load config and track original for later snapshotting.
     
@@ -367,15 +365,15 @@ def load_config_with_tracking(
     """
     global _original_config
     expanded, original = load_config(path, expand=True, use_includes=True, normalize=normalize)
-    
+
     # Resolve aliases after expand/normalize
     expanded = resolve_aliases(expanded)
-    
+
     _original_config = original
     return expanded
 
 
-def get_tracked_original() -> Dict[str, Any]:
+def get_tracked_original() -> dict[str, Any]:
     """Get the tracked original config (with ${ENV_VAR} syntax)"""
     return _original_config
 

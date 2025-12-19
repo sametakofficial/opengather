@@ -1,9 +1,10 @@
 """Run Schemas - Pydantic models for runs."""
 
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class StateEnum(str, Enum):
@@ -24,7 +25,7 @@ class RunStatus(BaseModel):
     completed: int = 0
     failed: int = 0
     duration_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -32,22 +33,22 @@ class RunStatus(BaseModel):
 class InputData(BaseModel):
     """Input data structure"""
     value: str = ""
-    data: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
 
 class OutputData(BaseModel):
     """Output data structure (aligned with state models)"""
-    values: List[str] = Field(default_factory=list)  # Fixed: was Dict, now List to match state
-    data: Dict[str, Any] = Field(default_factory=dict)
+    values: list[str] = Field(default_factory=list)  # Fixed: was Dict, now List to match state
+    data: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
 
 class RunCreate(BaseModel):
     """Request body for creating a run"""
-    config: Optional[Dict[str, Any]] = None
+    config: dict[str, Any] | None = None
     dry_run: bool = True
 
 
@@ -57,18 +58,18 @@ class RunResponse(BaseModel):
     status: RunStatus = Field(default_factory=RunStatus)
     input: InputData = Field(default_factory=InputData)
     output: OutputData = Field(default_factory=OutputData)
-    jobs: List[str] = Field(default_factory=list, description="Job IDs")
-    config: Dict[str, Any] = Field(default_factory=dict)
-    options: Dict[str, Any] = Field(default_factory=dict)
+    jobs: list[str] = Field(default_factory=list, description="Job IDs")
+    config: dict[str, Any] = Field(default_factory=dict)
+    options: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class RunListResponse(BaseModel):
     """Paginated run list"""
-    items: List[RunResponse]
+    items: list[RunResponse]
     total: int
     page: int = 1
     page_size: int = 20

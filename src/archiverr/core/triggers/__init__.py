@@ -1,5 +1,5 @@
 """
-Trigger Rule System - Session 12
+Trigger Rule System - 
 
 Provides dependency resolution with:
 - Standard trigger rules (Airflow-inspired)
@@ -7,8 +7,8 @@ Provides dependency resolution with:
 - Plugin vs non-plugin validation
 """
 
-from .manager import TriggerRuleManager
 from .evaluator import TriggerRuleEvaluator
+from .manager import TriggerRuleManager
 from .matcher import ValueMatcher
 
 __all__ = ['TriggerRuleManager', 'TriggerRuleEvaluator', 'ValueMatcher']

@@ -6,8 +6,8 @@ Supports environment-based configuration.
 """
 
 import os
-from typing import Optional, Union
 from dataclasses import dataclass
+from typing import Optional
 
 from .interface import PersistenceInterface
 
@@ -16,11 +16,11 @@ from .interface import PersistenceInterface
 class DatabaseConfig:
     """Database configuration"""
     backend: str = "mongodb"  # Only MongoDB supported
-    
+
     # MongoDB settings
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "archiverr"
-    
+
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
         """
@@ -54,11 +54,11 @@ class DatabaseConnection:
         db = DatabaseConnection(config)
         persistence = db.get_persistence()
     """
-    
+
     _instance: Optional["DatabaseConnection"] = None
-    _persistence: Optional[PersistenceInterface] = None
-    
-    def __init__(self, config: Optional[DatabaseConfig] = None):
+    _persistence: PersistenceInterface | None = None
+
+    def __init__(self, config: DatabaseConfig | None = None):
         """
         Initialize database connection.
         
@@ -66,19 +66,19 @@ class DatabaseConnection:
             config: Database configuration. If None, uses defaults.
         """
         self.config = config or DatabaseConfig()
-    
+
     @classmethod
     def from_env(cls) -> "DatabaseConnection":
         """Create connection from environment variables"""
         return cls(DatabaseConfig.from_env())
-    
+
     @classmethod
     def get_instance(cls) -> "DatabaseConnection":
         """Get singleton instance"""
         if cls._instance is None:
             cls._instance = cls.from_env()
         return cls._instance
-    
+
     def get_persistence(self) -> PersistenceInterface:
         """
         Get persistence backend based on configuration.
@@ -92,7 +92,7 @@ class DatabaseConnection:
         """
         if self._persistence is not None:
             return self._persistence
-        
+
         if self.config.backend == "mongodb":
             try:
                 from .pymongo_persistence import PyMongoPersistence
@@ -107,9 +107,9 @@ class DatabaseConnection:
                 ) from e
         else:
             raise ValueError(f"Unknown database backend: {self.config.backend}")
-        
+
         return self._persistence
-    
+
     def connect(self) -> PersistenceInterface:
         """
         Get and connect to persistence backend.
@@ -120,13 +120,13 @@ class DatabaseConnection:
         persistence = self.get_persistence()
         persistence.connect()
         return persistence
-    
+
     def disconnect(self) -> None:
         """Disconnect from persistence backend"""
         if self._persistence is not None:
             self._persistence.disconnect()
             self._persistence = None
-    
+
     @classmethod
     def reset(cls) -> None:
         """Reset singleton instance (for testing)"""

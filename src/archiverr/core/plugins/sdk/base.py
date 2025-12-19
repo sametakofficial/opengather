@@ -7,9 +7,9 @@ Provides:
 - OutputPlugin: For output plugins (tmdb, renamer, ffprobe)
 """
 
-from typing import Dict, Any, List, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
 
 from .context import ExecutionContext
 
@@ -18,13 +18,13 @@ from .context import ExecutionContext
 class ValidationResult:
     """Result of a validation test"""
     passed: bool
-    details: Dict[str, Any]
+    details: dict[str, Any]
 
 
 class BasePlugin(ABC):
     """Base class for all plugins."""
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         """
         Initialize plugin with configuration.
         
@@ -32,12 +32,12 @@ class BasePlugin(ABC):
             config: Plugin-specific configuration from config.yml
         """
         self.config = config
-        self.name: Optional[str] = None
-        self.category: Optional[str] = None
-        self._metadata: Dict[str, Any] = {}
-        self._context: Optional[ExecutionContext] = None
+        self.name: str | None = None
+        self.category: str | None = None
+        self._metadata: dict[str, Any] = {}
+        self._context: ExecutionContext | None = None
         self._initialized: bool = False
-    
+
     def set_context(self, context: ExecutionContext):
         """
         Set execution context (called by executor before execute()).
@@ -46,16 +46,16 @@ class BasePlugin(ABC):
             context: ExecutionContext with runtime dependencies
         """
         self._context = context
-    
+
     @property
-    def context(self) -> Optional[ExecutionContext]:
+    def context(self) -> ExecutionContext | None:
         """Get current execution context"""
         return self._context
-    
+
     # =========================================================================
     # Convenience Logging Methods (use context internally)
     # =========================================================================
-    
+
     def log(self, level: str, message: str, **kwargs):
         """
         Log message through context debugger.
@@ -68,28 +68,28 @@ class BasePlugin(ABC):
         if self._context and self._context.debugger:
             log_func = getattr(self._context.debugger, level, self._context.debugger.info)
             log_func(self.name or self.__class__.__name__, message, **kwargs)
-    
+
     def debug(self, message: str, **kwargs):
         """Log debug message"""
         self.log("debug", message, **kwargs)
-    
+
     def info(self, message: str, **kwargs):
         """Log info message"""
         self.log("info", message, **kwargs)
-    
+
     def warn(self, message: str, **kwargs):
         """Log warning message"""
         self.log("warn", message, **kwargs)
-    
+
     def error(self, message: str, **kwargs):
         """Log error message"""
         self.log("error", message, **kwargs)
-    
+
     # =========================================================================
     # Data Access Methods
     # =========================================================================
-    
-    def get_previous_result(self, plugin_name: str) -> Optional[Dict[str, Any]]:
+
+    def get_previous_result(self, plugin_name: str) -> dict[str, Any] | None:
         """
         Get result from a previous plugin.
         
@@ -102,12 +102,12 @@ class BasePlugin(ABC):
         if self._context:
             return self._context.get_plugin_result(plugin_name)
         return None
-    
+
     # =========================================================================
     # Task & Progress Emission
     # =========================================================================
-    
-    def emit_task(self, task_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+
+    def emit_task(self, task_config: dict[str, Any]) -> dict[str, Any] | None:
         """
         Convenience method for task emission.
         
@@ -122,7 +122,7 @@ class BasePlugin(ABC):
         if self._context:
             return self._context.emit_task(task_config)
         return None
-    
+
     def emit_progress(self, percent: float, message: str = ""):
         """
         Convenience method for progress emission.
@@ -133,34 +133,34 @@ class BasePlugin(ABC):
         """
         if self._context:
             self._context.emit_progress(percent, message)
-    
+
     # =========================================================================
     # Lifecycle Hooks
     # =========================================================================
-    
+
     async def setup(self) -> None:
         """
         Called once when plugin is loaded.
         Override to initialize resources (API clients, caches, etc.)
         """
         self._initialized = True
-    
+
     async def teardown(self) -> None:
         """
         Called when plugin is unloaded.
         Override to cleanup resources.
         """
         pass
-    
+
     @abstractmethod
     def execute(self, *args, **kwargs):
         """Execute plugin logic - must be implemented by subclasses"""
         pass
-    
+
     def _validate_duration(
         self,
         ffprobe_duration: float,
-        api_runtime_minutes: Optional[int],
+        api_runtime_minutes: int | None,
         tolerance_seconds: int = 600
     ) -> ValidationResult:
         """
@@ -185,11 +185,11 @@ class BasePlugin(ABC):
                     'reason': 'API runtime not available'
                 }
             )
-        
+
         api_duration_seconds = api_runtime_minutes * 60
         diff_seconds = abs(ffprobe_duration - api_duration_seconds)
         passed = diff_seconds <= tolerance_seconds
-        
+
         return ValidationResult(
             passed=passed,
             details={
@@ -203,13 +203,13 @@ class BasePlugin(ABC):
 
 class InputPlugin(BasePlugin):
     """Base class for input plugins (per_run mode)."""
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.category = "input"
-    
+
     @abstractmethod
-    def execute(self) -> List[Dict[str, Any]]:
+    def execute(self) -> list[dict[str, Any]]:
         """
         Execute input plugin.
         
@@ -221,13 +221,13 @@ class InputPlugin(BasePlugin):
 
 class OutputPlugin(BasePlugin):
     """Base class for output plugins (per_job mode)."""
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.category = "output"
-    
+
     @abstractmethod
-    def execute(self, match_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, match_data: dict[str, Any]) -> dict[str, Any]:
         """
         Execute output plugin.
         

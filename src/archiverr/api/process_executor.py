@@ -17,19 +17,19 @@ triggering any asyncio event loop creation when loaded.
 """
 
 # MINIMAL IMPORTS - avoid any module that might start an event loop
-import subprocess
 import json
-import tempfile
 import os
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 
 
 class ProcessExecutionResult:
     """Result from subprocess execution - plain class, no dataclass to avoid imports"""
-    __slots__ = ['execution_id', 'success', 'total_matches', 'completed_matches', 
+    __slots__ = ['execution_id', 'success', 'total_matches', 'completed_matches',
                  'failed_matches', 'duration_ms', 'error', 'api_response']
-    
+
     def __init__(
         self,
         execution_id: str,
@@ -71,12 +71,12 @@ def run_archiverr_process(
     """
     # Import yaml here to avoid any early imports
     import yaml
-    
+
     start_time = time.time()
-    
+
     # Get the project root (where config.yml is)
     project_root = Path(__file__).parent.parent.parent.parent.parent
-    
+
     # Create temporary config file with overrides
     temp_config_path = None
     try:
@@ -86,25 +86,25 @@ def run_archiverr_process(
             from archiverr.core.plugins.registry import PluginRegistry
             registry = PluginRegistry(config)
             input_plugin_names = registry.get_input_plugin_names()
-            
+
             for plugin_name in input_plugin_names:
                 if plugin_name in config.get('plugins', {}):
                     config['plugins'][plugin_name]['targets'] = targets
-            
+
             # Write temp config
             with tempfile.NamedTemporaryFile(
-                mode='w', 
-                suffix='.yml', 
+                mode='w',
+                suffix='.yml',
                 delete=False,
                 prefix='archiverr_api_',
                 dir=str(project_root)
             ) as f:
                 yaml.dump(config, f)
                 temp_config_path = f.name
-        
+
         # Build environment - inherit current env
         env = os.environ.copy()
-        
+
         # Run archiverr as subprocess
         # This is EXACTLY like running `python -m archiverr` from terminal
         result = subprocess.run(
@@ -115,9 +115,9 @@ def run_archiverr_process(
             text=True,
             timeout=timeout
         )
-        
+
         duration_ms = int((time.time() - start_time) * 1000)
-        
+
         # Check for errors
         if result.returncode != 0:
             return ProcessExecutionResult(
@@ -129,7 +129,7 @@ def run_archiverr_process(
                 duration_ms=duration_ms,
                 error=result.stderr[:500] if result.stderr else "Process failed"
             )
-        
+
         # Find latest report file
         reports_dir = project_root / "reports"
         if reports_dir.exists():
@@ -138,15 +138,15 @@ def run_archiverr_process(
                 key=lambda x: x.stat().st_mtime,
                 reverse=True
             )
-            
+
             if report_files:
-                with open(report_files[0], 'r') as f:
+                with open(report_files[0]) as f:
                     api_response = json.load(f)
-                
+
                 # Extract execution info
                 globals_data = api_response.get('globals', {})
                 status = globals_data.get('status', {})
-                
+
                 return ProcessExecutionResult(
                     execution_id=globals_data.get('execution_id', 'unknown'),
                     success=status.get('success', True),
@@ -156,7 +156,7 @@ def run_archiverr_process(
                     duration_ms=duration_ms,
                     api_response=api_response
                 )
-        
+
         # No report found but process succeeded
         return ProcessExecutionResult(
             execution_id="completed",
@@ -166,7 +166,7 @@ def run_archiverr_process(
             failed_matches=0,
             duration_ms=duration_ms
         )
-        
+
     except subprocess.TimeoutExpired:
         return ProcessExecutionResult(
             execution_id="timeout",

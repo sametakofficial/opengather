@@ -1,7 +1,7 @@
 """
 Config module - Configuration management for Archiverr.
 
-Session 11 - Phase 6
+- Phase 6
 
 Components:
 - AliasResolver: Template context alias resolution

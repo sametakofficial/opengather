@@ -1,7 +1,7 @@
 """
 Validation System - Comprehensive validation for config, manifests, and dependencies
 
-Session 11 - Phase 7: Startup and pre-execution validation.
+- Phase 7: Startup and pre-execution validation.
 
 Validation Layers:
 1. STARTUP: Config schema, plugin manifests, dependency graph, provides conflicts
@@ -10,30 +10,45 @@ Validation Layers:
 Note: Runtime validation is intentionally omitted (v2 decision: run never stops mid-execution)
 """
 
-from .result import (
-    ValidationLevel,
-    ValidationError,
-    ValidationResult,
-)
+from .config_validator import ConfigValidator
+from .dependency_validator import DependencyValidator
 from .error_codes import (
     # Config errors
-    E001, E002, E003, E004, E005,
+    E001,
+    E002,
+    E003,
+    E004,
+    E005,
     # Manifest errors
-    E011, E012, E013, E014, E015, E016, E017,
+    E011,
+    E012,
+    E013,
+    E014,
+    E015,
+    E016,
+    E017,
     # Execution errors
-    E021, E022, E023,
+    E021,
+    E022,
+    E023,
     # Warnings
-    W001, W002, W003, W004,
+    W001,
+    W002,
+    W003,
+    W004,
 )
-from .config_validator import ConfigValidator
 from .manifest_validator import ManifestValidator
-from .dependency_validator import DependencyValidator
+from .result import (
+    ValidationError,
+    ValidationLevel,
+    ValidationResult,
+)
 from .startup_validator import StartupValidator, validate_at_startup
 
 __all__ = [
     # Result types
     "ValidationLevel",
-    "ValidationError", 
+    "ValidationError",
     "ValidationResult",
     # Validators
     "ConfigValidator",

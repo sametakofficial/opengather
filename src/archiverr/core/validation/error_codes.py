@@ -1,7 +1,7 @@
 """
 Validation Error Codes
 
-Session 11 - Phase 7: Standardized error codes for validation.
+- Phase 7: Standardized error codes for validation.
 
 Error Code Format:
 - E0XX: Config errors (E001-E009)
@@ -64,7 +64,7 @@ ERROR_MESSAGES = {
     E003: "Invalid config value type at '{path}': expected {expected}, got {got}",
     E004: "Environment variable not set: ${{{var}}}",
     E005: "Include file not found: {path}",
-    
+
     # Manifest
     E011: "Invalid plugin manifest: {detail}",
     E012: "Missing required manifest field: {field}",
@@ -73,12 +73,12 @@ ERROR_MESSAGES = {
     E015: "Circular dependency detected: {cycle}",
     E016: "Provides conflict: '{capability}' declared by both '{plugin1}' and '{plugin2}'",
     E017: "Dynamic variable in provides: '{value}' (job.*/run.* forbidden in provides)",
-    
+
     # Execution
     E021: "Requires not satisfied: {plugin} needs {missing}",
     E022: "Plugin initialization failed: {plugin} - {error}",
     E023: "Plugin execution failed: {plugin} - {error}",
-    
+
     # Warnings
     W001: "Deprecated {type} used: {name}",
     W002: "Performance warning: {detail}",

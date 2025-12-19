@@ -73,7 +73,7 @@ class TestJobSchemas:
                 executed=["scanner", "renamer"]
             ),
             input=InputData(value="/path/to/file.mkv"),
-            output=OutputData(values={"title": "Test Movie"}),
+            output=OutputData(values=["/output/path/file.mkv"]),
             plugins={
                 "scanner": {"size": 1024},
                 "renamer": {"parsed": {"movie": {"title": "Test"}}}
@@ -135,7 +135,7 @@ class TestJobResponseConversion:
                 "skipped": []
             },
             "input": {"value": "/test/file.mkv"},
-            "output": {"values": {}},
+            "output": {"values": []},
             "plugins": {"scanner": {"size": 1024}},
             "created_at": datetime.now(timezone.utc)
         }

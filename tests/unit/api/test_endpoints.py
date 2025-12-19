@@ -62,29 +62,29 @@ class TestExecutionEndpoints:
             yield c
     
     def test_list_executions_returns_200(self, client):
-        """Test list executions endpoint works."""
-        response = client.get("/api/v1/executions/")
+        """Test list runs endpoint works (renamed from executions)."""
+        response = client.get("/api/v1/runs")
         
         # May return 200 (with data) or 503 (no DB)
         assert response.status_code in [200, 503]
     
     def test_get_execution_not_found_returns_404(self, client):
-        """Test non-existent execution returns 404."""
-        response = client.get("/api/v1/executions/nonexistent_id")
+        """Test non-existent run returns 404 (renamed from executions)."""
+        response = client.get("/api/v1/runs/nonexistent_id")
         
         # 404 or 503 (no DB)
         assert response.status_code in [404, 503]
     
     def test_execution_status_endpoint_exists(self, client):
-        """Test status endpoint route exists."""
-        response = client.get("/api/v1/executions/test_id/status")
+        """Test status endpoint route exists (renamed from executions)."""
+        response = client.get("/api/v1/runs/test_id/status")
         
         # 404 or 503 (no DB)
         assert response.status_code in [404, 503]
 
 
 class TestMatchEndpoints:
-    """Match endpoint tests"""
+    """Match/Job endpoint tests (renamed from matches to jobs)"""
     
     @pytest.fixture
     def client(self):
@@ -94,20 +94,21 @@ class TestMatchEndpoints:
             yield c
     
     def test_list_matches_returns_200(self, client):
-        """Test list matches endpoint works."""
-        response = client.get("/api/v1/matches/")
+        """Test list jobs endpoint works (renamed from matches)."""
+        response = client.get("/api/v1/jobs")
         
         assert response.status_code in [200, 503]
     
     def test_get_match_not_found(self, client):
-        """Test non-existent match returns 404."""
-        response = client.get("/api/v1/matches/nonexistent_id")
+        """Test non-existent job returns 404 (renamed from matches)."""
+        response = client.get("/api/v1/jobs/nonexistent_id")
         
         assert response.status_code in [404, 503]
 
 
+@pytest.mark.skip(reason="Versioning/branches endpoints removed in refactoring")
 class TestVersioningEndpoints:
-    """Versioning (branches) endpoint tests"""
+    """Versioning (branches) endpoint tests - DEPRECATED"""
     
     @pytest.fixture
     def client(self):

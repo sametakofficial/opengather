@@ -8,16 +8,13 @@ Endpoints:
 - GET /diagnostics - Recent diagnostics logs
 """
 
-from datetime import datetime, timezone
-from typing import Optional
 import platform
-import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from archiverr.api.deps import DatabaseDep, PersistenceDep
-
 
 router = APIRouter()
 
@@ -28,24 +25,24 @@ class HealthResponse(BaseModel):
     """Health check response"""
     status: str  # "healthy" | "unhealthy"
     timestamp: str
-    
-    
+
+
 class DatabaseStatus(BaseModel):
     """Database connection status"""
     connected: bool
     backend: str
-    database: Optional[str] = None
-    collections: Optional[dict] = None
+    database: str | None = None
+    collections: dict | None = None
 
 
 class SystemStatus(BaseModel):
     """Detailed system status"""
     status: str
     timestamp: str
-    uptime_seconds: Optional[float] = None
+    uptime_seconds: float | None = None
     database: DatabaseStatus
     system: dict
-    
+
 
 class VersionResponse(BaseModel):
     """Version information"""
@@ -105,11 +102,11 @@ async def system_status(persistence: PersistenceDep):
             stats = persistence.get_statistics()
         else:
             stats = {}
-            
+
         db_status = DatabaseStatus(
             connected=True,
             backend=stats.get("backend", "unknown"),
-            database=stats.get("database", None),
+            database=stats.get("database"),
             collections={
                 "executions": stats.get("executions", 0),
                 "matches": stats.get("matches", 0),
@@ -122,7 +119,7 @@ async def system_status(persistence: PersistenceDep):
             backend="error",
             database=str(e)
         )
-    
+
     return SystemStatus(
         status="healthy" if db_status.connected else "degraded",
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -155,8 +152,8 @@ async def version_info():
 async def get_diagnostics(
     db: DatabaseDep,
     limit: int = Query(default=100, le=1000, description="Max entries to return"),
-    level: Optional[str] = Query(default=None, description="Filter by log level"),
-    component: Optional[str] = Query(default=None, description="Filter by component")
+    level: str | None = Query(default=None, description="Filter by log level"),
+    component: str | None = Query(default=None, description="Filter by component")
 ):
     """
     Get recent diagnostics logs.
@@ -167,7 +164,7 @@ async def get_diagnostics(
     # Check if diagnostics collection exists
     if db is None:
         return DiagnosticsResponse(total_entries=0, entries=[])
-    
+
     try:
         # Build query filter
         query = {}
@@ -175,14 +172,14 @@ async def get_diagnostics(
             query["level"] = level.upper()
         if component:
             query["component"] = component
-        
+
         # Query MongoDB
         if not hasattr(db, '__getitem__'):
             return DiagnosticsResponse(total_entries=0, entries=[])
-        
+
         cursor = db["diagnostics"].find(query).sort("timestamp", -1).limit(limit)
         docs = await cursor.to_list(length=limit)
-        
+
         entries = [
             DiagnosticsEntry(
                 timestamp=doc.get("timestamp", ""),
@@ -193,12 +190,12 @@ async def get_diagnostics(
             )
             for doc in docs
         ]
-        
+
         # Get total count
         total = await db["diagnostics"].count_documents(query)
-        
+
         return DiagnosticsResponse(total_entries=total, entries=entries)
-             
-    except Exception as e:
+
+    except Exception:
         # Collection doesn't exist yet
         return DiagnosticsResponse(total_entries=0, entries=[])

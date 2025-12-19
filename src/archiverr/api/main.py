@@ -11,10 +11,8 @@ Industry-standard FastAPI setup with:
 Best Practice: Uses lifespan pattern for database connection management.
 """
 
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-import os
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +24,10 @@ try:
 except ImportError:
     pass
 
-from .v1.router import router as v1_router
-from .middleware import RateLimitMiddleware, RateLimiter
 from archiverr.infrastructure.database import mongodb_lifespan
+
+from .middleware import RateLimiter, RateLimitMiddleware
+from .v1.router import router as v1_router
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +69,7 @@ and git-like versioning for execution history.
         redoc_url="/redoc",
         openapi_url="/openapi.json"
     )
-    
+
     # CORS - allow all origins in development
     app.add_middleware(
         CORSMiddleware,
@@ -79,15 +78,15 @@ and git-like versioning for execution history.
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Rate limiting
     if os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true":
         limiter = RateLimiter()  # Uses default config
         app.add_middleware(RateLimitMiddleware, limiter=limiter)
-    
+
     # Include routers
     app.include_router(v1_router, prefix="/api/v1")
-    
+
     # Root endpoint
     @app.get("/", tags=["Root"])
     async def root():
@@ -99,7 +98,7 @@ and git-like versioning for execution history.
             "redoc": "/redoc",
             "openapi": "/openapi.json"
         }
-    
+
     return app
 
 

@@ -1,5 +1,5 @@
 """
-FS Lock System - Session 12
+FS Lock System - 
 
 Provides file system locking with:
 - Static path validation (no variables allowed)

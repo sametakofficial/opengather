@@ -15,11 +15,7 @@ This file is kept for backward compatibility only.
 import warnings
 
 # Re-export from new location for backward compatibility
-from archiverr.infrastructure.database.motor import (
-    MongoDB,
-    mongodb_lifespan,
-    get_database
-)
+from archiverr.infrastructure.database.motor import MongoDB, get_database, mongodb_lifespan
 
 # Emit deprecation warning on import
 warnings.warn(

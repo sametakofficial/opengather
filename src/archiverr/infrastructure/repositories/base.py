@@ -6,7 +6,7 @@ Provides common CRUD operations interface.
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, List, Optional, Dict, Any
+from typing import Generic, TypeVar
 
 T = TypeVar('T')
 
@@ -18,27 +18,27 @@ class BaseRepository(ABC, Generic[T]):
     All repositories should inherit from this class and implement
     the required CRUD operations.
     """
-    
+
     @abstractmethod
     def save(self, entity: T) -> None:
         """Save entity to storage"""
         pass
-    
+
     @abstractmethod
-    def get_by_id(self, entity_id: str) -> Optional[T]:
+    def get_by_id(self, entity_id: str) -> T | None:
         """Get entity by ID"""
         pass
-    
+
     @abstractmethod
-    def get_all(self) -> List[T]:
+    def get_all(self) -> list[T]:
         """Get all entities"""
         pass
-    
+
     @abstractmethod
     def delete(self, entity_id: str) -> bool:
         """Delete entity by ID"""
         pass
-    
+
     def exists(self, entity_id: str) -> bool:
         """Check if entity exists"""
         return self.get_by_id(entity_id) is not None

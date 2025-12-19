@@ -22,10 +22,9 @@ Usage:
     app = FastAPI(lifespan=mongodb_lifespan)
 """
 
-import os
 import logging
+import os
 import warnings
-from typing import Optional
 from contextlib import asynccontextmanager
 
 from pymongo import AsyncMongoClient
@@ -57,10 +56,10 @@ class AsyncMongoDB:
         db = AsyncMongoDB.get_db()
         result = await db.collection.find_one({})
     """
-    
-    client: Optional[AsyncMongoClient] = None
-    db: Optional[AsyncDatabase] = None
-    
+
+    client: AsyncMongoClient | None = None
+    db: AsyncDatabase | None = None
+
     @classmethod
     async def connect(cls) -> AsyncDatabase:
         """
@@ -78,12 +77,12 @@ class AsyncMongoDB:
         """
         if cls.client is not None:
             return cls.db
-        
+
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
-        
+
         logger.info(f"Connecting to MongoDB (PyMongo Async): {database}")
-        
+
         cls.client = AsyncMongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
@@ -92,13 +91,13 @@ class AsyncMongoDB:
             minPoolSize=5,
         )
         cls.db = cls.client[database]
-        
+
         # Verify connection
         await cls.db.command("ping")
         logger.info(f"Connected to MongoDB (PyMongo Async): {database}")
-        
+
         return cls.db
-    
+
     @classmethod
     async def disconnect(cls) -> None:
         """Close MongoDB connection and cleanup resources."""
@@ -107,7 +106,7 @@ class AsyncMongoDB:
             cls.client = None
             cls.db = None
             logger.info("MongoDB connection closed")
-    
+
     @classmethod
     def get_db(cls) -> AsyncDatabase:
         """
@@ -124,7 +123,7 @@ class AsyncMongoDB:
         if cls.db is None:
             raise RuntimeError("Database not connected. Call connect() first.")
         return cls.db
-    
+
     @classmethod
     def is_connected(cls) -> bool:
         """Check if database is connected."""
@@ -153,9 +152,9 @@ async def mongodb_lifespan(app):
     except Exception as e:
         logger.warning(f"MongoDB connection failed: {e}")
         app.state.db = None
-     
+
     yield
-     
+
     # Shutdown
     await AsyncMongoDB.disconnect()
 

@@ -17,11 +17,12 @@ Usage in core:
     debugger.info("discovery", "Found plugins", count=7)
     debugger.debug("executor", "Executing group", group=["ffprobe", "renamer"])
 """
-import sys
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, List
-from pathlib import Path
 import json
+import sys
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 
 # Log level constants (Python standard)
@@ -45,39 +46,41 @@ class DebugSystem:
     - Structured context fields
     - ISO8601 timestamps
     - Optional MongoDB diagnostics logging
+    - Circular buffer to prevent memory leaks
     """
-    
+
+    MAX_BUFFER_SIZE = 10000  # Prevent unbounded memory growth
+
     def __init__(self, enabled: bool = False, level: int = None, diagnostics_logger = None):
-        # Level determines what gets logged to console
-        # Default: INFO (show INFO, WARNING, ERROR, CRITICAL)
         self.enabled = enabled
         if level is not None:
             self.level = level
         elif enabled:
-            self.level = LogLevel.DEBUG  # Old behavior: debug=true → show everything
+            self.level = LogLevel.DEBUG
         else:
-            self.level = LogLevel.INFO  # Default: show INFO and above
-        
-        self.log_buffer: List[Dict[str, Any]] = []  # Always collect logs for export
+            self.level = LogLevel.INFO
+
+        self.log_buffer: list[dict[str, Any]] = []
+        self._buffer_lock = threading.Lock()  # Thread safety for log buffer
         self._diagnostics_logger = diagnostics_logger
-        self._execution_id: Optional[str] = None
-    
+        self._execution_id: str | None = None
+
     def set_execution_id(self, execution_id: str) -> None:
         """Set current execution ID for log correlation"""
         self._execution_id = execution_id
-    
+
     def set_diagnostics_logger(self, logger) -> None:
         """Set MongoDB diagnostics logger"""
         self._diagnostics_logger = logger
-    
+
     def _timestamp(self) -> str:
         """ISO8601 timestamp with timezone"""
         return datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')
-    
+
     def _should_log(self, level_num: int) -> bool:
         """Check if message should be logged based on level threshold."""
         return level_num >= self.level
-    
+
     def _get_level_num(self, level: str) -> int:
         """Convert level name to numeric value."""
         level_map = {
@@ -88,7 +91,7 @@ class DebugSystem:
             'CRITICAL': LogLevel.CRITICAL
         }
         return level_map.get(level, LogLevel.INFO)
-    
+
     def _log(self, level: str, component: str, message: str, **fields):
         """
         Emit structured debug line immediately to stderr and save to buffer.
@@ -100,7 +103,7 @@ class DebugSystem:
             **fields: Additional context fields
         """
         level_num = self._get_level_num(level)
-        
+
         # Skip if below threshold
         if not self._should_log(level_num):
             # Still buffer it for export
@@ -114,8 +117,7 @@ class DebugSystem:
             })
             return
         ts = self._timestamp()
-        
-        # Always save to buffer (regardless of debug mode)
+
         log_entry = {
             "timestamp": ts,
             "level": level,
@@ -123,60 +125,67 @@ class DebugSystem:
             "message": message,
             "fields": {k: v for k, v in fields.items() if v is not None}
         }
-        self.log_buffer.append(log_entry)
         
+        # Thread-safe buffer operations
+        with self._buffer_lock:
+            self.log_buffer.append(log_entry)
+            # Prevent memory leak: trim buffer if it exceeds max size
+            if len(self.log_buffer) > self.MAX_BUFFER_SIZE:
+                self.log_buffer = self.log_buffer[-self.MAX_BUFFER_SIZE:]
+
         # Write to MongoDB diagnostics if configured
         if self._diagnostics_logger is not None:
             try:
                 self._diagnostics_logger.log(
-                    level, 
-                    component, 
-                    message, 
+                    level,
+                    component,
+                    message,
                     execution_id=self._execution_id,
                     **fields
                 )
             except Exception:
                 pass  # Don't let diagnostics failures break the app
-        
+
         # Print to console (stderr) - level already filtered above!
         context = " ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
-        
+
         if context:
             line = f"{ts}  {level:5s}  {component:20s} [{context}] {message}"
         else:
             line = f"{ts}  {level:5s}  {component:20s} {message}"
-        
+
         print(line, file=sys.stderr)
         sys.stderr.flush()  # Force immediate output
-    
+
     def debug(self, component: str, message: str, **fields):
         """DEBUG level - Detailed diagnostic information"""
         self._log("DEBUG", component, message, **fields)
-    
+
     def info(self, component: str, message: str, **fields):
         """INFO level - Confirmation that things are working as expected"""
         self._log("INFO", component, message, **fields)
-    
+
     def warning(self, component: str, message: str, **fields):
         """WARNING level - An indication that something unexpected happened"""
         self._log("WARNING", component, message, **fields)
-    
+
     def warn(self, component: str, message: str, **fields):
         """WARN level - Alias for warning() (deprecated, use warning())"""
         self.warning(component, message, **fields)
-    
+
     def error(self, component: str, message: str, **fields):
         """ERROR level - Due to a more serious problem, software cannot perform function"""
         self._log("ERROR", component, message, **fields)
-    
+
     def critical(self, component: str, message: str, **fields):
         """CRITICAL level - A serious error indicating the program may be unable to continue"""
         self._log("CRITICAL", component, message, **fields)
-    
-    def get_logs(self) -> List[Dict[str, Any]]:
-        """Get all collected logs"""
-        return self.log_buffer
-    
+
+    def get_logs(self) -> list[dict[str, Any]]:
+        """Get all collected logs (thread-safe copy)"""
+        with self._buffer_lock:
+            return list(self.log_buffer)
+
     def export_logs(self, filepath: Path) -> None:
         """
         Export all collected logs to a JSON file.
@@ -186,7 +195,7 @@ class DebugSystem:
         """
         # Create parent directory if needed
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Prepare export data with metadata
         export_data = {
             "_metadata": {
@@ -197,15 +206,16 @@ class DebugSystem:
             },
             "logs": self.log_buffer
         }
-        
+
         # Write to file
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, indent=2, ensure_ascii=False)
-    
+
     def clear_logs(self) -> None:
-        """Clear log buffer"""
-        self.log_buffer.clear()
-    
+        """Clear log buffer (thread-safe)"""
+        with self._buffer_lock:
+            self.log_buffer.clear()
+
     def flush_diagnostics(self) -> None:
         """Flush diagnostics buffer to MongoDB"""
         if self._diagnostics_logger is not None:
@@ -216,7 +226,7 @@ class DebugSystem:
 
 
 # Global instance
-_debugger: Optional[DebugSystem] = None
+_debugger: DebugSystem | None = None
 
 
 def init_debugger(enabled: bool = False, level: str = None) -> DebugSystem:
@@ -231,7 +241,7 @@ def init_debugger(enabled: bool = False, level: str = None) -> DebugSystem:
         Initialized debugger instance
     """
     global _debugger
-    
+
     # Convert level string to numeric
     level_num = None
     if level:
@@ -244,7 +254,7 @@ def init_debugger(enabled: bool = False, level: str = None) -> DebugSystem:
             'CRITICAL': LogLevel.CRITICAL
         }
         level_num = level_map.get(level.upper(), LogLevel.INFO)
-    
+
     _debugger = DebugSystem(enabled=enabled, level=level_num)
     return _debugger
 

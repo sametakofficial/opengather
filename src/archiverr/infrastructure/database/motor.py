@@ -30,10 +30,12 @@ warnings.warn(
 
 # Re-export from new async_client module for backward compatibility
 from .async_client import (
-    AsyncMongoDB as MongoDB,  # Alias for backward compatibility
     AsyncMongoDB,
-    mongodb_lifespan,
     get_database,
+    mongodb_lifespan,
+)
+from .async_client import (
+    AsyncMongoDB as MongoDB,  # Alias for backward compatibility
 )
 
 __all__ = [

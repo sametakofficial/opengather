@@ -1,8 +1,9 @@
 """Plugin Schemas - Pydantic models for plugin information and data."""
 
-from pydantic import BaseModel, Field
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class PluginInfo(BaseModel):
@@ -10,11 +11,11 @@ class PluginInfo(BaseModel):
     name: str
     version: str = "1.0.0"
     stage: str = "output"
-    requires: List[str] = Field(default_factory=list)
-    provides: List[str] = Field(default_factory=list)
+    requires: list[str] = Field(default_factory=list)
+    provides: list[str] = Field(default_factory=list)
     trigger_rule: str = "all_success"
     enabled: bool = True
-    description: Optional[str] = None
+    description: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -26,8 +27,8 @@ class PluginData(BaseModel):
     run_id: str = ""
     plugin_name: str
     stage: str = ""
-    data: Dict[str, Any] = Field(default_factory=dict)
-    status: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
+    status: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)
 
     model_config = {"from_attributes": True}
@@ -35,13 +36,13 @@ class PluginData(BaseModel):
 
 class PluginListResponse(BaseModel):
     """Plugin list response"""
-    items: List[PluginInfo]
+    items: list[PluginInfo]
     total: int
 
 
 class PluginDataListResponse(BaseModel):
     """Plugin data list response"""
-    items: List[PluginData]
+    items: list[PluginData]
     total: int
     page: int = 1
     page_size: int = 20

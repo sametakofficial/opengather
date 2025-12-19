@@ -1,9 +1,10 @@
 """Job Schemas - Pydantic models for jobs."""
 
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class StateEnum(str, Enum):
@@ -19,11 +20,11 @@ class JobStatus(BaseModel):
     """Job status fields"""
     state: StateEnum = StateEnum.PENDING
     success: bool = True
-    executed: List[str] = Field(default_factory=list)
-    failed: List[str] = Field(default_factory=list)
-    skipped: List[str] = Field(default_factory=list)
+    executed: list[str] = Field(default_factory=list)
+    failed: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
     duration_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -31,15 +32,15 @@ class JobStatus(BaseModel):
 class InputData(BaseModel):
     """Job input data"""
     value: str = ""
-    data: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
 
 class OutputData(BaseModel):
     """Job output data"""
-    values: Dict[str, str] = Field(default_factory=dict)
-    data: Dict[str, Any] = Field(default_factory=dict)
+    values: list[str] = Field(default_factory=list)
+    data: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 
@@ -52,16 +53,16 @@ class JobResponse(BaseModel):
     status: JobStatus = Field(default_factory=JobStatus)
     input: InputData = Field(default_factory=InputData)
     output: OutputData = Field(default_factory=OutputData)
-    plugins: Dict[str, Any] = Field(default_factory=dict)
+    plugins: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class JobListResponse(BaseModel):
     """Paginated job list"""
-    items: List[JobResponse]
+    items: list[JobResponse]
     total: int
     page: int = 1
     page_size: int = 20
@@ -72,7 +73,7 @@ class JobPluginResponse(BaseModel):
     job_id: str
     plugin_name: str
     stage: str = ""
-    data: Dict[str, Any] = Field(default_factory=dict)
-    status: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
+    status: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}

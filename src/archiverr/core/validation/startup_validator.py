@@ -1,7 +1,7 @@
 """
 Startup Validator
 
-Session 11 - Phase 7: Orchestrates all startup validations.
+- Phase 7: Orchestrates all startup validations.
 
 Combines:
 1. Config validation (schema, semantic, security)
@@ -11,15 +11,15 @@ Combines:
 5. Additional startup checks (input plugins)
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any
 
-from .result import ValidationResult
+from archiverr.core.provides_registry import ProvidesRegistry
+
 from .config_validator import ConfigValidator
-from .manifest_validator import ManifestValidator
 from .dependency_validator import DependencyValidator
 from .error_codes import W004
-
-from archiverr.core.provides_registry import ProvidesRegistry, LOCKABLE_PROVIDES
+from .manifest_validator import ManifestValidator
+from .result import ValidationResult
 
 
 class StartupValidator:
@@ -44,8 +44,8 @@ class StartupValidator:
         for warning in result.warnings:
             print(warning)
     """
-    
-    def __init__(self, schema_path: Optional[str] = None):
+
+    def __init__(self, schema_path: str | None = None):
         """
         Initialize with optional custom schema path.
         
@@ -55,12 +55,12 @@ class StartupValidator:
         self._config_validator = ConfigValidator(schema_path)
         self._manifest_validator = ManifestValidator()
         self._dependency_validator = DependencyValidator()
-    
+
     def validate_startup(
         self,
-        config: Dict[str, Any],
-        manifests: Dict[str, Dict],
-        enabled_plugins: Optional[List[str]] = None
+        config: dict[str, Any],
+        manifests: dict[str, dict],
+        enabled_plugins: list[str] | None = None
     ) -> ValidationResult:
         """
         Run all startup validations.
@@ -74,15 +74,15 @@ class StartupValidator:
             Combined ValidationResult with all errors and warnings
         """
         result = ValidationResult.ok()
-        
+
         # 1. Config validation
         config_result = self._config_validator.validate(config)
         result.merge(config_result)
-        
+
         # Stop early if config has fatal errors
         if result.has_fatal():
             return result
-        
+
         # 2. Filter manifests to only enabled plugins
         if enabled_plugins is not None:
             filtered_manifests = {
@@ -92,28 +92,28 @@ class StartupValidator:
             }
         else:
             filtered_manifests = manifests
-        
+
         # 3. Manifest validation
         manifest_result = self._manifest_validator.validate_all(filtered_manifests)
         result.merge(manifest_result)
-        
+
         # 4. Dependency validation
         dep_result = self._dependency_validator.validate(filtered_manifests)
         result.merge(dep_result)
-        
+
         # 5. Provides conflict detection
         conflict_result = self._detect_provides_conflicts(filtered_manifests)
         result.merge(conflict_result)
-        
+
         # 6. Additional startup checks
         additional_result = self._additional_checks(config, filtered_manifests)
         result.merge(additional_result)
-        
+
         return result
-    
+
     def _detect_provides_conflicts(
         self,
-        manifests: Dict[str, Dict]
+        manifests: dict[str, dict]
     ) -> ValidationResult:
         """
         Detect conflicts in lockable provides.
@@ -128,23 +128,23 @@ class StartupValidator:
             ValidationResult with conflict errors
         """
         result = ValidationResult.ok()
-        
+
         # Build temporary registry for conflict detection
         registry = ProvidesRegistry()
-        
+
         for plugin_name, manifest in manifests.items():
             provides = manifest.get('provides', [])
             registry.register_from_manifest(plugin_name, provides)
-        
+
         # Detect conflicts
         conflicts = registry.detect_conflicts()
-        
+
         for conflict in conflicts:
             severity = conflict.get('severity', 'error')
             provide = conflict.get('provide', 'unknown')
             plugins = conflict.get('plugins', [])
             path = conflict.get('path', '*')
-            
+
             if severity == 'error':
                 result.add_error(
                     "E020",  # Provides conflict
@@ -158,44 +158,44 @@ class StartupValidator:
                     "W020",
                     f"Potential provides conflict: {conflict_type} for '{provide}'"
                 )
-        
+
         return result
-    
+
     def _additional_checks(
         self,
-        config: Dict[str, Any],
-        manifests: Dict[str, Dict]
+        config: dict[str, Any],
+        manifests: dict[str, dict]
     ) -> ValidationResult:
         """Additional startup checks and warnings."""
         result = ValidationResult.ok()
-        
+
         # Check for input plugin
         input_plugins = [
             name for name, m in manifests.items()
             if m.get('stage') == 'input'
         ]
-        
+
         if not input_plugins:
             result.add_warning(
                 W004,
                 "No input plugins enabled - no jobs will be created"
             )
-        
+
         # Check for output plugin
         output_plugins = [
             name for name, m in manifests.items()
             if m.get('stage') == 'output'
         ]
-        
+
         if not output_plugins:
             result.add_warning(
                 "W005",
                 "No output plugins enabled - results won't be persisted"
             )
-        
+
         return result
-    
-    def get_execution_order(self, manifests: Dict[str, Dict]) -> List[str]:
+
+    def get_execution_order(self, manifests: dict[str, dict]) -> list[str]:
         """
         Get plugin execution order based on dependencies.
         
@@ -211,10 +211,10 @@ class StartupValidator:
 
 
 def validate_at_startup(
-    config: Dict[str, Any],
-    manifests: Dict[str, Dict],
-    enabled_plugins: Optional[List[str]] = None,
-    schema_path: Optional[str] = None
+    config: dict[str, Any],
+    manifests: dict[str, dict],
+    enabled_plugins: list[str] | None = None,
+    schema_path: str | None = None
 ) -> ValidationResult:
     """
     Convenience function for startup validation.

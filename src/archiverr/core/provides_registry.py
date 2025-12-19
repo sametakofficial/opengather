@@ -1,7 +1,7 @@
 """
 Provides Registry - Tracks plugin provides status
 
-Session 11: Implements the provides tracking system for:
+Implements the provides tracking system for:
 - Tracking which plugins have completed which provides
 - Enables requires validation (provides.* prefix)
 - Enables early completion (complete_provide)
@@ -10,11 +10,11 @@ Session 11: Implements the provides tracking system for:
 TRUTH SOURCE: HUMAN/FINAL_DATASETS.yml
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any
 from threading import Lock
+from typing import Any
 
 
 class ProvideStatus(Enum):
@@ -26,7 +26,7 @@ class ProvideStatus(Enum):
 
 # Lockable provides - require conflict detection
 # Per FINAL_DATASETS.yml lockable_provides
-LOCKABLE_PROVIDES: Set[str] = {
+LOCKABLE_PROVIDES: set[str] = {
     'fs.write',
     'fs.delete',
     'fs.move',
@@ -35,7 +35,7 @@ LOCKABLE_PROVIDES: Set[str] = {
 }
 
 # Non-lockable provides - can run in parallel
-NON_LOCKABLE_PROVIDES: Set[str] = {
+NON_LOCKABLE_PROVIDES: set[str] = {
     'fs.read',
     'fs.copy',
     'fs.mkdir',
@@ -58,10 +58,10 @@ class ProvideEntry:
     provide: str
     plugin_name: str
     status: ProvideStatus = ProvideStatus.PENDING
-    path_constraint: Optional[str] = None  # e.g., fs.write:/srv/media
-    completed_at: Optional[datetime] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    path_constraint: str | None = None  # e.g., fs.write:/srv/media
+    completed_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             'provide': self.provide,
             'plugin_name': self.plugin_name,
@@ -91,11 +91,11 @@ class ProvidesRegistry:
         # Get all provides for template context
         registry.to_dict()  # {'http.request': {'tmdb': 'completed'}, ...}
     """
-    
+
     def __init__(self):
-        self._entries: Dict[str, List[ProvideEntry]] = {}  # provide -> [entries]
+        self._entries: dict[str, list[ProvideEntry]] = {}  # provide -> [entries]
         self._lock = Lock()
-    
+
     def register(self, plugin_name: str, provide: str) -> None:
         """
         Register a provide from a plugin.
@@ -106,19 +106,19 @@ class ProvidesRegistry:
         """
         # Parse provide and path constraint
         base_provide, path_constraint = self._parse_provide(provide)
-        
+
         entry = ProvideEntry(
             provide=base_provide,
             plugin_name=plugin_name,
             path_constraint=path_constraint,
         )
-        
+
         with self._lock:
             if base_provide not in self._entries:
                 self._entries[base_provide] = []
             self._entries[base_provide].append(entry)
-    
-    def register_from_manifest(self, plugin_name: str, provides: List[str]) -> None:
+
+    def register_from_manifest(self, plugin_name: str, provides: list[str]) -> None:
         """
         Register all provides from a plugin manifest.
         
@@ -128,7 +128,7 @@ class ProvidesRegistry:
         """
         for provide in provides:
             self.register(plugin_name, provide)
-    
+
     def complete(self, plugin_name: str, provide: str) -> None:
         """
         Mark a provide as completed.
@@ -138,7 +138,7 @@ class ProvidesRegistry:
             provide: Provide value (base, without path constraint)
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide in self._entries:
                 for entry in self._entries[base_provide]:
@@ -146,7 +146,7 @@ class ProvidesRegistry:
                         entry.status = ProvideStatus.COMPLETED
                         entry.completed_at = datetime.now()
                         break
-    
+
     def fail(self, plugin_name: str, provide: str) -> None:
         """
         Mark a provide as failed.
@@ -156,14 +156,14 @@ class ProvidesRegistry:
             provide: Provide value
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide in self._entries:
                 for entry in self._entries[base_provide]:
                     if entry.plugin_name == plugin_name:
                         entry.status = ProvideStatus.FAILED
                         break
-    
+
     def complete_all(self, plugin_name: str) -> None:
         """
         Mark all provides from a plugin as completed.
@@ -177,7 +177,7 @@ class ProvidesRegistry:
                     if entry.plugin_name == plugin_name and entry.status == ProvideStatus.PENDING:
                         entry.status = ProvideStatus.COMPLETED
                         entry.completed_at = datetime.now()
-    
+
     def fail_all(self, plugin_name: str) -> None:
         """
         Mark all provides from a plugin as failed.
@@ -190,7 +190,7 @@ class ProvidesRegistry:
                 for entry in entries:
                     if entry.plugin_name == plugin_name and entry.status == ProvideStatus.PENDING:
                         entry.status = ProvideStatus.FAILED
-    
+
     def is_completed(self, provide: str) -> bool:
         """
         Check if a provide is completed (by any plugin).
@@ -202,16 +202,16 @@ class ProvidesRegistry:
             True if at least one plugin has completed this provide
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide not in self._entries:
                 return False
-            
+
             return any(
                 entry.status == ProvideStatus.COMPLETED
                 for entry in self._entries[base_provide]
             )
-    
+
     def is_completed_by(self, provide: str, plugin_name: str) -> bool:
         """
         Check if a specific plugin has completed a provide.
@@ -224,17 +224,17 @@ class ProvidesRegistry:
             True if the specific plugin has completed this provide
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide not in self._entries:
                 return False
-            
+
             return any(
                 entry.plugin_name == plugin_name and entry.status == ProvideStatus.COMPLETED
                 for entry in self._entries[base_provide]
             )
-    
-    def get_status(self, provide: str) -> Dict[str, str]:
+
+    def get_status(self, provide: str) -> dict[str, str]:
         """
         Get status of a provide from all plugins.
         
@@ -245,17 +245,17 @@ class ProvidesRegistry:
             Dict of plugin_name -> status
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide not in self._entries:
                 return {}
-            
+
             return {
                 entry.plugin_name: entry.status.value
                 for entry in self._entries[base_provide]
             }
-    
-    def get_completed_plugins(self, provide: str) -> List[str]:
+
+    def get_completed_plugins(self, provide: str) -> list[str]:
         """
         Get list of plugins that have completed a provide.
         
@@ -266,18 +266,18 @@ class ProvidesRegistry:
             List of plugin names
         """
         base_provide, _ = self._parse_provide(provide)
-        
+
         with self._lock:
             if base_provide not in self._entries:
                 return []
-            
+
             return [
                 entry.plugin_name
                 for entry in self._entries[base_provide]
                 if entry.status == ProvideStatus.COMPLETED
             ]
-    
-    def to_dict(self) -> Dict[str, Dict[str, str]]:
+
+    def to_dict(self) -> dict[str, dict[str, str]]:
         """
         Convert registry to dict for template context.
         
@@ -298,16 +298,16 @@ class ProvidesRegistry:
                     for entry in entries
                 }
             return result
-    
-    def get_all_entries(self) -> List[ProvideEntry]:
+
+    def get_all_entries(self) -> list[ProvideEntry]:
         """Get all entries as list."""
         with self._lock:
             entries = []
             for provide_entries in self._entries.values():
                 entries.extend(provide_entries)
             return entries
-    
-    def detect_conflicts(self) -> List[Dict[str, Any]]:
+
+    def detect_conflicts(self) -> list[dict[str, Any]]:
         """
         Detect conflicts for lockable provides.
         
@@ -315,22 +315,22 @@ class ProvidesRegistry:
             List of conflict dicts with provide, plugins, and paths
         """
         conflicts = []
-        
+
         with self._lock:
             for provide, entries in self._entries.items():
                 # Only check lockable provides
                 if provide not in LOCKABLE_PROVIDES:
                     continue
-                
+
                 # Check for overlapping paths
-                path_plugins: Dict[str, List[str]] = {}  # path -> [plugins]
-                
+                path_plugins: dict[str, list[str]] = {}  # path -> [plugins]
+
                 for entry in entries:
                     path = entry.path_constraint or '*'
                     if path not in path_plugins:
                         path_plugins[path] = []
                     path_plugins[path].append(entry.plugin_name)
-                
+
                 # Detect conflicts
                 for path, plugins in path_plugins.items():
                     if len(plugins) > 1:
@@ -340,7 +340,7 @@ class ProvidesRegistry:
                             'plugins': plugins,
                             'severity': 'error',
                         })
-                
+
                 # Check for generic vs specific path conflicts
                 if '*' in path_plugins and len(path_plugins) > 1:
                     generic_plugins = path_plugins['*']
@@ -354,14 +354,14 @@ class ProvidesRegistry:
                                 'specific_plugins': plugins,
                                 'severity': 'warning',
                             })
-        
+
         return conflicts
-    
+
     def reset(self) -> None:
         """Reset the registry."""
         with self._lock:
             self._entries.clear()
-    
+
     def _parse_provide(self, provide: str) -> tuple:
         """
         Parse provide string into base and path constraint.
@@ -379,7 +379,7 @@ class ProvidesRegistry:
 
 
 # Singleton instance for global access
-_provides_registry: Optional[ProvidesRegistry] = None
+_provides_registry: ProvidesRegistry | None = None
 
 
 def get_provides_registry() -> ProvidesRegistry:

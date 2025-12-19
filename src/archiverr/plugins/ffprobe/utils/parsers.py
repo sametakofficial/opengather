@@ -10,7 +10,6 @@ References:
 - moviepy: Uses manual string splitting with validation
 """
 import re
-from typing import Optional
 
 
 def parse_fps(fps_str: str) -> float:
@@ -43,23 +42,23 @@ def parse_fps(fps_str: str) -> float:
     """
     if not fps_str:
         return 0.0
-    
+
     fps_str = fps_str.strip()
-    
+
     # Pattern 1: Fraction format "num/denom"
     fraction_match = re.match(r'^(\d+)/(\d+)$', fps_str)
     if fraction_match:
         try:
             numerator = float(fraction_match.group(1))
             denominator = float(fraction_match.group(2))
-            
+
             if denominator == 0:
                 return 0.0
-            
+
             return numerator / denominator
         except (ValueError, ZeroDivisionError):
             return 0.0
-    
+
     # Pattern 2: Decimal or integer format
     try:
         return float(fps_str)
@@ -87,7 +86,7 @@ def parse_duration(duration_str: str) -> float:
     """
     if not duration_str:
         return 0.0
-    
+
     try:
         return float(duration_str)
     except ValueError:
@@ -114,7 +113,7 @@ def parse_bitrate(bitrate_str: str) -> int:
     """
     if not bitrate_str:
         return 0
-    
+
     try:
         return int(bitrate_str)
     except ValueError:
@@ -134,7 +133,7 @@ def parse_int_safe(value_str: str, default: int = 0) -> int:
     """
     if not value_str:
         return default
-    
+
     try:
         return int(value_str)
     except ValueError:

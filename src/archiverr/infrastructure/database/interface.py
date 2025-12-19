@@ -6,10 +6,10 @@ Supports MongoDB persistence implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from archiverr.state.models import RunState, JobState
+    pass
 
 
 class PersistenceInterface(ABC):
@@ -19,19 +19,19 @@ class PersistenceInterface(ABC):
     All persistence backends must implement these methods.
     This allows swapping between MongoDB persistence implementations without code changes.
     """
-    
+
     @abstractmethod
     def connect(self) -> None:
         """Connect to persistence backend"""
         pass
-    
+
     @abstractmethod
     def disconnect(self) -> None:
         """Disconnect from persistence backend"""
         pass
-    
+
     @abstractmethod
-    def save_run(self, run: Dict[str, Any]) -> None:
+    def save_run(self, run: dict[str, Any]) -> None:
         """
         Save or update run state (replaces save_execution).
         
@@ -39,9 +39,9 @@ class PersistenceInterface(ABC):
             run: RunState.to_dict() output
         """
         pass
-    
+
     @abstractmethod
-    def save_job(self, job: Dict[str, Any]) -> None:
+    def save_job(self, job: dict[str, Any]) -> None:
         """
         Save or update job state (replaces save_match).
         
@@ -49,9 +49,9 @@ class PersistenceInterface(ABC):
             job: JobState.to_dict() output
         """
         pass
-    
+
     @abstractmethod
-    def save_plugin(self, plugin: Dict[str, Any]) -> None:
+    def save_plugin(self, plugin: dict[str, Any]) -> None:
         """
         Save plugin data to separate collection.
         
@@ -63,9 +63,9 @@ class PersistenceInterface(ABC):
             plugin: Flat plugin data dict
         """
         pass
-    
+
     @abstractmethod
-    def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
         """
         Get run by ID.
         
@@ -76,9 +76,9 @@ class PersistenceInterface(ABC):
             Run dict or None if not found
         """
         pass
-    
+
     @abstractmethod
-    def get_jobs(self, run_id: str) -> List[Dict[str, Any]]:
+    def get_jobs(self, run_id: str) -> list[dict[str, Any]]:
         """
         Get all jobs for a run.
         
@@ -89,9 +89,9 @@ class PersistenceInterface(ABC):
             List of job dicts sorted by index
         """
         pass
-    
+
     @abstractmethod
-    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
         """
         Get job by ID.
         
@@ -102,9 +102,9 @@ class PersistenceInterface(ABC):
             Job dict or None if not found
         """
         pass
-    
+
     @abstractmethod
-    def get_plugins(self, job_id: str) -> List[Dict[str, Any]]:
+    def get_plugins(self, job_id: str) -> list[dict[str, Any]]:
         """
         Get all plugin data for a job.
         
@@ -115,9 +115,9 @@ class PersistenceInterface(ABC):
             List of plugin data dicts
         """
         pass
-    
+
     @abstractmethod
-    def get_plugin(self, job_id: str, plugin_name: str) -> Optional[Dict[str, Any]]:
+    def get_plugin(self, job_id: str, plugin_name: str) -> dict[str, Any] | None:
         """
         Get specific plugin data for a job.
         
@@ -129,8 +129,8 @@ class PersistenceInterface(ABC):
             Plugin data dict or None if not found
         """
         pass
-    
-    def get_statistics(self) -> Dict[str, Any]:
+
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get database statistics.
         

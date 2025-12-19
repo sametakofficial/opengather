@@ -1,38 +1,39 @@
 """
 Core Services - Shared business logic for CLI and API
 
-Session 11 Update:
+Update:
 - Added PluginServices for plugin dependency injection
 - Service protocols: StateService, EventService, LoggerService, ConfigService
 - Factory functions: create_plugin_services, services_from_context
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
+
+from .config_service import ConfigServiceImpl
+from .event_service import EventServiceImpl
+from .logger_service import LoggerServiceImpl
 
 # New protocol definitions
 from .protocols import (
-    StateService,
+    ConfigService,
     EventService,
     LoggerService,
-    ConfigService,
-    TemplateService,
     ProvidesService,
+    StateService,
+    TemplateService,
 )
+from .provides_service import ProvidesServiceImpl
 
 # Service implementations
 from .state_service import StateServiceImpl
-from .event_service import EventServiceImpl
-from .logger_service import LoggerServiceImpl
-from .config_service import ConfigServiceImpl
-from .provides_service import ProvidesServiceImpl
 
 if TYPE_CHECKING:
-    from archiverr.state.manager import StateManager
-    from archiverr.events import EventBus
-    from archiverr.utils.debug import Debugger
-    from archiverr.infrastructure.database.interface import PersistenceInterface
     from archiverr.core.provides_registry import ProvidesRegistry
+    from archiverr.events import EventBus
+    from archiverr.infrastructure.database.interface import PersistenceInterface
+    from archiverr.state.manager import StateManager
+    from archiverr.utils.debug import Debugger
 
 
 @dataclass
@@ -51,7 +52,7 @@ class PluginServices:
             # Mark provide as completed early
             services.provides.complete("http.request")
             
-            services.events.emit("plugin.completed", {"plugin": self.name})
+            services.events.emit(Events.PLUGIN_COMPLETED, {"plugin": self.name})
             return PluginResult.success({"movie": movie_data})
     """
     state: StateService
@@ -65,7 +66,7 @@ def create_plugin_services(
     state_manager: 'StateManager',
     event_bus: 'EventBus',
     debugger: 'Debugger',
-    config: Dict[str, Any],
+    config: dict[str, Any],
     plugin_name: str = "plugin",
     persistence: Optional['PersistenceInterface'] = None,
     provides_registry: Optional['ProvidesRegistry'] = None
@@ -86,9 +87,9 @@ def create_plugin_services(
         PluginServices instance with all services configured
     """
     from archiverr.core.provides_registry import get_provides_registry
-    
+
     registry = provides_registry or get_provides_registry()
-    
+
     return PluginServices(
         state=StateServiceImpl(state_manager, persistence),
         events=EventServiceImpl(event_bus, source=plugin_name),
@@ -111,11 +112,11 @@ def services_from_context(context, state_manager: 'StateManager') -> PluginServi
     Returns:
         PluginServices instance
     """
-    from archiverr.utils.debug import get_debugger
     from archiverr.core.provides_registry import get_provides_registry
-    
+    from archiverr.utils.debug import get_debugger
+
     registry = get_provides_registry()
-    
+
     return PluginServices(
         state=StateServiceImpl(state_manager),
         events=EventServiceImpl(context.event_bus, source="plugin"),
@@ -133,14 +134,14 @@ __all__ = [
     'ConfigService',
     'TemplateService',
     'ProvidesService',
-    
+
     # Implementations
     'StateServiceImpl',
     'EventServiceImpl',
     'LoggerServiceImpl',
     'ConfigServiceImpl',
     'ProvidesServiceImpl',
-    
+
     # PluginServices
     'PluginServices',
     'create_plugin_services',

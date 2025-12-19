@@ -1,15 +1,15 @@
 """TVMaze Response Normalizer"""
-from typing import Dict, Any, List
+from typing import Any
 
 
 class TVMazeNormalizer:
     """Normalize TVMaze API responses to community standard format"""
-    
-    def normalize_show(self, show_data: Dict[str, Any], extras: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    def normalize_show(self, show_data: dict[str, Any], extras: dict[str, Any] = None) -> dict[str, Any]:
         """Normalize show response"""
         if not show_data:
             return {}
-        
+
         normalized = {
             'media_type': 'show',
             'identifiers': {
@@ -38,15 +38,14 @@ class TVMazeNormalizer:
                 'country': show_data.get('network', {}).get('country', {}).get('code') if show_data.get('network') else None
             } if show_data.get('network') else {}
         }
-        
+
         # Add extras if provided
-        if extras:
-            if extras.get('shows_cast'):
-                normalized['people'] = self._normalize_people(extras['shows_cast'], extras.get('shows_crew', []))
-        
+        if extras and extras.get('shows_cast'):
+            normalized['people'] = self._normalize_people(extras['shows_cast'], extras.get('shows_crew', []))
+
         return normalized
-    
-    def _normalize_people(self, cast_data: List[Dict[str, Any]], crew_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+    def _normalize_people(self, cast_data: list[dict[str, Any]], crew_data: list[dict[str, Any]]) -> dict[str, Any]:
         """Normalize cast and crew"""
         cast = []
         for item in cast_data:
@@ -57,7 +56,7 @@ class TVMazeNormalizer:
                 'name': person.get('name'),
                 'character': character.get('name')
             })
-        
+
         crew = []
         for item in crew_data:
             person = item.get('person', {})
@@ -66,7 +65,7 @@ class TVMazeNormalizer:
                 'name': person.get('name'),
                 'job': item.get('type')
             })
-        
+
         return {
             'cast': cast,
             'crew': crew

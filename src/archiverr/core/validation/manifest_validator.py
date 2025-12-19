@@ -1,7 +1,7 @@
 """
 Manifest Validator
 
-Session 11 - Phase 7: Plugin manifest validation.
+- Phase 7: Plugin manifest validation.
 
 Validates:
 1. Required fields (name, stage, class_name)
@@ -11,18 +11,18 @@ Validates:
 5. Provides conflicts between plugins
 """
 
-from typing import Dict, Any, List, Set, Optional
+from typing import Any
 
-from .result import ValidationResult, ValidationLevel
-from .error_codes import E011, E012, E013, E016, E017, W001
 from archiverr.core.provides_registry import LOCKABLE_PROVIDES
 
+from .error_codes import E012, E013, E016, E017, W001
+from .result import ValidationResult
 
 # Valid stage values
-VALID_STAGES: Set[str] = {'input', 'parse', 'data', 'output'}
+VALID_STAGES: set[str] = {'input', 'parse', 'data', 'output'}
 
 # Valid trigger rules (v2: 'always' removed)
-VALID_TRIGGER_RULES: Set[str] = {'all_success', 'one_success', 'all_done', 'all_fail', 'none_fail'}
+VALID_TRIGGER_RULES: set[str] = {'all_success', 'one_success', 'all_done', 'all_fail', 'none_fail'}
 
 # Valid provides prefixes (static capabilities)
 VALID_PROVIDES_PREFIXES: tuple = (
@@ -52,8 +52,8 @@ class ManifestValidator:
         # All manifests with conflict detection
         result = validator.validate_all(manifests)
     """
-    
-    def validate(self, manifest: Dict[str, Any], plugin_name: Optional[str] = None) -> ValidationResult:
+
+    def validate(self, manifest: dict[str, Any], plugin_name: str | None = None) -> ValidationResult:
         """
         Validate single manifest.
         
@@ -66,7 +66,7 @@ class ManifestValidator:
         """
         result = ValidationResult.ok()
         name = plugin_name or manifest.get('name', 'unknown')
-        
+
         # Required fields
         required_fields = ['name', 'stage', 'class_name']
         for field in required_fields:
@@ -76,11 +76,11 @@ class ManifestValidator:
                     f"Missing required field: {field}",
                     path=f"{name}.{field}"
                 )
-        
+
         # If required fields missing, stop here
         if not result.valid:
             return result
-        
+
         # Validate stage
         stage = manifest.get('stage', '')
         if stage not in VALID_STAGES:
@@ -89,7 +89,7 @@ class ManifestValidator:
                 f"Invalid stage: '{stage}'. Must be one of: {', '.join(sorted(VALID_STAGES))}",
                 path=f"{name}.stage"
             )
-        
+
         # Validate trigger_rule
         trigger_rule = manifest.get('trigger_rule', 'all_success')
         if trigger_rule not in VALID_TRIGGER_RULES:
@@ -98,36 +98,33 @@ class ManifestValidator:
                 f"Invalid trigger_rule: '{trigger_rule}'. Must be one of: {', '.join(sorted(VALID_TRIGGER_RULES))}",
                 path=f"{name}.trigger_rule"
             )
-        
+
         # Validate requires format
         requires = manifest.get('requires', [])
         if isinstance(requires, list):
             for req in requires:
-                if isinstance(req, str):
-                    # Requires should reference job.* or run.* or just plugin.path
-                    if not self._is_valid_requires_path(req):
-                        result.add_warning(
-                            W001,
-                            f"Requires '{req}' should have job. or run. prefix for clarity",
-                            path=f"{name}.requires"
-                        )
-        
+                if isinstance(req, str) and not self._is_valid_requires_path(req):
+                    result.add_warning(
+                        W001,
+                        f"Requires '{req}' should have job. or run. prefix for clarity",
+                        path=f"{name}.requires"
+                    )
+
         # Validate provides - no dynamic variables allowed
         provides = manifest.get('provides', [])
         if isinstance(provides, list):
             for prov in provides:
-                if isinstance(prov, str):
-                    if prov.startswith('job.') or prov.startswith('run.'):
-                        result.add_error(
-                            E017,
-                            f"Provides cannot use dynamic variables: '{prov}'. "
-                            f"Use static capability names like http.request, fs.write, etc.",
-                            path=f"{name}.provides"
-                        )
-        
+                if isinstance(prov, str) and (prov.startswith('job.') or prov.startswith('run.')):
+                    result.add_error(
+                        E017,
+                        f"Provides cannot use dynamic variables: '{prov}'. "
+                        f"Use static capability names like http.request, fs.write, etc.",
+                        path=f"{name}.provides"
+                    )
+
         return result
-    
-    def validate_all(self, manifests: Dict[str, Dict]) -> ValidationResult:
+
+    def validate_all(self, manifests: dict[str, dict]) -> ValidationResult:
         """
         Validate all manifests and check for conflicts.
         
@@ -138,43 +135,43 @@ class ManifestValidator:
             Combined ValidationResult
         """
         result = ValidationResult.ok()
-        
+
         # Validate each manifest
         for name, manifest in manifests.items():
             manifest_result = self.validate(manifest, plugin_name=name)
             result.merge(manifest_result)
-        
+
         # Check for provides conflicts
         conflict_result = self._check_provides_conflicts(manifests)
         result.merge(conflict_result)
-        
+
         return result
-    
-    def _check_provides_conflicts(self, manifests: Dict[str, Dict]) -> ValidationResult:
+
+    def _check_provides_conflicts(self, manifests: dict[str, dict]) -> ValidationResult:
         """Check for duplicate provides values."""
         result = ValidationResult.ok()
-        
+
         # Map: provides_value -> plugin_name
-        provides_map: Dict[str, str] = {}
-        
+        provides_map: dict[str, str] = {}
+
         for name, manifest in manifests.items():
             provides = manifest.get('provides', [])
-            
+
             if not isinstance(provides, list):
                 continue
-            
+
             for prov in provides:
                 if not isinstance(prov, str):
                     continue
-                
+
                 # P0.3: Only check lockable provides for conflicts
                 # Extract base provide (remove path constraint)
                 base_prov = prov.split(':')[0] if ':' in prov else prov
-                
+
                 # Non-lockable provides (like state.update) can be shared
                 if base_prov not in LOCKABLE_PROVIDES:
                     continue
-                
+
                 if prov in provides_map:
                     existing = provides_map[prov]
                     result.add_error(
@@ -184,9 +181,9 @@ class ManifestValidator:
                     )
                 else:
                     provides_map[prov] = name
-        
+
         return result
-    
+
     def _is_valid_requires_path(self, path: str) -> bool:
         """
         Check if requires path has valid format.
@@ -199,7 +196,7 @@ class ManifestValidator:
         """
         if path.startswith('job.') or path.startswith('run.'):
             return True
-        
+
         # Legacy format: plugin_name.path - still works but warned
         parts = path.split('.')
         return len(parts) >= 2

@@ -1,40 +1,41 @@
 """
-Stage Executor - 4-stage plugin execution system
+Stage Executor - 3-stage plugin execution system.
 
-Session 11 - Phase 5: Executes plugins by stage with proper
-lifecycle management, requires validation, and event emission.
+Executes plugins by stage with lifecycle management,
+requires validation, and event emission.
 
 Stages:
-- INPUT: per_run mode - discovers files, creates jobs
 - PARSE: per_job mode - parses filenames/metadata
 - DATA: per_job mode - fetches external data (TMDB, TVDB)
-- OUTPUT: mixed mode - executes tasks, writes files
+- OUTPUT: per_job mode - executes tasks, writes files
+
+Note: INPUT stage removed - input plugins run as per_run mode before stages.
 """
 
-from enum import Enum
-from typing import Dict, List, Optional, Any, Callable, Set
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
+from typing import Any
 
-from archiverr.state.models import JobState, RunState
-from archiverr.events import EventBus, Events
-from archiverr.utils.debug import Debugger, get_debugger
-from archiverr.core.exceptions import StageError, PluginError
+from archiverr.core.exceptions import PluginError, StageError
 from archiverr.core.services.plugin_services import PluginServices
 from archiverr.core.triggers import TriggerRuleManager
+from archiverr.events import EventBus, Events
+from archiverr.state.models import JobState
+from archiverr.utils.debug import Debugger, get_debugger
 
 from .registry import PluginRegistry, Stage
 
 
 class ExecutionMode(Enum):
-    """Plugin execution mode (Session 12)"""
+    """Plugin execution mode."""
     PER_RUN = "per_run"   # Execute once per run (outside stages)
     PER_JOB = "per_job"   # Execute for each job (PARSE, DATA, OUTPUT stages)
 
 
-# Default execution mode by stage (Session 12: 3 stages only)
-STAGE_MODES: Dict[Stage, ExecutionMode] = {
+# Default execution mode by stage (3 stages)
+STAGE_MODES: dict[Stage, ExecutionMode] = {
     Stage.PARSE: ExecutionMode.PER_JOB,
     Stage.DATA: ExecutionMode.PER_JOB,
     Stage.OUTPUT: ExecutionMode.PER_JOB,
@@ -46,16 +47,16 @@ class PluginExecutionResult:
     """Result of a single plugin execution"""
     plugin_name: str
     success: bool
-    data: Dict[str, Any]
-    error: Optional[str] = None
+    data: dict[str, Any]
+    error: str | None = None
     duration_ms: int = 0
     skipped: bool = False
-    skip_reason: Optional[str] = None
+    skip_reason: str | None = None
 
 
 class StageExecutor:
     """
-    Session 12: 3-stage plugin execution engine.
+    3-stage plugin execution engine.
     
     Orchestrates plugin execution across 3 stages:
     1. PARSE: Parse filenames, extract metadata (per_job)
@@ -85,14 +86,14 @@ class StageExecutor:
         for stage in [Stage.INPUT, Stage.PARSE, Stage.DATA, Stage.OUTPUT]:
             executor.execute_stage(stage)
     """
-    
+
     def __init__(
         self,
         state: Any,  # StateManager
         plugin_registry: PluginRegistry,
         event_bus: EventBus,
-        config: Dict[str, Any],
-        debugger: Optional[Debugger] = None
+        config: dict[str, Any],
+        debugger: Debugger | None = None
     ):
         """
         Initialize stage executor.
@@ -109,13 +110,13 @@ class StageExecutor:
         self._event_bus = event_bus
         self._config = config
         self._debugger = debugger or get_debugger()
-        
+
         # Plugin data cache: {job_id: {plugin_name: data}}
-        self._plugin_data_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
-        
-        # Session 12: Trigger rule manager for dependency resolution
+        self._plugin_data_cache: dict[str, dict[str, dict[str, Any]]] = {}
+
+        # Trigger rule manager for dependency resolution
         self._trigger_manager = TriggerRuleManager()
-    
+
     def execute_stage(self, stage: Stage) -> None:
         """
         Execute all plugins for a given stage.
@@ -127,21 +128,21 @@ class StageExecutor:
             StageError: If stage execution fails critically
         """
         self._log("info", f"Executing stage: {stage.value}")
-        
+
         plugins = self._registry.get_plugins_by_stage(stage)
-        
+
         if not plugins:
             self._log("debug", f"No plugins for stage: {stage.value}")
             return
-        
+
         self._log("debug", f"Stage {stage.value}: {len(plugins)} plugins")
-        
+
         # Sort plugins by dependency order
         sorted_plugins = self._topological_sort(plugins, stage)
-        
+
         # Determine execution mode
         mode = STAGE_MODES.get(stage, ExecutionMode.PER_JOB)
-        
+
         try:
             if stage == Stage.OUTPUT:
                 # OUTPUT stage uses mixed mode
@@ -150,14 +151,19 @@ class StageExecutor:
                 self._execute_per_run(stage, sorted_plugins)
             else:
                 self._execute_per_job(stage, sorted_plugins)
-                
+
+        except StageError:
+            raise  # Re-raise StageError as-is
+        except PluginError as e:
+            self._log("error", f"Stage {stage.value} plugin error: {e}")
+            raise StageError("Stage execution failed due to plugin error", stage=stage.value, context={"error": str(e)})
         except Exception as e:
             import traceback
-            self._log("error", f"Stage {stage.value} failed: {e}")
+            self._log("error", f"Stage {stage.value} unexpected error: {e}")
             self._log("error", f"Traceback: {traceback.format_exc()}")
-            raise StageError(f"Stage execution failed", stage=stage.value, context={"error": str(e)})
-    
-    def _execute_per_run(self, stage: Stage, plugins: List[Any]) -> None:
+            raise StageError("Stage execution failed", stage=stage.value, context={"error": str(e)})
+
+    def _execute_per_run(self, stage: Stage, plugins: list[Any]) -> None:
         """
         Execute plugins once per run (INPUT stage).
         
@@ -166,17 +172,17 @@ class StageExecutor:
         - Create jobs via state.create_job()
         """
         self._log("debug", f"Executing {len(plugins)} plugins (per_run)")
-        
+
         for plugin in plugins:
             plugin_name = self._get_plugin_name(plugin)
             start_time = datetime.now()
-            
+
             try:
                 self._log("debug", f"Executing plugin: {plugin_name}")
-                
+
                 # Create services for this plugin
                 services = self._create_services(plugin_name)
-                
+
                 # Execute plugin (per_run mode uses execute_run)
                 if hasattr(plugin, 'execute_run'):
                     result = plugin.execute_run(services)
@@ -195,9 +201,9 @@ class StageExecutor:
                 else:
                     self._log("warn", f"Plugin {plugin_name} has no execute_run or get_matches method")
                     continue
-                
+
                 duration_ms = self._calc_duration(start_time)
-                
+
                 # Emit success event
                 self._emit_plugin_completed(
                     plugin_name=plugin_name,
@@ -207,11 +213,11 @@ class StageExecutor:
                     data=getattr(result, 'data', {}) if result else {},
                     duration_ms=duration_ms
                 )
-                
-            except Exception as e:
+
+            except PluginError as e:
                 duration_ms = self._calc_duration(start_time)
-                self._log("error", f"Plugin {plugin_name} failed: {e}")
-                
+                self._log("error", f"Plugin {plugin_name} error: {e}")
+
                 self._emit_plugin_failed(
                     plugin_name=plugin_name,
                     stage=stage,
@@ -219,8 +225,19 @@ class StageExecutor:
                     duration_ms=duration_ms
                 )
                 # Continue with next plugin (best effort)
-    
-    def _execute_per_job(self, stage: Stage, plugins: List[Any]) -> None:
+            except Exception as e:
+                duration_ms = self._calc_duration(start_time)
+                self._log("error", f"Plugin {plugin_name} unexpected error: {e}")
+
+                self._emit_plugin_failed(
+                    plugin_name=plugin_name,
+                    stage=stage,
+                    error=str(e),
+                    duration_ms=duration_ms
+                )
+                # Continue with next plugin (best effort)
+
+    def _execute_per_job(self, stage: Stage, plugins: list[Any]) -> None:
         """
         Execute plugins for each job (PARSE, DATA stages).
         
@@ -228,24 +245,24 @@ class StageExecutor:
         and executes conflict-free plugins in parallel.
         """
         jobs = self._get_all_jobs()
-        
+
         if not jobs:
             self._log("warn", f"No jobs to process for stage: {stage.value}")
             return
-        
+
         self._log("debug", f"Executing {len(plugins)} plugins for {len(jobs)} jobs")
-        
+
         # Group plugins by conflicts for parallel execution
         plugin_groups = self._group_parallel_plugins(plugins)
-        
+
         if len(plugin_groups) < len(plugins):
             self._log("debug", f"Parallel execution: {len(plugins)} plugins in {len(plugin_groups)} groups")
-        
+
         for job in jobs:
             # Initialize cache for this job if needed
             if job.id not in self._plugin_data_cache:
                 self._plugin_data_cache[job.id] = {}
-            
+
             # Execute each group (groups run sequentially, plugins within group run parallel)
             for group in plugin_groups:
                 if len(group) > 1:
@@ -254,13 +271,13 @@ class StageExecutor:
                 else:
                     # Single plugin, execute normally
                     self._execute_plugin_for_job(group[0], job, stage)
-            
+
             # Emit job stage progress
             self._event_bus.emit(Events.JOB_STAGE_COMPLETED, {
                 "job_id": job.id,
                 "stage": stage.value
             })
-    
+
     def _execute_plugin_for_job(
         self,
         plugin: Any,
@@ -278,36 +295,36 @@ class StageExecutor:
         """
         plugin_name = self._get_plugin_name(plugin)
         start_time = datetime.now()
-        
+
         # Get requires and trigger_rule from manifest
         manifest = self._registry.get_manifest(plugin_name)
         requires = manifest.get('requires', []) if manifest else []
         trigger_rule = manifest.get('trigger_rule', 'all_success') if manifest else 'all_success'
-        
+
         # Also check legacy expects/depends_on
         if not requires:
             requires = manifest.get('expects', []) if manifest else []
-        
-        # Session 12: Validate requires with trigger rules
+
+        # Validate requires with trigger rules
         if requires:
             # Build global state for trigger evaluation
             global_state = self._build_global_state(job)
-            
+
             # Check if plugin should execute
             should_run, reason = self._trigger_manager.should_execute(
                 trigger_rule=trigger_rule,
                 requirements=requires,
                 state=global_state
             )
-            
+
             if not should_run:
-                self._log("debug", 
+                self._log("debug",
                          f"Skipping {plugin_name} for job {job.id}: "
                          f"trigger_rule={trigger_rule} - {reason}")
-                
+
                 # Mark as skipped
                 self._mark_skipped(job, plugin_name)
-                
+
                 return PluginExecutionResult(
                     plugin_name=plugin_name,
                     success=True,
@@ -315,13 +332,13 @@ class StageExecutor:
                     skipped=True,
                     skip_reason=f"Trigger rule '{trigger_rule}': {reason}"
                 )
-        
+
         try:
             self._log("debug", f"Executing {plugin_name} for job {job.id}")
-            
-            # Session 12: Create services with job context
+
+            # Create services with job context
             services = self._create_services(plugin_name, job_id=job.id)
-            
+
             # Execute plugin - try new signature first, then legacy
             if hasattr(plugin, 'execute'):
                 # Try new signature: execute(job, services) or execute(match_data, services)
@@ -329,8 +346,8 @@ class StageExecutor:
                     import inspect
                     sig = inspect.signature(plugin.execute)
                     params = list(sig.parameters.keys())
-                    
-                    # New Session 11 format: execute(job, services)
+
+                    # New format: execute(job, services)
                     if len(params) >= 2:
                         result = plugin.execute(job, services)
                     else:
@@ -353,40 +370,40 @@ class StageExecutor:
                     data={},
                     error="No execute method"
                 )
-            
+
             duration_ms = self._calc_duration(start_time)
-            
+
             # Extract result data
             result_data = {}
             if hasattr(result, 'data') and result.data:
                 result_data = result.data
             elif isinstance(result, dict):
                 result_data = result
-            
+
             # Determine success status
             success = True
             if hasattr(result, 'status'):
                 success = result.status.value == "success" if hasattr(result.status, 'value') else bool(result.status)
-            
-            # Session 12: Cache result for trigger rules
+
+            # Cache result for trigger rules
             if result_data:
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
-            
-            # Session 17: Flat plugin data structure
+
+            # Flat plugin data structure
             # - Plugin data stored flat in job.plugins[plugin_name] (no status/data wrapper)
             # - Plugin status stored in job.status.plugins[plugin_name]
             if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
                 if plugin_name not in job.plugins or not job.plugins[plugin_name]:
-                    # Plugin didn't use updatePlugin() - store result data directly (flat)
+                    # Plugin didn't use update_plugin() - store result data directly (flat)
                     job.plugins[plugin_name] = result_data if result_data else {}
-                    self._log("debug", f"Plugin {plugin_name}: stored result data flat", 
+                    self._log("debug", f"Plugin {plugin_name}: stored result data flat",
                              data_keys=list(result_data.keys()) if result_data else [])
                 else:
-                    # Plugin already has data from updatePlugin() - keep it flat
-                    self._log("debug", f"Plugin {plugin_name}: data exists from updatePlugin",
+                    # Plugin already has data from update_plugin() - keep it flat
+                    self._log("debug", f"Plugin {plugin_name}: data exists from update_plugin",
                              data_keys=list(job.plugins[plugin_name].keys()))
-            
-            # Session 17: Store plugin status in job.status.plugins
+
+            # Store plugin status in job.status.plugins
             if hasattr(job, 'status') and hasattr(job.status, 'plugins'):
                 if not isinstance(job.status.plugins, dict):
                     job.status.plugins = {}
@@ -395,9 +412,9 @@ class StageExecutor:
                     'success': success,
                     'duration_ms': duration_ms
                 }
-            
+
             self._mark_executed(job, plugin_name, success)
-            
+
             # Emit event
             self._emit_plugin_completed(
                 plugin_name=plugin_name,
@@ -408,21 +425,21 @@ class StageExecutor:
                 duration_ms=duration_ms,
                 job_id=job.id
             )
-            
+
             return PluginExecutionResult(
                 plugin_name=plugin_name,
                 success=success,
                 data=result_data,
                 duration_ms=duration_ms
             )
-            
-        except Exception as e:
+
+        except PluginError as e:
             duration_ms = self._calc_duration(start_time)
             error_msg = str(e)
-            
-            self._log("error", f"Plugin {plugin_name} failed for job {job.id}: {e}")
+
+            self._log("error", f"Plugin {plugin_name} error for job {job.id}: {e}")
             self._mark_failed(job, plugin_name)
-            
+
             self._emit_plugin_failed(
                 plugin_name=plugin_name,
                 stage=stage,
@@ -430,7 +447,7 @@ class StageExecutor:
                 duration_ms=duration_ms,
                 job_id=job.id
             )
-            
+
             return PluginExecutionResult(
                 plugin_name=plugin_name,
                 success=False,
@@ -438,8 +455,30 @@ class StageExecutor:
                 error=error_msg,
                 duration_ms=duration_ms
             )
-    
-    def _execute_mixed(self, stage: Stage, plugins: List[Any]) -> None:
+        except Exception as e:
+            duration_ms = self._calc_duration(start_time)
+            error_msg = str(e)
+
+            self._log("error", f"Plugin {plugin_name} unexpected error for job {job.id}: {e}")
+            self._mark_failed(job, plugin_name)
+
+            self._emit_plugin_failed(
+                plugin_name=plugin_name,
+                stage=stage,
+                error=error_msg,
+                duration_ms=duration_ms,
+                job_id=job.id
+            )
+
+            return PluginExecutionResult(
+                plugin_name=plugin_name,
+                success=False,
+                data={},
+                error=error_msg,
+                duration_ms=duration_ms
+            )
+
+    def _execute_mixed(self, stage: Stage, plugins: list[Any]) -> None:
         """
         Execute plugins in mixed mode (OUTPUT stage).
         
@@ -448,48 +487,48 @@ class StageExecutor:
         """
         per_job_plugins = []
         per_run_plugins = []
-        
+
         for plugin in plugins:
             plugin_name = self._get_plugin_name(plugin)
             manifest = self._registry.get_manifest(plugin_name)
             mode = manifest.get('execution_mode', 'per_job') if manifest else 'per_job'
-            
+
             if mode == 'per_run':
                 per_run_plugins.append(plugin)
             else:
                 per_job_plugins.append(plugin)
-        
+
         # Execute per_job plugins first
         if per_job_plugins:
             self._execute_per_job(stage, per_job_plugins)
-        
+
         # Then per_run plugins
         if per_run_plugins:
             self._execute_per_run(stage, per_run_plugins)
-    
-    def _topological_sort(self, plugins: Dict[str, Any], stage: Stage) -> List[Any]:
+
+    def _topological_sort(self, plugins: dict[str, Any], stage: Stage) -> list[Any]:
         """
         Sort plugins by dependency order using topological sort.
         
         Simple implementation: plugins with no requires first,
         then by number of requires.
         """
-        # Session 12: Debug check
+        # Debug check
         if isinstance(plugins, list):
             self._log("error", f"_topological_sort received list instead of dict for stage {stage.value}")
             return plugins  # Return as-is if already a list
-        
+
         plugin_list = list(plugins.values())
-        
+
         def sort_key(plugin):
             name = self._get_plugin_name(plugin)
             manifest = self._registry.get_manifest(name)
             requires = manifest.get('requires', []) if manifest else []
             return len(requires)
-        
+
         return sorted(plugin_list, key=sort_key)
-    
-    def _group_parallel_plugins(self, plugins: List[Any]) -> List[List[Any]]:
+
+    def _group_parallel_plugins(self, plugins: list[Any]) -> list[list[Any]]:
         """
         Group plugins that can run in parallel based on requires/provides conflicts.
         
@@ -502,34 +541,34 @@ class StageExecutor:
         """
         if not plugins:
             return []
-        
+
         groups = []
         remaining = list(plugins)
-        
+
         while remaining:
             # Start new group with first remaining plugin
             group = [remaining.pop(0)]
-            group_provides: Set[str] = self._get_plugin_provides(group[0])
-            group_requires: Set[str] = self._get_plugin_requires(group[0])
-            
+            group_provides: set[str] = self._get_plugin_provides(group[0])
+            group_requires: set[str] = self._get_plugin_requires(group[0])
+
             # Try to add more plugins to this group
             i = 0
             while i < len(remaining):
                 plugin = remaining[i]
                 plugin_provides = self._get_plugin_provides(plugin)
                 plugin_requires = self._get_plugin_requires(plugin)
-                
+
                 # Check for conflicts
                 has_conflict = False
-                
+
                 # Plugin requires something group provides → must wait
                 if plugin_requires & group_provides:
                     has_conflict = True
-                
+
                 # Group requires something plugin provides → must wait
                 if group_requires & plugin_provides:
                     has_conflict = True
-                
+
                 # Both provide same lockable resource → conflict
                 if plugin_provides & group_provides:
                     # Check if any are lockable (fs.write:path style)
@@ -537,48 +576,48 @@ class StageExecutor:
                         if ':' in p and p in group_provides:
                             has_conflict = True
                             break
-                
+
                 if not has_conflict:
                     group.append(remaining.pop(i))
                     group_provides |= plugin_provides
                     group_requires |= plugin_requires
                 else:
                     i += 1
-            
+
             groups.append(group)
-        
+
         return groups
-    
-    def _get_plugin_provides(self, plugin: Any) -> Set[str]:
+
+    def _get_plugin_provides(self, plugin: Any) -> set[str]:
         """Get provides declarations from plugin manifest."""
         name = self._get_plugin_name(plugin)
         manifest = self._registry.get_manifest(name)
         if not manifest:
             return set()
-        
+
         provides = manifest.get('provides', [])
         if isinstance(provides, list):
             return set(provides)
         return set()
-    
-    def _get_plugin_requires(self, plugin: Any) -> Set[str]:
+
+    def _get_plugin_requires(self, plugin: Any) -> set[str]:
         """Get requires declarations from plugin manifest."""
         name = self._get_plugin_name(plugin)
         manifest = self._registry.get_manifest(name)
         if not manifest:
             return set()
-        
+
         requires = manifest.get('requires', [])
         if isinstance(requires, list):
             return set(requires)
         return set()
-    
+
     def _execute_plugin_group_parallel(
         self,
-        plugins: List[Any],
+        plugins: list[Any],
         job: JobState,
         stage: Stage
-    ) -> List[PluginExecutionResult]:
+    ) -> list[PluginExecutionResult]:
         """
         Execute a group of plugins in parallel for a single job.
         
@@ -587,34 +626,43 @@ class StageExecutor:
         if len(plugins) == 1:
             # Single plugin, no need for threading overhead
             return [self._execute_plugin_for_job(plugins[0], job, stage)]
-        
+
         results = []
         with ThreadPoolExecutor(max_workers=min(len(plugins), 4)) as executor:
             futures = {
                 executor.submit(self._execute_plugin_for_job, plugin, job, stage): plugin
                 for plugin in plugins
             }
-            
+
             for future in as_completed(futures):
                 plugin = futures[future]
                 try:
                     result = future.result()
                     results.append(result)
-                except Exception as e:
+                except PluginError as e:
                     plugin_name = self._get_plugin_name(plugin)
-                    self._log("error", f"Parallel execution failed for {plugin_name}: {e}")
+                    self._log("error", f"Parallel execution plugin error for {plugin_name}: {e}")
                     results.append(PluginExecutionResult(
                         plugin_name=plugin_name,
                         success=False,
                         data={},
                         error=str(e)
                     ))
-        
+                except Exception as e:
+                    plugin_name = self._get_plugin_name(plugin)
+                    self._log("error", f"Parallel execution unexpected error for {plugin_name}: {e}")
+                    results.append(PluginExecutionResult(
+                        plugin_name=plugin_name,
+                        success=False,
+                        data={},
+                        error=str(e)
+                    ))
+
         return results
-    
+
     def _create_services(self, plugin_name: str, job_id: str = None) -> PluginServices:
         """
-        Create PluginServices for a plugin (Session 12).
+        Create PluginServices for a plugin ().
         
         Args:
             plugin_name: Plugin name
@@ -625,7 +673,7 @@ class StageExecutor:
         """
         # Determine mode based on job_id
         mode = "per_job" if job_id else "per_run"
-        
+
         # Create services with context
         services = PluginServices(
             state=self._state,
@@ -636,10 +684,10 @@ class StageExecutor:
             current_job_id=job_id,
             current_plugin_name=plugin_name
         )
-        
+
         return services
-    
-    def _create_jobs_from_matches(self, matches: List[Dict]) -> Any:
+
+    def _create_jobs_from_matches(self, matches: list[dict]) -> Any:
         """
         Create jobs from legacy match format.
         
@@ -652,16 +700,16 @@ class StageExecutor:
                 input_path = match['input'].get('path', '')
             else:
                 input_path = str(match.get('input', ''))
-            
+
             # Create job via state manager
             if hasattr(self._state, 'register_match'):
                 self._state.register_match(i, input_path)
             elif hasattr(self._state, 'create_job'):
                 self._state.create_job(input_path)
-        
+
         return matches
-    
-    def _get_all_jobs(self) -> List[JobState]:
+
+    def _get_all_jobs(self) -> list[JobState]:
         """Get all jobs from state"""
         if hasattr(self._state, 'get_all_jobs'):
             return self._state.get_all_jobs()
@@ -669,7 +717,7 @@ class StageExecutor:
             # Fallback for older state manager implementations
             return list(self._state._matches.values())
         return []
-    
+
     def _get_plugin_name(self, plugin: Any) -> str:
         """Get plugin name from plugin instance"""
         if hasattr(plugin, 'name'):
@@ -677,13 +725,13 @@ class StageExecutor:
         if hasattr(plugin, '_name'):
             return plugin._name
         return str(type(plugin).__name__)
-    
-    def _job_to_legacy_data(self, job: JobState) -> Dict[str, Any]:
+
+    def _job_to_legacy_data(self, job: JobState) -> dict[str, Any]:
         """Convert JobState to legacy data format for old plugins"""
-        # Get input value (Session 11: job.input.value, Legacy: job.input_path)
+        # Get input value (job.input.value, Legacy: job.input_path)
         input_value = ""
         input_data = {}
-        
+
         if hasattr(job, 'input'):
             if hasattr(job.input, 'value'):
                 input_value = job.input.value
@@ -691,73 +739,73 @@ class StageExecutor:
                 input_data = job.input.data
         elif hasattr(job, 'input_path'):
             input_value = job.input_path
-        
+
         # Get existing plugin data for downstream plugins
         plugin_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
             plugin_data = job.plugins
-        
+
         return {
             "input": {
                 "path": input_value,    # Legacy key
-                "value": input_value,   # Session 11 key
-                "data": input_data      # Session 11 input.data
+                "value": input_value,   # key
+                "data": input_data      # input.data
             },
             "plugins": plugin_data,     # For downstream plugins
             "index": job.index,
             "run_id": job.run_id
         }
-    
+
     def _mark_executed(self, job: JobState, plugin_name: str, success: bool) -> None:
         """Mark plugin as executed in job.status.plugins."""
         if not success:
             self._mark_failed(job, plugin_name)
             return
-        
+
         if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
             job.status.plugins = {}
-        
+
         if plugin_name not in job.status.plugins:
             job.status.plugins[plugin_name] = {'state': 'completed', 'success': True}
         else:
             job.status.plugins[plugin_name]['state'] = 'completed'
             job.status.plugins[plugin_name]['success'] = True
-    
+
     def _mark_failed(self, job: JobState, plugin_name: str) -> None:
         """Mark plugin as failed in job.status.plugins."""
         if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
             job.status.plugins = {}
-        
+
         if plugin_name not in job.status.plugins:
             job.status.plugins[plugin_name] = {'state': 'failed', 'success': False}
         else:
             job.status.plugins[plugin_name]['state'] = 'failed'
             job.status.plugins[plugin_name]['success'] = False
-        
+
         job.status.success = False
-    
+
     def _mark_skipped(self, job: JobState, plugin_name: str) -> None:
         """Mark plugin as skipped in job.status.plugins."""
         if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
             job.status.plugins = {}
-        
+
         if plugin_name not in job.status.plugins:
             job.status.plugins[plugin_name] = {'state': 'skipped', 'success': True}
         else:
             job.status.plugins[plugin_name]['state'] = 'skipped'
-    
+
     def _calc_duration(self, start_time: datetime) -> int:
         """Calculate duration in milliseconds"""
         delta = datetime.now() - start_time
         return int(delta.total_seconds() * 1000)
-    
+
     def _emit_plugin_completed(
         self,
         plugin_name: str,
         stage: Stage,
         mode: str,
         success: bool,
-        data: Dict,
+        data: dict,
         duration_ms: int,
         job_id: str = None
     ) -> None:
@@ -772,9 +820,9 @@ class StageExecutor:
         }
         if job_id:
             event_data["job_id"] = job_id
-        
+
         self._event_bus.emit(Events.PLUGIN_COMPLETED, event_data)
-    
+
     def _emit_plugin_failed(
         self,
         plugin_name: str,
@@ -792,26 +840,26 @@ class StageExecutor:
         }
         if job_id:
             event_data["job_id"] = job_id
-        
+
         self._event_bus.emit(Events.PLUGIN_FAILED, event_data)
-    
+
     def _log(self, level: str, message: str, **kwargs) -> None:
         """Log message with debugger"""
         if self._debugger:
             log_func = getattr(self._debugger, level, self._debugger.info)
             log_func("stage_executor", message, **kwargs)
-    
-    def get_plugin_data_cache(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
+
+    def get_plugin_data_cache(self) -> dict[str, dict[str, dict[str, Any]]]:
         """Get plugin data cache (for testing/debugging)"""
         return self._plugin_data_cache.copy()
-    
+
     def clear_cache(self) -> None:
         """Clear plugin data cache"""
         self._plugin_data_cache.clear()
-    
-    def _build_global_state(self, job: JobState) -> Dict[str, Any]:
+
+    def _build_global_state(self, job: JobState) -> dict[str, Any]:
         """
-        Build global state dict for trigger evaluation (Session 12).
+        Build global state dict for trigger evaluation ().
         
         Args:
             job: Current job state
@@ -821,7 +869,7 @@ class StageExecutor:
         """
         # Get run state
         run_state = self._state.run
-        
+
         # Build global state structure
         global_state = {
             'run': {
@@ -845,11 +893,11 @@ class StageExecutor:
             },
             'plugin': {}  # Current job's plugins
         }
-        
+
         # Add plugin data from job.plugins
-        # Session 12 format: plugin.{name}.status and plugin.{name}.data
+        # format: plugin.{name}.status and plugin.{name}.data
         for plugin_name, plugin_data in job.plugins.items():
             if isinstance(plugin_data, dict):
                 global_state['plugin'][plugin_name] = plugin_data
-        
+
         return global_state

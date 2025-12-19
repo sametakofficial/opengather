@@ -14,6 +14,7 @@ Requirements:
 
 import pytest
 import subprocess
+import sys
 import time
 import json
 import os
@@ -47,7 +48,7 @@ class TestRealAPI:
         
         # Start server
         cls.server_process = subprocess.Popen(
-            ["python", "-m", "archiverr", "serve", "--port", "8765"],
+            [sys.executable, "-m", "archiverr", "serve", "--port", "8765"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -107,7 +108,7 @@ class TestRealAPI:
         # Get count before
         client = MongoClient("mongodb://localhost:27017")
         db = client[MONGODB_DATABASE]
-        count_before = db.executions.count_documents({})
+        count_before = db.runs.count_documents({})
         
         # Make API call
         response = requests.post(
@@ -123,7 +124,7 @@ class TestRealAPI:
         time.sleep(2)
         
         # Get count after
-        count_after = db.executions.count_documents({})
+        count_after = db.runs.count_documents({})
         
         # Should have at least one new execution
         assert count_after > count_before, "No new execution saved to MongoDB"
@@ -196,25 +197,25 @@ class TestMongoDBPersistence:
     def test_executions_collection_exists(self, mongo_client):
         """Test executions collection has data"""
         db = mongo_client[MONGODB_DATABASE]
-        count = db.executions.count_documents({})
+        count = db.runs.count_documents({})
         assert count >= 0  # Collection exists
     
     def test_execution_has_required_fields(self, mongo_client):
         """Test execution documents have required fields"""
         db = mongo_client[MONGODB_DATABASE]
-        execution = db.executions.find_one({}, sort=[("started_at", -1)])
+        execution = db.runs.find_one({}, sort=[("created_at", -1)])
         
         if execution:
             assert "_id" in execution
             assert "status" in execution
-            assert "started_at" in execution
+            assert "created_at" in execution
     
     def test_matches_linked_to_execution(self, mongo_client):
         """Test matches are linked to executions"""
         db = mongo_client[MONGODB_DATABASE]
         
         # Get latest execution
-        execution = db.executions.find_one({}, sort=[("started_at", -1)])
+        execution = db.runs.find_one({}, sort=[("created_at", -1)])
         if not execution:
             pytest.skip("No executions in database")
         
@@ -240,11 +241,11 @@ class TestCLIAPIEquivalence:
             pytest.skip("MongoDB not available")
         
         db = client[MONGODB_DATABASE]
-        count_before = db.executions.count_documents({})
+        count_before = db.runs.count_documents({})
         
         # Run CLI
         result = subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -252,7 +253,7 @@ class TestCLIAPIEquivalence:
         )
         
         time.sleep(1)
-        count_after = db.executions.count_documents({})
+        count_after = db.runs.count_documents({})
         
         assert count_after > count_before, "CLI did not create execution"
         client.close()
@@ -269,7 +270,7 @@ class TestCLIAPIEquivalence:
         db = client[MONGODB_DATABASE]
         
         # Get two recent executions
-        executions = list(db.executions.find({}).sort("started_at", -1).limit(2))
+        executions = list(db.runs.find({}).sort("created_at", -1).limit(2))
         
         if len(executions) < 2:
             pytest.skip("Need at least 2 executions")
@@ -279,7 +280,7 @@ class TestCLIAPIEquivalence:
         fields_2 = set(executions[1].keys())
         
         # Core fields should be same
-        core_fields = {"_id", "status", "started_at"}
+        core_fields = {"_id", "status", "created_at"}
         assert core_fields.issubset(fields_1)
         assert core_fields.issubset(fields_2)
         
@@ -298,7 +299,7 @@ class TestErrorHandling:
         time.sleep(1)
         
         cls.server_process = subprocess.Popen(
-            ["python", "-m", "archiverr", "serve", "--port", "8766"],
+            [sys.executable, "-m", "archiverr", "serve", "--port", "8766"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -347,48 +348,48 @@ class TestErrorHandling:
 
 
 class TestReportGeneration:
-    """Test report file generation"""
+    """Test state dump file generation (renamed from reports)"""
     
     def test_execution_creates_report_files(self):
-        """Test that execution creates report files"""
-        reports_dir = PROJECT_ROOT / "reports"
+        """Test that execution creates state dump files"""
+        output_dir = PROJECT_ROOT / "output"
         
         # Get files before
-        files_before = set(reports_dir.glob("api_response_*.json")) if reports_dir.exists() else set()
+        files_before = set(output_dir.glob("run_*_state.json")) if output_dir.exists() else set()
         
         # Run CLI
         subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             timeout=120
         )
         
         # Get files after
-        files_after = set(reports_dir.glob("api_response_*.json"))
+        files_after = set(output_dir.glob("run_*_state.json"))
         
         new_files = files_after - files_before
-        assert len(new_files) > 0, "No new report files created"
+        assert len(new_files) > 0, "No new state dump files created"
     
     def test_report_file_is_valid_json(self):
-        """Test report files contain valid JSON"""
-        reports_dir = PROJECT_ROOT / "reports"
+        """Test state dump files contain valid JSON"""
+        output_dir = PROJECT_ROOT / "output"
         
-        if not reports_dir.exists():
-            pytest.skip("No reports directory")
+        if not output_dir.exists():
+            pytest.skip("No output directory")
         
-        report_files = list(reports_dir.glob("api_response_full_*.json"))
-        if not report_files:
-            pytest.skip("No report files found")
+        state_files = list(output_dir.glob("run_*_state.json"))
+        if not state_files:
+            pytest.skip("No state dump files found")
         
-        # Check latest report
-        latest = max(report_files, key=lambda x: x.stat().st_mtime)
+        # Check latest state dump
+        latest = max(state_files, key=lambda x: x.stat().st_mtime)
         
         with open(latest, 'r') as f:
             data = json.load(f)  # Should not raise
         
         assert isinstance(data, dict)
-        assert "globals" in data or "items" in data
+        assert "run" in data or "jobs" in data or "id" in data
 
 
 class TestSubprocessExecution:
@@ -397,7 +398,7 @@ class TestSubprocessExecution:
     def test_subprocess_runs_successfully(self):
         """Test subprocess execution works"""
         result = subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
@@ -410,7 +411,7 @@ class TestSubprocessExecution:
     def test_subprocess_output_contains_execution_info(self):
         """Test subprocess output contains expected info"""
         result = subprocess.run(
-            ["python", "-m", "archiverr"],
+            [sys.executable, "-m", "archiverr"],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,

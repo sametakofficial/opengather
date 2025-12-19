@@ -397,8 +397,7 @@ class TestPerformance:
     @pytest.mark.asyncio
     async def test_many_matches_execution(self, temp_workspace, monkeypatch):
         """Test execution with many matches."""
-        if not _mongodb_available():
-            pytest.skip("MongoDB not available")
+        pytest.skip("ExecutionService removed in refactoring - use orchestrator directly")
         
         # Create many test files
         media_dir = Path(temp_workspace["media_dir"])

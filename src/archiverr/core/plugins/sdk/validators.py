@@ -41,8 +41,8 @@ Example manifest.yml config_schema:
 """
 
 import re
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -51,12 +51,12 @@ class ValidationError:
     field: str
     message: str
     value: Any = None
-    
+
     def __str__(self) -> str:
         if self.value is not None:
             return f"{self.field}: {self.message} (got: {self._safe_value()})"
         return f"{self.field}: {self.message}"
-    
+
     def _safe_value(self) -> str:
         """Return safe representation of value (hide secrets)"""
         if self.value is None:
@@ -71,14 +71,14 @@ class ValidationError:
 class ValidationResult:
     """Result of config validation"""
     valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    config: Dict[str, Any] = field(default_factory=dict)  # Validated config with defaults applied
-    
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    config: dict[str, Any] = field(default_factory=dict)  # Validated config with defaults applied
+
     def __bool__(self) -> bool:
         return self.valid
-    
-    def error_messages(self) -> List[str]:
+
+    def error_messages(self) -> list[str]:
         """Get list of error messages"""
         return [str(e) for e in self.errors]
 
@@ -96,7 +96,7 @@ class ConfigValidator:
             for error in result.errors:
                 print(f"Config error: {error}")
     """
-    
+
     # Type mapping for validation
     TYPE_MAP = {
         'string': str,
@@ -112,11 +112,11 @@ class ConfigValidator:
         'dict': dict,
         'object': dict,
     }
-    
+
     def validate(
         self,
-        config: Dict[str, Any],
-        schema: Dict[str, Any],
+        config: dict[str, Any],
+        schema: dict[str, Any],
         plugin_name: str = "plugin"
     ) -> ValidationResult:
         """
@@ -133,22 +133,22 @@ class ConfigValidator:
         if not schema:
             # No schema defined = no validation
             return ValidationResult(valid=True, config=config.copy())
-        
-        errors: List[ValidationError] = []
-        warnings: List[str] = []
-        validated_config: Dict[str, Any] = {}
-        
+
+        errors: list[ValidationError] = []
+        warnings: list[str] = []
+        validated_config: dict[str, Any] = {}
+
         # Validate each field defined in schema
         for field_name, field_schema in schema.items():
             if not isinstance(field_schema, dict):
                 # Simple type definition (e.g., api_key: string)
                 field_schema = {'type': field_schema}
-            
+
             value = config.get(field_name)
             is_required = field_schema.get('required', False)
             default = field_schema.get('default')
             is_secret = field_schema.get('secret', False)
-            
+
             # Handle missing value
             if value is None or value == '':
                 if is_required:
@@ -161,7 +161,7 @@ class ConfigValidator:
                     value = default
                 else:
                     continue  # Optional field not provided
-            
+
             # Validate the value
             field_errors = self._validate_field(
                 value=value,
@@ -171,57 +171,57 @@ class ConfigValidator:
                 is_secret=is_secret
             )
             errors.extend(field_errors)
-            
+
             # Add to validated config (only if no errors for this field)
             if not field_errors:
                 validated_config[field_name] = value
-        
+
         # Copy any extra config fields not in schema (plugin might use them)
         for key, value in config.items():
             if key not in validated_config:
                 validated_config[key] = value
-        
+
         return ValidationResult(
             valid=len(errors) == 0,
             errors=errors,
             warnings=warnings,
             config=validated_config
         )
-    
+
     def _validate_field(
         self,
         value: Any,
         field_name: str,
-        field_schema: Dict[str, Any],
+        field_schema: dict[str, Any],
         plugin_name: str,
         is_secret: bool = False
-    ) -> List[ValidationError]:
+    ) -> list[ValidationError]:
         """Validate a single field against its schema"""
-        errors: List[ValidationError] = []
+        errors: list[ValidationError] = []
         full_field_name = f"{plugin_name}.{field_name}"
-        
+
         # Don't include secret values in error messages
         safe_value = "***" if is_secret else value
-        
+
         # Type validation
         expected_type = field_schema.get('type')
         if expected_type:
             type_errors = self._validate_type(value, expected_type, full_field_name, safe_value)
             if type_errors:
                 return type_errors  # Stop if type is wrong
-        
+
         # String validations
         if isinstance(value, str):
             errors.extend(self._validate_string(value, field_schema, full_field_name, safe_value))
-        
+
         # Numeric validations
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             errors.extend(self._validate_number(value, field_schema, full_field_name, safe_value))
-        
+
         # List validations
         if isinstance(value, list):
             errors.extend(self._validate_list(value, field_schema, full_field_name, safe_value))
-        
+
         # Enum validation
         enum_values = field_schema.get('enum')
         if enum_values and value not in enum_values:
@@ -230,43 +230,43 @@ class ConfigValidator:
                 message=f"Must be one of: {enum_values}",
                 value=safe_value
             ))
-        
+
         return errors
-    
+
     def _validate_type(
         self,
         value: Any,
         expected_type: str,
         field_name: str,
         safe_value: Any
-    ) -> List[ValidationError]:
+    ) -> list[ValidationError]:
         """Validate value type"""
         errors = []
-        
+
         expected = self.TYPE_MAP.get(expected_type.lower())
         if expected is None:
             # Unknown type, skip validation
             return errors
-        
+
         if not isinstance(value, expected):
             errors.append(ValidationError(
                 field=field_name,
                 message=f"Expected type '{expected_type}', got '{type(value).__name__}'",
                 value=safe_value
             ))
-        
+
         return errors
-    
+
     def _validate_string(
         self,
         value: str,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         field_name: str,
         safe_value: Any
-    ) -> List[ValidationError]:
+    ) -> list[ValidationError]:
         """Validate string-specific rules"""
         errors = []
-        
+
         # min_length
         min_len = schema.get('min_length')
         if min_len is not None and len(value) < min_len:
@@ -275,7 +275,7 @@ class ConfigValidator:
                 message=f"Minimum length is {min_len}, got {len(value)}",
                 value=safe_value
             ))
-        
+
         # max_length
         max_len = schema.get('max_length')
         if max_len is not None and len(value) > max_len:
@@ -284,7 +284,7 @@ class ConfigValidator:
                 message=f"Maximum length is {max_len}, got {len(value)}",
                 value=safe_value
             ))
-        
+
         # pattern (regex)
         pattern = schema.get('pattern')
         if pattern:
@@ -302,7 +302,7 @@ class ConfigValidator:
                     message=f"Invalid pattern in schema: {e}",
                     value=safe_value
                 ))
-        
+
         # not_contains (forbidden characters/substrings)
         not_contains = schema.get('not_contains', [])
         if isinstance(not_contains, list):
@@ -313,7 +313,7 @@ class ConfigValidator:
                         message=f"Must not contain '{forbidden}'",
                         value=safe_value
                     ))
-        
+
         # starts_with
         starts_with = schema.get('starts_with')
         if starts_with and not value.startswith(starts_with):
@@ -322,7 +322,7 @@ class ConfigValidator:
                 message=f"Must start with '{starts_with}'",
                 value=safe_value
             ))
-        
+
         # ends_with
         ends_with = schema.get('ends_with')
         if ends_with and not value.endswith(ends_with):
@@ -331,19 +331,19 @@ class ConfigValidator:
                 message=f"Must end with '{ends_with}'",
                 value=safe_value
             ))
-        
+
         return errors
-    
+
     def _validate_number(
         self,
         value: float,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         field_name: str,
         safe_value: Any
-    ) -> List[ValidationError]:
+    ) -> list[ValidationError]:
         """Validate numeric rules"""
         errors = []
-        
+
         # min
         min_val = schema.get('min')
         if min_val is not None and value < min_val:
@@ -352,7 +352,7 @@ class ConfigValidator:
                 message=f"Minimum value is {min_val}",
                 value=safe_value
             ))
-        
+
         # max
         max_val = schema.get('max')
         if max_val is not None and value > max_val:
@@ -361,19 +361,19 @@ class ConfigValidator:
                 message=f"Maximum value is {max_val}",
                 value=safe_value
             ))
-        
+
         return errors
-    
+
     def _validate_list(
         self,
         value: list,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         field_name: str,
         safe_value: Any
-    ) -> List[ValidationError]:
+    ) -> list[ValidationError]:
         """Validate list rules"""
         errors = []
-        
+
         # min_length
         min_len = schema.get('min_length')
         if min_len is not None and len(value) < min_len:
@@ -382,7 +382,7 @@ class ConfigValidator:
                 message=f"Minimum items is {min_len}, got {len(value)}",
                 value=safe_value
             ))
-        
+
         # max_length
         max_len = schema.get('max_length')
         if max_len is not None and len(value) > max_len:
@@ -391,7 +391,7 @@ class ConfigValidator:
                 message=f"Maximum items is {max_len}, got {len(value)}",
                 value=safe_value
             ))
-        
+
         # items_type (validate each item type)
         items_type = schema.get('items_type')
         if items_type:
@@ -404,7 +404,7 @@ class ConfigValidator:
                             message=f"Item must be type '{items_type}'",
                             value=item
                         ))
-        
+
         return errors
 
 
@@ -413,8 +413,8 @@ _validator = ConfigValidator()
 
 
 def validate_plugin_config(
-    config: Dict[str, Any],
-    schema: Dict[str, Any],
+    config: dict[str, Any],
+    schema: dict[str, Any],
     plugin_name: str = "plugin"
 ) -> ValidationResult:
     """

@@ -1,7 +1,7 @@
 """
 Validation Result Types
 
-Session 11 - Phase 7: Structured validation results.
+- Phase 7: Structured validation results.
 
 Provides:
 - ValidationLevel: Severity levels (FATAL, ERROR, WARNING, INFO)
@@ -10,8 +10,8 @@ Provides:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Any, Dict
 from enum import Enum
+from typing import Any
 
 
 class ValidationLevel(Enum):
@@ -44,19 +44,19 @@ class ValidationError:
     code: str
     message: str
     level: ValidationLevel = ValidationLevel.ERROR
-    path: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
-    
+    path: str | None = None
+    context: dict[str, Any] | None = None
+
     def __str__(self) -> str:
         """Format as [CODE] path: message"""
         if self.path:
             return f"[{self.code}] {self.path}: {self.message}"
         return f"[{self.code}] {self.message}"
-    
+
     def __repr__(self) -> str:
         return f"ValidationError({self.code}, {self.message!r}, {self.level.value})"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         result = {
             "code": self.code,
@@ -85,16 +85,16 @@ class ValidationResult:
                 print(error)
     """
     valid: bool = True
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[ValidationError] = field(default_factory=list)
-    
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[ValidationError] = field(default_factory=list)
+
     def add_error(
         self,
         code: str,
         message: str,
-        path: Optional[str] = None,
+        path: str | None = None,
         level: ValidationLevel = ValidationLevel.ERROR,
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> "ValidationResult":
         """
         Add an error to the result.
@@ -110,18 +110,18 @@ class ValidationResult:
             context=context
         )
         self.errors.append(error)
-        
+
         if level in (ValidationLevel.FATAL, ValidationLevel.ERROR):
             self.valid = False
-        
+
         return self
-    
+
     def add_warning(
         self,
         code: str,
         message: str,
-        path: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        path: str | None = None,
+        context: dict[str, Any] | None = None
     ) -> "ValidationResult":
         """
         Add a warning to the result.
@@ -138,7 +138,7 @@ class ValidationResult:
         )
         self.warnings.append(warning)
         return self
-    
+
     def merge(self, other: "ValidationResult") -> "ValidationResult":
         """
         Merge another result into this one.
@@ -148,47 +148,47 @@ class ValidationResult:
         """
         self.errors.extend(other.errors)
         self.warnings.extend(other.warnings)
-        
+
         if not other.valid:
             self.valid = False
-        
+
         return self
-    
+
     @classmethod
     def ok(cls) -> "ValidationResult":
         """Create a valid (ok) result."""
         return cls(valid=True)
-    
+
     @classmethod
     def fail(
         cls,
         code: str,
         message: str,
-        path: Optional[str] = None,
+        path: str | None = None,
         level: ValidationLevel = ValidationLevel.ERROR
     ) -> "ValidationResult":
         """Create a failed result with one error."""
         result = cls(valid=False)
         result.add_error(code, message, path, level)
         return result
-    
+
     def __bool__(self) -> bool:
         """Allow using result in boolean context."""
         return self.valid
-    
+
     def has_fatal(self) -> bool:
         """Check if result contains any FATAL level errors."""
         return any(e.level == ValidationLevel.FATAL for e in self.errors)
-    
+
     def error_count(self) -> int:
         """Count of errors (FATAL + ERROR levels)."""
         return len([e for e in self.errors if e.level in (ValidationLevel.FATAL, ValidationLevel.ERROR)])
-    
+
     def warning_count(self) -> int:
         """Count of warnings."""
         return len(self.warnings)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "valid": self.valid,
@@ -197,11 +197,11 @@ class ValidationResult:
             "error_count": self.error_count(),
             "warning_count": self.warning_count(),
         }
-    
-    def format_errors(self) -> List[str]:
+
+    def format_errors(self) -> list[str]:
         """Get list of formatted error strings."""
         return [str(e) for e in self.errors]
-    
-    def format_warnings(self) -> List[str]:
+
+    def format_warnings(self) -> list[str]:
         """Get list of formatted warning strings."""
         return [str(w) for w in self.warnings]

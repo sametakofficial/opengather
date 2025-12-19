@@ -1,5 +1,5 @@
 """
-Trigger Rule Evaluator - Session 12
+Trigger Rule Evaluator - 
 
 Evaluates standard trigger rules (Airflow-inspired):
 - all_success: All requirements must succeed
@@ -9,13 +9,14 @@ Evaluates standard trigger rules (Airflow-inspired):
 - none_fail: No requirements can fail
 """
 
-from typing import Dict, List, Any, Tuple
+from typing import Any
+
 from .matcher import ValueMatcher
 
 
 class TriggerRuleEvaluator:
     """
-    Session 12 trigger rule evaluator.
+    trigger rule evaluator.
     
     Evaluates standard trigger rules based on requirement matches.
     
@@ -34,7 +35,7 @@ class TriggerRuleEvaluator:
             state=global_state
         )
     """
-    
+
     VALID_RULES = {
         'all_success',
         'one_success',
@@ -42,16 +43,16 @@ class TriggerRuleEvaluator:
         'all_fail',
         'none_fail'
     }
-    
+
     def __init__(self):
         self.matcher = ValueMatcher()
-    
+
     def evaluate(
         self,
         trigger_rule: str,
-        requirements: List[str],
-        state: Dict[str, Any]
-    ) -> Tuple[bool, str]:
+        requirements: list[str],
+        state: dict[str, Any]
+    ) -> tuple[bool, str]:
         """
         Evaluate trigger rule against requirements.
         
@@ -66,31 +67,31 @@ class TriggerRuleEvaluator:
         # Validate trigger rule
         if trigger_rule not in self.VALID_RULES:
             return False, f"Invalid trigger rule: {trigger_rule}"
-        
+
         # Empty requirements - always run
         if not requirements:
             return True, "No requirements"
-        
+
         # Match all requirements
         matches = []
         errors = []
-        
+
         for req in requirements:
             is_valid, matched, error = self.matcher.match(state, req)
-            
+
             if not is_valid:
                 errors.append(f"{req}: {error}")
                 continue
-            
+
             matches.append({
                 'requirement': req,
                 'matched': matched
             })
-        
+
         # If there were validation errors, don't run
         if errors:
             return False, f"Validation errors: {'; '.join(errors)}"
-        
+
         # Evaluate rule
         if trigger_rule == 'all_success':
             return self._evaluate_all_success(matches)
@@ -102,10 +103,10 @@ class TriggerRuleEvaluator:
             return self._evaluate_all_fail(matches)
         elif trigger_rule == 'none_fail':
             return self._evaluate_none_fail(matches)
-        
+
         return False, f"Unknown trigger rule: {trigger_rule}"
-    
-    def _evaluate_all_success(self, matches: List[Dict]) -> Tuple[bool, str]:
+
+    def _evaluate_all_success(self, matches: list[dict]) -> tuple[bool, str]:
         """
         All requirements must match.
         
@@ -114,15 +115,15 @@ class TriggerRuleEvaluator:
         """
         if not matches:
             return True, "No requirements"
-        
+
         failed = [m['requirement'] for m in matches if not m['matched']]
-        
+
         if failed:
             return False, f"Requirements not met: {', '.join(failed)}"
-        
+
         return True, "All requirements met"
-    
-    def _evaluate_one_success(self, matches: List[Dict]) -> Tuple[bool, str]:
+
+    def _evaluate_one_success(self, matches: list[dict]) -> tuple[bool, str]:
         """
         At least one requirement must match.
         
@@ -131,15 +132,15 @@ class TriggerRuleEvaluator:
         """
         if not matches:
             return True, "No requirements"
-        
+
         succeeded = [m['requirement'] for m in matches if m['matched']]
-        
+
         if not succeeded:
             return False, "No requirements met"
-        
+
         return True, f"Requirements met: {', '.join(succeeded)}"
-    
-    def _evaluate_all_done(self, matches: List[Dict]) -> Tuple[bool, str]:
+
+    def _evaluate_all_done(self, matches: list[dict]) -> tuple[bool, str]:
         """
         All requirements must be checked (done).
         
@@ -151,8 +152,8 @@ class TriggerRuleEvaluator:
         """
         # If we got here, all requirements were checked
         return True, "All requirements checked"
-    
-    def _evaluate_all_fail(self, matches: List[Dict]) -> Tuple[bool, str]:
+
+    def _evaluate_all_fail(self, matches: list[dict]) -> tuple[bool, str]:
         """
         All requirements must not match (fail).
         
@@ -161,15 +162,15 @@ class TriggerRuleEvaluator:
         """
         if not matches:
             return False, "No requirements to fail"
-        
+
         succeeded = [m['requirement'] for m in matches if m['matched']]
-        
+
         if succeeded:
             return False, f"Some requirements succeeded: {', '.join(succeeded)}"
-        
+
         return True, "All requirements failed as expected"
-    
-    def _evaluate_none_fail(self, matches: List[Dict]) -> Tuple[bool, str]:
+
+    def _evaluate_none_fail(self, matches: list[dict]) -> tuple[bool, str]:
         """
         No requirements can fail.
         
@@ -181,14 +182,14 @@ class TriggerRuleEvaluator:
         """
         if not matches:
             return True, "No requirements"
-        
+
         # For none_fail, we check if any explicitly failed
         # A requirement "fails" if it was checked and didn't match
         # For plugin paths with :success, not matching means plugin failed
-        
+
         failed = [m['requirement'] for m in matches if not m['matched']]
-        
+
         if failed:
             return False, f"Requirements failed: {', '.join(failed)}"
-        
+
         return True, "No requirements failed"

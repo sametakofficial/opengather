@@ -5,17 +5,18 @@ Provides request/response models for execution run endpoints.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class RunRequest(BaseModel):
     """Request to start a new execution run"""
-    config_override: Optional[Dict[str, Any]] = Field(
+    config_override: dict[str, Any] | None = Field(
         default=None,
         description="Optional config overrides"
     )
-    dry_run: Optional[bool] = Field(
+    dry_run: bool | None = Field(
         default=None,
         description="If true, don't persist results"
     )
@@ -25,7 +26,7 @@ class RunProgress(BaseModel):
     """Execution progress information"""
     current_match: int = 0
     total_matches: int = 0
-    current_plugin: Optional[str] = None
+    current_plugin: str | None = None
     percent_complete: float = 0.0
 
 
@@ -43,24 +44,24 @@ class RunResponse(BaseModel):
     success: bool = Field(..., description="Whether execution completed successfully")
     status: str = Field(..., description="Execution status")
     started_at: datetime
-    finished_at: Optional[datetime] = None
-    duration_ms: Optional[int] = None
+    finished_at: datetime | None = None
+    duration_ms: int | None = None
     total_matches: int = 0
-    summary: Optional[RunSummary] = None
-    progress: Optional[RunProgress] = None
-    api_response: Optional[Dict[str, Any]] = Field(
+    summary: RunSummary | None = None
+    progress: RunProgress | None = None
+    api_response: dict[str, Any] | None = Field(
         default=None,
         description="Full API response with all match data"
     )
-    poll_url: Optional[str] = Field(
+    poll_url: str | None = Field(
         default=None,
         description="URL to poll for status updates"
     )
-    websocket_url: Optional[str] = Field(
+    websocket_url: str | None = Field(
         default=None,
         description="WebSocket URL for real-time updates"
     )
-    error: Optional[str] = Field(
+    error: str | None = Field(
         default=None,
         description="Error message if execution failed"
     )
@@ -70,6 +71,6 @@ class RunStatusResponse(BaseModel):
     """Status response for polling"""
     execution_id: str
     status: str
-    success: Optional[bool] = None
-    progress: Optional[RunProgress] = None
-    updated_at: Optional[datetime] = None
+    success: bool | None = None
+    progress: RunProgress | None = None
+    updated_at: datetime | None = None

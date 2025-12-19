@@ -1,7 +1,7 @@
 """
 Manifest normalization for stage-based plugin system.
 
-Session 11 - Phase 6: Normalize legacy manifests to new stage-based format.
+- Phase 6: Normalize legacy manifests to new stage-based format.
 
 Converts:
 - category → stage
@@ -13,34 +13,32 @@ Converts:
 P2.1: Jinja2 template rendering in manifest fields (requires, provides).
 """
 
-from typing import Dict, Any, List, Optional, Tuple
 import warnings
-from jinja2 import Environment, BaseLoader, TemplateSyntaxError
-
+from typing import Any
 
 # Category to stage mapping (for backward compatibility)
-CATEGORY_TO_STAGE: Dict[str, str] = {
+CATEGORY_TO_STAGE: dict[str, str] = {
     'input': 'input',
     'output': 'data',  # Most legacy output plugins do data fetching
 }
 
 # Known plugins with their correct stages
-PLUGIN_STAGE_MAP: Dict[str, str] = {
+PLUGIN_STAGE_MAP: dict[str, str] = {
     # Input stage - file discovery
     'scanner': 'input',
     'file-input': 'input',
     'file-reader': 'input',
-    
+
     # Parse stage - filename parsing
     'renamer': 'parse',
-    
+
     # Data stage - external API calls
     'tmdb': 'data',
     'tvdb': 'data',
     'tvmaze': 'data',
     'omdb': 'data',
     'ffprobe': 'data',
-    
+
     # Output stage - results
     'tasker': 'output',
     'rclone': 'output',
@@ -59,7 +57,7 @@ VALID_TRIGGER_RULES = {
 }
 
 
-def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize manifest to new stage-based format.
     
@@ -94,7 +92,7 @@ def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
     """
     normalized = manifest.copy()
     name = manifest.get('name', 'unknown')
-    
+
     # Normalize stage
     if 'stage' not in normalized:
         normalized['stage'] = _infer_stage(manifest)
@@ -104,18 +102,18 @@ def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
             f"valid stages are: {VALID_STAGES}"
         )
         normalized['stage'] = _infer_stage(manifest)
-    
+
     # Normalize requires
     if 'requires' not in normalized:
         normalized['requires'] = _convert_expects_to_requires(manifest)
     else:
         # Ensure proper prefix for existing requires
         normalized['requires'] = _normalize_requires_paths(normalized['requires'])
-    
+
     # Add provides if missing
     if 'provides' not in normalized:
         normalized['provides'] = _infer_provides(manifest, normalized['stage'])
-    
+
     # Add default trigger_rule if missing
     if 'trigger_rule' not in normalized:
         normalized['trigger_rule'] = 'all_success'
@@ -124,18 +122,18 @@ def normalize_manifest(manifest: Dict[str, Any]) -> Dict[str, Any]:
             f"Plugin '{name}' has invalid trigger_rule '{normalized['trigger_rule']}'"
         )
         normalized['trigger_rule'] = 'all_success'
-    
+
     # Remove deprecated fields but keep category for backward compat
     normalized.pop('depends_on', None)
     normalized.pop('expects', None)
-    
+
     # Mark as normalized
     normalized['_normalized'] = True
-    
+
     return normalized
 
 
-def _infer_stage(manifest: Dict[str, Any]) -> str:
+def _infer_stage(manifest: dict[str, Any]) -> str:
     """
     Infer stage from manifest fields.
     
@@ -145,17 +143,17 @@ def _infer_stage(manifest: Dict[str, Any]) -> str:
     3. Default to 'output'
     """
     name = manifest.get('name', '')
-    
+
     # Check known plugin mapping first
     if name in PLUGIN_STAGE_MAP:
         return PLUGIN_STAGE_MAP[name]
-    
+
     # Fall back to category mapping
     category = manifest.get('category', 'output')
     return CATEGORY_TO_STAGE.get(category, 'data')
 
 
-def _convert_expects_to_requires(manifest: Dict[str, Any]) -> List[str]:
+def _convert_expects_to_requires(manifest: dict[str, Any]) -> list[str]:
     """
     Convert old expects format to new requires format.
     
@@ -167,21 +165,21 @@ def _convert_expects_to_requires(manifest: Dict[str, Any]) -> List[str]:
     expects = manifest.get('expects', [])
     depends_on = manifest.get('depends_on', [])
     requires = []
-    
+
     # Convert expects entries
     for expect in expects:
         requires.append(_add_requires_prefix(expect))
-    
+
     # Add depends_on as plugin-level requires
     for dep in depends_on:
         dep_path = f"job.plugins.{dep}"
         if dep_path not in requires:
             requires.append(dep_path)
-    
+
     return requires
 
 
-def _normalize_requires_paths(requires: List[str]) -> List[str]:
+def _normalize_requires_paths(requires: list[str]) -> list[str]:
     """Ensure all requires paths have proper prefixes."""
     return [_add_requires_prefix(req) for req in requires]
 
@@ -200,7 +198,7 @@ def _add_requires_prefix(path: str) -> str:
     return f"job.plugins.{path}"
 
 
-def _infer_provides(manifest: Dict[str, Any], stage: str) -> List[str]:
+def _infer_provides(manifest: dict[str, Any], stage: str) -> list[str]:
     """
     Infer provides based on stage and plugin type.
     
@@ -209,9 +207,9 @@ def _infer_provides(manifest: Dict[str, Any], stage: str) -> List[str]:
     - Data availability (state.update)
     """
     name = manifest.get('name', '')
-    
+
     # Plugin-specific provides
-    plugin_provides: Dict[str, List[str]] = {
+    plugin_provides: dict[str, list[str]] = {
         'scanner': ['job.create', 'fs.read'],
         'file-input': ['job.create', 'fs.read'],
         'file-reader': ['job.create', 'fs.read'],
@@ -224,22 +222,22 @@ def _infer_provides(manifest: Dict[str, Any], stage: str) -> List[str]:
         'tasker': ['output.render'],
         'rclone': ['fs.write', 'process.execute'],
     }
-    
+
     if name in plugin_provides:
         return plugin_provides[name]
-    
+
     # Stage-based defaults
-    stage_provides: Dict[str, List[str]] = {
+    stage_provides: dict[str, list[str]] = {
         'input': ['job.create', 'fs.read'],
         'parse': ['state.update'],
         'data': ['state.update'],
         'output': ['output.render'],
     }
-    
+
     return stage_provides.get(stage, ['state.update'])
 
 
-def validate_manifest(manifest: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+def validate_manifest(manifest: dict[str, Any]) -> tuple[bool, str | None]:
     """
     Validate manifest structure.
     
@@ -252,40 +250,40 @@ def validate_manifest(manifest: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         - error_message: Error description or None
     """
     required_fields = ['name', 'class_name']
-    
+
     for field in required_fields:
         if field not in manifest:
             return False, f"Missing required field: {field}"
-    
+
     # Validate stage if present
     stage = manifest.get('stage')
     if stage and stage not in VALID_STAGES:
         return False, f"Invalid stage: {stage}. Valid stages: {VALID_STAGES}"
-    
+
     # Validate trigger_rule if present
     rule = manifest.get('trigger_rule')
     if rule and rule not in VALID_TRIGGER_RULES:
         return False, f"Invalid trigger_rule: {rule}. Valid rules: {VALID_TRIGGER_RULES}"
-    
+
     # Validate requires is a list
     requires = manifest.get('requires')
     if requires is not None and not isinstance(requires, list):
         return False, f"requires must be a list, got {type(requires).__name__}"
-    
+
     # Validate provides is a list
     provides = manifest.get('provides')
     if provides is not None and not isinstance(provides, list):
         return False, f"provides must be a list, got {type(provides).__name__}"
-    
+
     return True, None
 
 
-def is_manifest_normalized(manifest: Dict[str, Any]) -> bool:
+def is_manifest_normalized(manifest: dict[str, Any]) -> bool:
     """Check if manifest has been normalized."""
     return manifest.get('_normalized', False)
 
 
-def get_manifest_format(manifest: Dict[str, Any]) -> str:
+def get_manifest_format(manifest: dict[str, Any]) -> str:
     """
     Detect manifest format version.
     
@@ -300,7 +298,7 @@ def get_manifest_format(manifest: Dict[str, Any]) -> str:
     return 'new'  # Assume new if neither present
 
 
-def extract_plugin_dependencies(manifest: Dict[str, Any]) -> List[str]:
+def extract_plugin_dependencies(manifest: dict[str, Any]) -> list[str]:
     """
     Extract plugin names from requires.
     
@@ -316,7 +314,7 @@ def extract_plugin_dependencies(manifest: Dict[str, Any]) -> List[str]:
     """
     requires = manifest.get('requires', [])
     dependencies = []
-    
+
     for req in requires:
         if req.startswith('job.plugins.'):
             # Extract plugin name: job.plugins.renamer.parsed → renamer
@@ -325,5 +323,5 @@ def extract_plugin_dependencies(manifest: Dict[str, Any]) -> List[str]:
                 plugin_name = parts[2]
                 if plugin_name not in dependencies:
                     dependencies.append(plugin_name)
-    
+
     return dependencies

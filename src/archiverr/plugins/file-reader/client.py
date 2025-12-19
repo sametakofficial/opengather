@@ -1,28 +1,28 @@
 """File Reader Plugin - Read paths from .txt file"""
-from typing import Dict, Any, List
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
 from archiverr.core.plugins.sdk import InputPlugin
 
 
 class FileReaderPlugin(InputPlugin):
     """Input plugin that reads file paths from a text file"""
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.name = "file_reader"
-    
-    def execute(self) -> List[Dict[str, Any]]:
+
+    def execute(self) -> list[dict[str, Any]]:
         """
         Read paths from text file(s) in targets.
         Returns list of matches: [{status, input}]
         """
-        start_time = datetime.now()
         targets = self.config.get('targets', [])
         allow_virtual = self.config.get('allow_virtual_paths', False)
-        
+
         self.debug("Reading targets", targets=len(targets), allow_virtual=allow_virtual)
-        
+
         results = []
         for target in targets:
             # Check if target is a .txt file or a direct path
@@ -31,21 +31,21 @@ class FileReaderPlugin(InputPlugin):
                 target_path = Path(target)
                 if not target_path.exists():
                     continue
-                
+
                 self.debug("Reading file", path=str(target_path))
-                
-                with open(target_path, 'r', encoding='utf-8') as f:
+
+                with open(target_path, encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith('#'):
                             # Check if path is virtual
                             path_exists = Path(line).exists()
                             is_virtual = not path_exists
-                            
+
                             # Skip non-existent non-virtual paths
                             if not allow_virtual and is_virtual:
                                 continue
-                            
+
                             item_start = datetime.now()
                             item_end = datetime.now()
                             results.append({
@@ -64,13 +64,13 @@ class FileReaderPlugin(InputPlugin):
                 # Direct path (not a .txt file)
                 path_exists = Path(target).exists()
                 is_virtual = not path_exists
-                
+
                 # Skip non-existent non-virtual paths
                 if not allow_virtual and is_virtual:
                     continue
-                
+
                 self.debug("Direct path", path=target, virtual=is_virtual)
-                
+
                 item_start = datetime.now()
                 item_end = datetime.now()
                 results.append({
@@ -85,6 +85,6 @@ class FileReaderPlugin(InputPlugin):
                         'virtual': is_virtual
                     }
                 })
-        
+
         self.info("Reading complete", found=len(results))
         return results

@@ -21,11 +21,11 @@ Usage:
     bus.emit(Events.MATCH_COMPLETED, {"index": 0, "success": True})
 """
 
-from typing import Dict, Set, Callable, Any, List, Optional
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from threading import Lock
-from enum import Enum
+from typing import Any
 
 
 @dataclass
@@ -40,10 +40,10 @@ class Event:
         source: Component that emitted the event
     """
     name: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.now)
     source: str = "system"
-    
+
     def __str__(self) -> str:
         return f"Event({self.name}, source={self.source})"
 
@@ -58,18 +58,18 @@ class Events:
         from archiverr.events import Events
         event_bus.emit(Events.RUN_STARTED, {"run_id": "abc123"})
     """
-    
+
     # ==================== RUN LIFECYCLE ====================
     RUN_STARTED = "run.started"
     RUN_COMPLETED = "run.completed"
     RUN_FAILED = "run.failed"
     RUN_ERROR = "run.error"
-    
+
     # ==================== STAGE LIFECYCLE ====================
     STAGE_STARTED = "stage.started"
     STAGE_COMPLETED = "stage.completed"
     STAGE_FAILED = "stage.failed"
-    
+
     # ==================== JOB LIFECYCLE ====================
     JOB_CREATED = "job.created"
     JOB_STARTED = "job.started"
@@ -77,7 +77,7 @@ class Events:
     JOB_FAILED = "job.failed"
     JOB_UPDATED = "job.updated"
     JOB_STAGE_COMPLETED = "job.stage_completed"
-    
+
     # ==================== PLUGIN LIFECYCLE ====================
     PLUGIN_STARTED = "plugin.started"
     PLUGIN_COMPLETED = "plugin.completed"
@@ -85,25 +85,25 @@ class Events:
     PLUGIN_SKIPPED = "plugin.skipped"
     PLUGIN_PROGRESS = "plugin.progress"
     PLUGIN_UPDATED = "plugin.updated"
-    
+
     # ==================== TASK LIFECYCLE ====================
     TASK_STARTED = "task.started"
     TASK_COMPLETED = "task.completed"
     TASK_FAILED = "task.failed"
-    
+
     # ==================== STATE CHANGES ====================
     STATE_CHANGED = "state.changed"
-    
+
     # ==================== PERSISTENCE ====================
     DB_CONNECTED = "db.connected"
     DB_DISCONNECTED = "db.disconnected"
     DB_SYNCED = "db.synced"
     DB_ERROR = "db.error"
-    
+
     # ==================== VALIDATION ====================
     VALIDATION_PASSED = "validation.passed"
     VALIDATION_FAILED = "validation.failed"
-    
+
     # ==================== LEGACY (backward compatibility) ====================
     EXECUTION_STARTED = "execution.started"
     EXECUTION_COMPLETED = "execution.completed"
@@ -134,7 +134,7 @@ class EventBus:
     - Handlers are called in order of subscription
     - Uses dependency injection (no singleton pattern)
     """
-    
+
     def __init__(self, debugger=None, max_history: int = 1000):
         """
         Initialize event bus with dependencies.
@@ -143,12 +143,12 @@ class EventBus:
             debugger: Debug logger instance for event logging
             max_history: Maximum events to keep in history (default: 1000)
         """
-        self._handlers: Dict[str, List[EventHandler]] = {}
-        self._history: List[Event] = []
+        self._handlers: dict[str, list[EventHandler]] = {}
+        self._history: list[Event] = []
         self._max_history = max_history
         self._lock = Lock()
         self._debugger = debugger
-    
+
     def configure(self, debugger=None, max_history: int = None):
         """
         Reconfigure event bus (backward compatibility).
@@ -161,13 +161,13 @@ class EventBus:
             self._debugger = debugger
         if max_history is not None:
             self._max_history = max_history
-    
+
     def reset(self):
         """Reset event bus state (for testing)"""
         with self._lock:
             self._handlers = {}
             self._history = []
-    
+
     def subscribe(self, event_name: str, handler: EventHandler) -> None:
         """
         Subscribe to an event.
@@ -185,15 +185,15 @@ class EventBus:
         with self._lock:
             if event_name not in self._handlers:
                 self._handlers[event_name] = []
-            
+
             if handler not in self._handlers[event_name]:
                 self._handlers[event_name].append(handler)
-                
+
                 if self._debugger:
                     handler_name = getattr(handler, '__name__', str(handler))
                     self._debugger.debug("event_bus", f"Subscribed to {event_name}",
                                        handler=handler_name)
-    
+
     def unsubscribe(self, event_name: str, handler: EventHandler) -> None:
         """
         Unsubscribe from an event.
@@ -208,8 +208,8 @@ class EventBus:
                     self._handlers[event_name].remove(handler)
                 except ValueError:
                     pass  # Handler not found, ignore
-    
-    def emit(self, event_name: str, data: Dict[str, Any] = None, source: str = "system") -> Event:
+
+    def emit(self, event_name: str, data: dict[str, Any] = None, source: str = "system") -> Event:
         """
         Emit an event to all subscribers.
         
@@ -234,30 +234,30 @@ class EventBus:
             timestamp=datetime.now(),
             source=source
         )
-        
+
         # Store in history
         with self._lock:
             self._history.append(event)
             if len(self._history) > self._max_history:
                 self._history.pop(0)
-        
+
         # Log event
         if self._debugger:
             self._debugger.debug("event_bus", f"Emitting {event_name}",
                                data_keys=list(event.data.keys()))
-        
+
         # Get handlers (copy to avoid lock during execution)
         with self._lock:
             specific_handlers = self._handlers.get(event_name, []).copy()
             wildcard_handlers = self._handlers.get("*", []).copy()
-        
+
         # Call all handlers (with error isolation)
         all_handlers = specific_handlers + wildcard_handlers
         for handler in all_handlers:
             self._safe_call(handler, event)
-        
+
         return event
-    
+
     def _safe_call(self, handler: EventHandler, event: Event) -> None:
         """
         Call handler with error protection.
@@ -271,8 +271,8 @@ class EventBus:
             if self._debugger:
                 self._debugger.error("event_bus", f"Handler error: {handler_name}",
                                    error=str(e), event=event.name)
-    
-    def get_history(self, event_name: str = None, limit: int = 100) -> List[Event]:
+
+    def get_history(self, event_name: str = None, limit: int = 100) -> list[Event]:
         """
         Get event history for debugging.
         
@@ -285,13 +285,13 @@ class EventBus:
         """
         with self._lock:
             events = self._history.copy()
-        
+
         if event_name:
             events = [e for e in events if e.name == event_name]
-        
+
         return list(reversed(events[-limit:]))
-    
-    def get_subscribers(self, event_name: str = None) -> Dict[str, int]:
+
+    def get_subscribers(self, event_name: str = None) -> dict[str, int]:
         """
         Get subscriber counts for debugging.
         
@@ -305,8 +305,8 @@ class EventBus:
             if event_name:
                 return {event_name: len(self._handlers.get(event_name, []))}
             return {name: len(handlers) for name, handlers in self._handlers.items()}
-    
-    def get_history_dict(self) -> Dict[str, List[Dict[str, Any]]]:
+
+    def get_history_dict(self) -> dict[str, list[dict[str, Any]]]:
         """
         Get event history as dict grouped by event type.
         
@@ -317,7 +317,7 @@ class EventBus:
             Example: {'plugin.completed': [{'plugin_name': 'tmdb'}, ...]}
         """
         with self._lock:
-            result: Dict[str, List[Dict[str, Any]]] = {}
+            result: dict[str, list[dict[str, Any]]] = {}
             for event in self._history:
                 if event.name not in result:
                     result[event.name] = []
@@ -327,7 +327,7 @@ class EventBus:
                     'source': event.source,
                 })
             return result
-    
+
     def has_fired(self, event_name: str) -> bool:
         """
         Check if an event has been fired.

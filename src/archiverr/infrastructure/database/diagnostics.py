@@ -17,9 +17,9 @@ Usage:
     errors = await logger.query(level="ERROR", limit=100)
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional
 import asyncio
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 try:
     from pymongo.asynchronous.database import AsyncDatabase
@@ -39,12 +39,12 @@ class DiagnosticsLogger:
     - Query support for analysis
     - Batch writing for performance
     """
-    
+
     COLLECTION = "diagnostics"
     DEFAULT_TTL_DAYS = 7
-    
+
     def __init__(
-        self, 
+        self,
         db: AsyncDatabase,
         ttl_days: int = DEFAULT_TTL_DAYS,
         batch_size: int = 100,
@@ -63,20 +63,20 @@ class DiagnosticsLogger:
         self._ttl_days = ttl_days
         self._batch_size = batch_size
         self._flush_interval = flush_interval_seconds
-        self._buffer: List[Dict[str, Any]] = []
+        self._buffer: list[dict[str, Any]] = []
         self._initialized = False
-    
+
     async def initialize(self) -> None:
         """Initialize collection with indexes"""
         if self._initialized:
             return
-        
+
         # Create TTL index for automatic cleanup
         await self._db[self.COLLECTION].create_index(
             "expires_at",
             expireAfterSeconds=0
         )
-        
+
         # Create indexes for common queries
         await self._db[self.COLLECTION].create_index("timestamp")
         await self._db[self.COLLECTION].create_index("level")
@@ -84,15 +84,15 @@ class DiagnosticsLogger:
         await self._db[self.COLLECTION].create_index(
             [("execution_id", 1), ("timestamp", 1)]
         )
-        
+
         self._initialized = True
-    
+
     async def log(
         self,
         level: str,
         component: str,
         message: str,
-        execution_id: Optional[str] = None,
+        execution_id: str | None = None,
         **fields
     ) -> None:
         """
@@ -106,7 +106,7 @@ class DiagnosticsLogger:
             **fields: Additional context fields
         """
         now = datetime.now(timezone.utc)
-        
+
         entry = {
             "timestamp": now.isoformat(),
             "level": level.upper(),
@@ -116,13 +116,13 @@ class DiagnosticsLogger:
             "fields": {k: v for k, v in fields.items() if v is not None},
             "expires_at": now + timedelta(days=self._ttl_days)
         }
-        
+
         self._buffer.append(entry)
-        
+
         # Flush if buffer is full
         if len(self._buffer) >= self._batch_size:
             await self.flush()
-    
+
     async def flush(self) -> int:
         """
         Flush buffered logs to MongoDB.
@@ -132,27 +132,27 @@ class DiagnosticsLogger:
         """
         if not self._buffer:
             return 0
-        
+
         entries = self._buffer.copy()
         self._buffer.clear()
-        
+
         try:
             result = await self._db[self.COLLECTION].insert_many(entries)
             return len(result.inserted_ids)
-        except Exception as e:
+        except Exception:
             # Re-add to buffer on failure
             self._buffer.extend(entries)
             raise
-    
+
     async def query(
         self,
-        level: Optional[str] = None,
-        component: Optional[str] = None,
-        execution_id: Optional[str] = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        level: str | None = None,
+        component: str | None = None,
+        execution_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Query diagnostics logs.
         
@@ -168,7 +168,7 @@ class DiagnosticsLogger:
             List of log entries
         """
         query = {}
-        
+
         if level:
             query["level"] = level.upper()
         if component:
@@ -181,11 +181,11 @@ class DiagnosticsLogger:
                 query["timestamp"]["$gte"] = since.isoformat()
             if until:
                 query["timestamp"]["$lte"] = until.isoformat()
-        
+
         cursor = self._db[self.COLLECTION].find(query).sort("timestamp", -1).limit(limit)
         return await cursor.to_list(length=limit)
-    
-    async def get_stats(self) -> Dict[str, Any]:
+
+    async def get_stats(self) -> dict[str, Any]:
         """Get diagnostics statistics"""
         pipeline = [
             {"$group": {
@@ -193,20 +193,20 @@ class DiagnosticsLogger:
                 "count": {"$sum": 1}
             }}
         ]
-        
+
         cursor = self._db[self.COLLECTION].aggregate(pipeline)
         level_counts = {doc["_id"]: doc["count"] async for doc in cursor}
-        
+
         total = sum(level_counts.values())
-        
+
         return {
             "total_entries": total,
             "by_level": level_counts,
             "buffer_size": len(self._buffer),
             "ttl_days": self._ttl_days
         }
-    
-    async def clear(self, before: Optional[datetime] = None) -> int:
+
+    async def clear(self, before: datetime | None = None) -> int:
         """
         Clear diagnostics logs.
         
@@ -219,7 +219,7 @@ class DiagnosticsLogger:
         query = {}
         if before:
             query["timestamp"] = {"$lte": before.isoformat()}
-        
+
         result = await self._db[self.COLLECTION].delete_many(query)
         return result.deleted_count
 
@@ -231,11 +231,11 @@ class SyncDiagnosticsLogger:
     
     Used in CLI mode where we have a sync event loop.
     """
-    
+
     def __init__(self, db, ttl_days: int = 7):
         self._async_logger = DiagnosticsLogger(db, ttl_days)
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-    
+        self._loop: asyncio.AbstractEventLoop | None = None
+
     def _get_loop(self) -> asyncio.AbstractEventLoop:
         if self._loop is None or self._loop.is_closed():
             try:
@@ -244,7 +244,7 @@ class SyncDiagnosticsLogger:
                 self._loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(self._loop)
         return self._loop
-    
+
     def _run(self, coro):
         loop = self._get_loop()
         if loop.is_running():
@@ -252,15 +252,15 @@ class SyncDiagnosticsLogger:
             # Return a future that will be awaited later
             return asyncio.ensure_future(coro)
         return loop.run_until_complete(coro)
-    
+
     def initialize(self):
         return self._run(self._async_logger.initialize())
-    
+
     def log(self, level: str, component: str, message: str, **fields):
         return self._run(self._async_logger.log(level, component, message, **fields))
-    
+
     def flush(self):
         return self._run(self._async_logger.flush())
-    
+
     def query(self, **kwargs):
         return self._run(self._async_logger.query(**kwargs))

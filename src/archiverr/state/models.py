@@ -4,8 +4,8 @@ State Models - Core data structures for run and job state.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 from enum import Enum
+from typing import Any
 
 
 class StateEnum(Enum):
@@ -22,9 +22,9 @@ class StateEnum(Enum):
 class InputData:
     """Job input data container."""
     value: str
-    data: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "value": self.value,
             "data": self.data
@@ -34,10 +34,10 @@ class InputData:
 @dataclass
 class OutputData:
     """Job output data container."""
-    values: List[str] = field(default_factory=list)
-    data: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    values: list[str] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "values": self.values,
             "data": self.data
@@ -49,12 +49,12 @@ class JobStatus:
     """Job execution status with per-plugin tracking."""
     state: StateEnum = StateEnum.PENDING
     success: bool = True
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     duration_ms: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         # Derive executed/failed/skipped from plugins dict
         executed = []
         failed = []
@@ -68,7 +68,7 @@ class JobStatus:
                     skipped.append(pname)
                 elif pstate == 'completed':
                     executed.append(pname)
-        
+
         return {
             "state": self.state.value,
             "success": self.success,
@@ -90,12 +90,12 @@ class RunStatus:
     total_jobs: int = 0
     completed: int = 0
     failed: int = 0
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     duration_ms: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "state": self.state.value,
             "success": self.success,
@@ -118,13 +118,13 @@ class JobState:
     input: InputData = field(default_factory=lambda: InputData(""))
     output: OutputData = field(default_factory=OutputData)
     status: JobStatus = field(default_factory=JobStatus)
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     def __post_init__(self):
         if not self.id:
             self.id = f"job_{self.run_id}_{self.index}"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "index": self.index,
@@ -134,12 +134,12 @@ class JobState:
             "status": self.status.to_dict(),
             "plugins": self.plugins
         }
-    
+
     def start(self):
         """Mark job as started."""
         self.status.state = StateEnum.RUNNING
         self.status.started_at = datetime.now()
-    
+
     def complete(self, success: bool = True):
         """Mark job as completed."""
         self.status.finished_at = datetime.now()
@@ -148,7 +148,7 @@ class JobState:
             self.status.duration_ms = int(delta.total_seconds() * 1000)
         self.status.success = success
         self.status.state = StateEnum.SUCCESS if success else StateEnum.FAILED
-    
+
 
 
 @dataclass
@@ -156,22 +156,22 @@ class RunState:
     """Execution-level state. ID Format: run_{uuid8}"""
     id: str
     status: RunStatus = field(default_factory=RunStatus)
-    config: Dict[str, Any] = field(default_factory=dict)
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    config: dict[str, Any] = field(default_factory=dict)
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "status": self.status.to_dict(),
             "config": self.config,
             "plugins": self.plugins
         }
-    
+
     def start(self):
         """Mark run as started."""
         self.status.state = StateEnum.RUNNING
         self.status.started_at = datetime.now()
-    
+
     def complete(self):
         """Mark run as completed."""
         self.status.finished_at = datetime.now()
@@ -180,15 +180,15 @@ class RunState:
             self.status.duration_ms = int(delta.total_seconds() * 1000)
         self.status.success = self.status.failed == 0
         self.status.state = StateEnum.SUCCESS if self.status.success else StateEnum.FAILED
-    
+
     def increment_jobs(self):
         """Increment total job count."""
         self.status.total_jobs += 1
-    
+
     def increment_completed(self):
         """Increment completed job count."""
         self.status.completed += 1
-    
+
     def increment_failed(self):
         """Increment failed job count."""
         self.status.failed += 1

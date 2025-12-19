@@ -4,7 +4,8 @@ Event Service Implementation
 Wraps EventBus to provide clean interface for plugins.
 """
 
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from archiverr.events import EventBus
@@ -16,7 +17,7 @@ class EventServiceImpl:
     
     Provides simplified event emission and subscription for plugins.
     """
-    
+
     def __init__(self, event_bus: 'EventBus', source: str = "plugin"):
         """
         Initialize event service.
@@ -27,8 +28,8 @@ class EventServiceImpl:
         """
         self._bus = event_bus
         self._source = source
-    
-    def emit(self, event: str, data: Optional[Dict[str, Any]] = None) -> None:
+
+    def emit(self, event: str, data: dict[str, Any] | None = None) -> None:
         """
         Emit an event.
         
@@ -37,7 +38,7 @@ class EventServiceImpl:
             data: Event payload
         """
         self._bus.emit(event, data or {}, source=self._source)
-    
+
     def subscribe(self, event: str, handler: Callable) -> None:
         """
         Subscribe to an event.
@@ -47,7 +48,7 @@ class EventServiceImpl:
             handler: Callback function
         """
         self._bus.subscribe(event, handler)
-    
+
     @property
     def bus(self) -> 'EventBus':
         """Get underlying EventBus (for advanced usage)."""

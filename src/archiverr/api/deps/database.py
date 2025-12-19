@@ -17,10 +17,10 @@ Usage:
         result = await db.collection.find_one({})
 """
 
-import os
 import logging
-from typing import Optional
-from fastapi import Request, HTTPException
+import os
+
+from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +49,16 @@ async def get_async_db():
         AsyncDatabase or None if connection fails
     """
     global _async_client, _async_db
-    
+
     if _async_db is not None:
         return _async_db
-    
+
     try:
         from pymongo import AsyncMongoClient
-        
+
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
-        
+
         _async_client = AsyncMongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
@@ -67,13 +67,13 @@ async def get_async_db():
             minPoolSize=5,
         )
         _async_db = _async_client[database]
-        
+
         # Verify connection
         await _async_db.command('ping')
         logger.info(f"PyMongo async connection established: {database}")
-        
+
         return _async_db
-        
+
     except Exception as e:
         logger.error(f"PyMongo async connection failed: {e}")
         return None
@@ -94,12 +94,12 @@ async def get_database(request: Request):
     db = getattr(request.app.state, 'db', None)
     if db is not None:
         return db
-    
+
     # Fallback to direct connection
     db = await get_async_db()
     if db is None:
         raise HTTPException(status_code=503, detail="Database not available")
-    
+
     return db
 
 
@@ -118,16 +118,16 @@ def get_sync_db():
         PyMongo Database or None if connection fails
     """
     global _pymongo_client, _pymongo_db
-    
+
     if _pymongo_db is not None:
         return _pymongo_db
-    
+
     try:
         from pymongo import MongoClient
-        
+
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
-        
+
         _pymongo_client = MongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
@@ -135,13 +135,13 @@ def get_sync_db():
             maxPoolSize=10
         )
         _pymongo_db = _pymongo_client[database]
-        
+
         # Verify connection
         _pymongo_db.command('ping')
         logger.info(f"PyMongo sync connection established: {database}")
-        
+
         return _pymongo_db
-        
+
     except Exception as e:
         logger.error(f"PyMongo connection failed: {e}")
         return None
@@ -154,13 +154,13 @@ def get_sync_db():
 async def close_connections():
     """Close all database connections."""
     global _async_client, _async_db, _pymongo_client, _pymongo_db
-    
+
     if _async_client is not None:
         _async_client.close()
         _async_client = None
         _async_db = None
         logger.info("PyMongo async connection closed")
-    
+
     if _pymongo_client is not None:
         _pymongo_client.close()
         _pymongo_client = None

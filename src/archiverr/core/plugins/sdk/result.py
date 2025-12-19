@@ -4,9 +4,10 @@ Plugin Result - Standardized result format for all plugins
 Provides consistent structure for plugin outputs with timing info.
 """
 
-from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class PluginResult(BaseModel):
@@ -26,20 +27,20 @@ class PluginResult(BaseModel):
         result = PluginResult.success_result(data={"movie": {...}}, metadata={...})
         result = PluginResult.error_result("API connection failed")
     """
-    
+
     success: bool = Field(..., description="Whether plugin execution succeeded")
-    data: Dict[str, Any] = Field(default_factory=dict, description="Plugin output data")
-    error: Optional[str] = Field(None, description="Error message if failed")
+    data: dict[str, Any] = Field(default_factory=dict, description="Plugin output data")
+    error: str | None = Field(None, description="Error message if failed")
     started_at: datetime = Field(..., description="Execution start time")
     finished_at: datetime = Field(..., description="Execution end time")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Plugin metadata (api_calls, cache_hits, etc.)")
-    
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Plugin metadata (api_calls, cache_hits, etc.)")
+
     @property
     def duration_ms(self) -> int:
         """Calculate execution duration in milliseconds"""
         return int((self.finished_at - self.started_at).total_seconds() * 1000)
-    
-    def to_status_dict(self) -> Dict[str, Any]:
+
+    def to_status_dict(self) -> dict[str, Any]:
         """Convert to status dict format used in API response"""
         return {
             "success": self.success,
@@ -48,8 +49,8 @@ class PluginResult(BaseModel):
             "finished_at": self.finished_at.isoformat(),
             "duration_ms": self.duration_ms
         }
-    
-    def to_response_dict(self) -> Dict[str, Any]:
+
+    def to_response_dict(self) -> dict[str, Any]:
         """
         Convert to full API response format.
         
@@ -60,13 +61,13 @@ class PluginResult(BaseModel):
             "status": self.to_status_dict(),
             **self.data
         }
-    
+
     @classmethod
     def success_result(
         cls,
-        data: Dict[str, Any],
-        started_at: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        data: dict[str, Any],
+        started_at: datetime | None = None,
+        metadata: dict[str, Any] | None = None
     ) -> 'PluginResult':
         """
         Factory for successful results.
@@ -87,12 +88,12 @@ class PluginResult(BaseModel):
             finished_at=now,
             metadata=metadata or {}
         )
-    
+
     @classmethod
     def error_result(
         cls,
         error: str,
-        started_at: Optional[datetime] = None
+        started_at: datetime | None = None
     ) -> 'PluginResult':
         """
         Factory for error results.
@@ -111,12 +112,12 @@ class PluginResult(BaseModel):
             started_at=started_at or now,
             finished_at=now
         )
-    
+
     @classmethod
     def skipped_result(
         cls,
         reason: str = "",
-        started_at: Optional[datetime] = None
+        started_at: datetime | None = None
     ) -> 'PluginResult':
         """
         Factory for skipped results (e.g., virtual paths, unsupported media).
@@ -136,7 +137,7 @@ class PluginResult(BaseModel):
             finished_at=now,
             metadata={'skipped': True, 'skip_reason': reason}
         )
-    
+
     class Config:
         """Pydantic config"""
         # Allow arbitrary types for datetime

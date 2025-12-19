@@ -1,10 +1,9 @@
 """
 Provides Service Implementation
 
-Session 11: Provides early completion service for plugins.
+Provides early completion service for plugins.
 """
 
-from typing import Dict, Any, Optional
 
 from archiverr.core.provides_registry import ProvidesRegistry
 
@@ -19,7 +18,7 @@ class ProvidesServiceImpl:
         # In plugin execute method
         services.provides.complete("http.request")
     """
-    
+
     def __init__(self, registry: ProvidesRegistry, plugin_name: str):
         """
         Initialize provides service.
@@ -30,7 +29,7 @@ class ProvidesServiceImpl:
         """
         self._registry = registry
         self._plugin_name = plugin_name
-    
+
     def complete(self, provide: str) -> None:
         """
         Mark a provide as completed early.
@@ -39,7 +38,7 @@ class ProvidesServiceImpl:
             provide: Provide value (e.g., "http.request", "fs.write")
         """
         self._registry.complete(self._plugin_name, provide)
-    
+
     def is_completed(self, provide: str) -> bool:
         """
         Check if a provide is completed (by any plugin).
@@ -51,7 +50,7 @@ class ProvidesServiceImpl:
             True if provide is completed
         """
         return self._registry.is_completed(provide)
-    
+
     def is_completed_by(self, provide: str, plugin_name: str) -> bool:
         """
         Check if a specific plugin has completed a provide.
@@ -64,8 +63,8 @@ class ProvidesServiceImpl:
             True if the specific plugin has completed this provide
         """
         return self._registry.is_completed_by(provide, plugin_name)
-    
-    def get_status(self, provide: str) -> Dict[str, str]:
+
+    def get_status(self, provide: str) -> dict[str, str]:
         """
         Get status of a provide from all plugins.
         
@@ -76,8 +75,8 @@ class ProvidesServiceImpl:
             Dict of plugin_name -> status
         """
         return self._registry.get_status(provide)
-    
-    def get_all(self) -> Dict[str, Dict[str, str]]:
+
+    def get_all(self) -> dict[str, dict[str, str]]:
         """
         Get all provides as dict.
         

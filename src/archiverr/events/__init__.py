@@ -7,8 +7,8 @@ Inspired by:
 - Python asyncio patterns
 """
 
-from .bus import EventBus, Event, Events
-from .handlers import DebugHandler, ProgressHandler, ConsoleProgressHandler, StatisticsHandler
+from .bus import Event, EventBus, Events
+from .handlers import ConsoleProgressHandler, DebugHandler, ProgressHandler, StatisticsHandler
 
 __all__ = [
     'EventBus', 'Event', 'Events',

@@ -27,12 +27,12 @@ Collections:
     - commits: Immutable snapshots linked to branches
 """
 
-import warnings
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
 import asyncio
 import atexit
 import logging
+import warnings
+from datetime import datetime, timedelta
+from typing import Any
 
 # Emit deprecation warning on import
 warnings.warn(
@@ -46,10 +46,10 @@ warnings.warn(
 try:
     from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
     from pymongo.errors import (
-        ConnectionFailure, 
-        ServerSelectionTimeoutError,
+        ConnectionFailure,
+        DuplicateKeyError,
         OperationFailure,
-        DuplicateKeyError
+        ServerSelectionTimeoutError,
     )
     MOTOR_AVAILABLE = True
 except ImportError:
@@ -90,17 +90,17 @@ class MongoDBPersistence(PersistenceInterface):
         MONGODB_URI: Connection string (default: mongodb://localhost:27017)
         MONGODB_DATABASE: Database name (default: archiverr)
     """
-    
+
     # Collection names
     EXECUTIONS = "executions"
     MATCHES = "matches"
     PLUGIN_RESULTS = "plugin_results"
-    
+
     # Default TTL for plugin results (90 days)
     DEFAULT_TTL_DAYS = 90
-    
+
     def __init__(
-        self, 
+        self,
         uri: str = "mongodb://localhost:27017",
         database: str = "archiverr",
         ttl_days: int = DEFAULT_TTL_DAYS
@@ -118,20 +118,20 @@ class MongoDBPersistence(PersistenceInterface):
                 "Motor is required for MongoDB persistence. "
                 "Install with: pip install motor"
             )
-        
+
         self._uri = uri
         self._database_name = database
         self._ttl_days = ttl_days
-        
-        self._client: Optional[AsyncIOMotorClient] = None
-        self._db: Optional[AsyncIOMotorDatabase] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        self._client: AsyncIOMotorClient | None = None
+        self._db: AsyncIOMotorDatabase | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._connected = False
-    
+
     def connect(self) -> None:
         """Connect to MongoDB and create indexes"""
         self._loop = self._get_or_create_event_loop()
-        
+
         try:
             # Set shorter timeout for initial connection
             self._client = AsyncIOMotorClient(
@@ -142,21 +142,21 @@ class MongoDBPersistence(PersistenceInterface):
                 minPoolSize=1
             )
             self._db = self._client[self._database_name]
-            
+
             # Verify connection with ping
             self._run_async(self._ping())
-            
+
             # Create indexes synchronously
             self._run_async(self._create_indexes())
             self._connected = True
-            
+
             # Register cleanup on exit
             atexit.register(self.disconnect)
-            
+
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.error(f"Failed to connect to MongoDB at {self._uri}: {e}")
             raise ConnectionError(f"MongoDB connection failed: {e}") from e
-    
+
     async def _ping(self) -> bool:
         """Verify MongoDB connection is healthy"""
         try:
@@ -165,7 +165,7 @@ class MongoDBPersistence(PersistenceInterface):
         except Exception as e:
             logger.error(f"MongoDB ping failed: {e}")
             raise
-    
+
     def disconnect(self) -> None:
         """Disconnect from MongoDB"""
         if self._client is not None and self._connected:
@@ -173,21 +173,21 @@ class MongoDBPersistence(PersistenceInterface):
             self._client = None
             self._db = None
             self._connected = False
-    
+
     def save_execution(self, execution) -> None:
         """Save or update execution"""
         self._run_async(self._save_execution_async(execution))
-    
+
     def save_match(self, match) -> None:
         """Save or update match"""
         self._run_async(self._save_match_async(match))
-    
+
     def save_plugin_result(
-        self, 
-        execution_id: str, 
-        match_index: int, 
-        plugin_name: str, 
-        result: Dict[str, Any]
+        self,
+        execution_id: str,
+        match_index: int,
+        plugin_name: str,
+        result: dict[str, Any]
     ) -> None:
         """Save plugin result"""
         self._run_async(
@@ -195,54 +195,51 @@ class MongoDBPersistence(PersistenceInterface):
                 execution_id, match_index, plugin_name, result
             )
         )
-    
-    def get_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
+
+    def get_execution(self, execution_id: str) -> dict[str, Any] | None:
         """Get execution by ID"""
         return self._run_async(self._get_execution_async(execution_id))
-    
-    def get_matches(self, execution_id: str) -> List[Dict[str, Any]]:
+
+    def get_matches(self, execution_id: str) -> list[dict[str, Any]]:
         """Get all matches for execution"""
         return self._run_async(self._get_matches_async(execution_id))
-    
+
     def get_plugin_results(
-        self, 
-        execution_id: str, 
+        self,
+        execution_id: str,
         match_index: int
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Get all plugin results for a match"""
         return self._run_async(
             self._get_plugin_results_async(execution_id, match_index)
         )
-    
-    def get_statistics(self) -> Dict[str, Any]:
+
+    def get_statistics(self) -> dict[str, Any]:
         """Get database statistics"""
         return self._run_async(self._get_statistics_async())
-    
+
     # ==================== ASYNC IMPLEMENTATIONS ====================
-    
+
     async def _create_indexes(self) -> None:
         """Create database indexes"""
         # Executions indexes
         await self._db[self.EXECUTIONS].create_index("started_at")
         await self._db[self.EXECUTIONS].create_index([("status", 1), ("started_at", -1)])
-        
-        
+
+
         # TTL index for plugin results
         await self._db[self.PLUGIN_RESULTS].create_index(
             "expires_at",
             expireAfterSeconds=0
         )
-    
+
     async def _save_execution_async(self, execution) -> None:
         """Async save execution with error handling. Accepts dict or object with to_dict()."""
         try:
             # Support both dict and object with to_dict()
-            if hasattr(execution, 'to_dict'):
-                exec_dict = execution.to_dict()
-            else:
-                exec_dict = dict(execution)
+            exec_dict = execution.to_dict() if hasattr(execution, 'to_dict') else dict(execution)
             exec_id = exec_dict["_id"]
-            
+
             await self._db[self.EXECUTIONS].update_one(
                 {"_id": exec_id},
                 {"$set": exec_dict},
@@ -254,17 +251,14 @@ class MongoDBPersistence(PersistenceInterface):
         except Exception as e:
             logger.error(f"Unexpected error saving execution: {e}")
             raise
-    
+
     async def _save_match_async(self, match) -> None:
         """Async save match with error handling. Accepts dict or object with to_dict()."""
         try:
             # Support both dict and object with to_dict()
-            if hasattr(match, 'to_dict'):
-                match_dict = match.to_dict()
-            else:
-                match_dict = dict(match)
+            match_dict = match.to_dict() if hasattr(match, 'to_dict') else dict(match)
             match_id = match_dict["_id"]
-            
+
             await self._db[self.MATCHES].update_one(
                 {"_id": match_id},
                 {"$set": match_dict},
@@ -276,13 +270,13 @@ class MongoDBPersistence(PersistenceInterface):
         except Exception as e:
             logger.error(f"Unexpected error saving match: {e}")
             raise
-    
+
     async def _save_plugin_result_async(
-        self, 
-        execution_id: str, 
-        match_index: int, 
-        plugin_name: str, 
-        result: Dict[str, Any]
+        self,
+        execution_id: str,
+        match_index: int,
+        plugin_name: str,
+        result: dict[str, Any]
     ) -> None:
         """Async save plugin result with error handling
         
@@ -291,12 +285,12 @@ class MongoDBPersistence(PersistenceInterface):
             - data: Plugin-specific data only (movie, show, parsed, etc.)
         """
         result_id = f"pr_{plugin_name}_{match_index}_{execution_id}"
-        
+
         try:
             # Extract status from result (if present)
             # Status should be at root level, not inside data
             status = result.pop('status', None) if isinstance(result, dict) else None
-            
+
             # Default status if not provided
             if status is None:
                 status = {
@@ -306,7 +300,7 @@ class MongoDBPersistence(PersistenceInterface):
                     "duration_ms": 0,
                     "error": None
                 }
-            
+
             result_doc = {
                 "_id": result_id,
                 "execution_id": f"exec_{execution_id}",
@@ -318,7 +312,7 @@ class MongoDBPersistence(PersistenceInterface):
                 "created_at": datetime.utcnow(),
                 "expires_at": datetime.utcnow() + timedelta(days=self._ttl_days)
             }
-            
+
             await self._db[self.PLUGIN_RESULTS].update_one(
                 {"_id": result_id},
                 {"$set": result_doc},
@@ -330,41 +324,41 @@ class MongoDBPersistence(PersistenceInterface):
         except Exception as e:
             logger.error(f"Unexpected error saving plugin result: {e}")
             raise
-    
-    async def _get_execution_async(self, execution_id: str) -> Optional[Dict[str, Any]]:
+
+    async def _get_execution_async(self, execution_id: str) -> dict[str, Any] | None:
         """Async get execution"""
         exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
+
         doc = await self._db[self.EXECUTIONS].find_one({"_id": exec_id})
         return doc
-    
-    async def _get_matches_async(self, execution_id: str) -> List[Dict[str, Any]]:
+
+    async def _get_matches_async(self, execution_id: str) -> list[dict[str, Any]]:
         """Async get matches"""
         exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
+
         cursor = self._db[self.MATCHES].find({"execution_id": exec_id})
         return await cursor.to_list(length=None)
-    
+
     async def _get_plugin_results_async(
-        self, 
-        execution_id: str, 
+        self,
+        execution_id: str,
         match_index: int
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Async get plugin results"""
         exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
+
         cursor = self._db[self.PLUGIN_RESULTS].find({
             "execution_id": exec_id,
             "match_index": match_index
         })
-        
+
         results = {}
         async for doc in cursor:
             results[doc["plugin_name"]] = doc["data"]
-        
+
         return results
-    
-    async def _get_statistics_async(self) -> Dict[str, Any]:
+
+    async def _get_statistics_async(self) -> dict[str, Any]:
         """Async get statistics"""
         return {
             "backend": "MongoDBPersistence",
@@ -374,9 +368,9 @@ class MongoDBPersistence(PersistenceInterface):
             "matches": await self._db[self.MATCHES].count_documents({}),
             "plugin_results": await self._db[self.PLUGIN_RESULTS].count_documents({})
         }
-    
+
     # ==================== HELPER METHODS ====================
-    
+
     def _get_or_create_event_loop(self) -> asyncio.AbstractEventLoop:
         """Get existing event loop or create new one"""
         try:
@@ -388,7 +382,7 @@ class MongoDBPersistence(PersistenceInterface):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         return loop
-    
+
     def _run_async(self, coro):
         """Run async coroutine synchronously.
         
@@ -397,78 +391,78 @@ class MongoDBPersistence(PersistenceInterface):
         """
         if self._loop is None:
             self._loop = self._get_or_create_event_loop()
-        
+
         # Handle closed loop
         if self._loop.is_closed():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
-        
+
         return self._loop.run_until_complete(coro)
-    
+
     # ==================== ADDITIONAL QUERY METHODS ====================
-    
-    def get_recent_executions(self, limit: int = 10) -> List[Dict[str, Any]]:
+
+    def get_recent_executions(self, limit: int = 10) -> list[dict[str, Any]]:
         """Get recent executions ordered by start time"""
         return self._run_async(self._get_recent_executions_async(limit))
-    
-    async def _get_recent_executions_async(self, limit: int) -> List[Dict[str, Any]]:
+
+    async def _get_recent_executions_async(self, limit: int) -> list[dict[str, Any]]:
         """Async get recent executions"""
         cursor = self._db[self.EXECUTIONS].find().sort("started_at", -1).limit(limit)
         return await cursor.to_list(length=limit)
-    
-    def get_failed_executions(self) -> List[Dict[str, Any]]:
+
+    def get_failed_executions(self) -> list[dict[str, Any]]:
         """Get failed executions"""
         return self._run_async(self._get_failed_executions_async())
-    
-    async def _get_failed_executions_async(self) -> List[Dict[str, Any]]:
+
+    async def _get_failed_executions_async(self) -> list[dict[str, Any]]:
         """Async get failed executions"""
         cursor = self._db[self.EXECUTIONS].find({"success": False})
         return await cursor.to_list(length=None)
-    
+
     def delete_execution(self, execution_id: str) -> bool:
         """Delete execution and all related data"""
         return self._run_async(self._delete_execution_async(execution_id))
-    
+
     async def _delete_execution_async(self, execution_id: str) -> bool:
         """Async delete execution"""
         exec_id = f"exec_{execution_id}" if not execution_id.startswith("exec_") else execution_id
-        
+
         # Delete plugin results
         await self._db[self.PLUGIN_RESULTS].delete_many({"execution_id": exec_id})
-        
+
         # Delete matches
         await self._db[self.MATCHES].delete_many({"execution_id": exec_id})
-        
+
         # Delete execution
         result = await self._db[self.EXECUTIONS].delete_one({"_id": exec_id})
-        
+
         return result.deleted_count > 0
-    
+
     # ==================== GIT-LIKE VERSIONING METHODS ====================
-    
-    def create_branch(self, name: str, description: str = "", is_default: bool = False) -> Dict[str, Any]:
+
+    def create_branch(self, name: str, description: str = "", is_default: bool = False) -> dict[str, Any]:
         """Create a new branch"""
         return self._run_async(self._create_branch_async(name, description, is_default))
-    
+
     async def _create_branch_async(
-        self, 
-        name: str, 
+        self,
+        name: str,
         description: str = "",
         is_default: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Async create branch"""
         from uuid import uuid4
-        
+
         branch_id = f"branch_{str(uuid4())[:8]}"
         now = datetime.utcnow()
-        
+
         # If this is default branch, unset others
         if is_default:
             await self._db[self.BRANCHES].update_many(
                 {"is_default": True},
                 {"$set": {"is_default": False}}
             )
-        
+
         branch_doc = {
             "_id": branch_id,
             "name": name,
@@ -478,22 +472,22 @@ class MongoDBPersistence(PersistenceInterface):
             "created_at": now,
             "updated_at": now
         }
-        
+
         try:
             await self._db[self.BRANCHES].insert_one(branch_doc)
             return branch_doc
         except DuplicateKeyError:
             raise ValueError(f"Branch '{name}' already exists")
-    
-    def get_branch(self, branch_id: str = None, name: str = None) -> Optional[Dict[str, Any]]:
+
+    def get_branch(self, branch_id: str = None, name: str = None) -> dict[str, Any] | None:
         """Get branch by ID or name"""
         return self._run_async(self._get_branch_async(branch_id, name))
-    
+
     async def _get_branch_async(
-        self, 
-        branch_id: str = None, 
+        self,
+        branch_id: str = None,
         name: str = None
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Async get branch"""
         if branch_id:
             return await self._db[self.BRANCHES].find_one({"_id": branch_id})
@@ -502,31 +496,31 @@ class MongoDBPersistence(PersistenceInterface):
         else:
             # Return default branch
             return await self._db[self.BRANCHES].find_one({"is_default": True})
-    
-    def list_branches(self) -> List[Dict[str, Any]]:
+
+    def list_branches(self) -> list[dict[str, Any]]:
         """List all branches"""
         return self._run_async(self._list_branches_async())
-    
-    async def _list_branches_async(self) -> List[Dict[str, Any]]:
+
+    async def _list_branches_async(self) -> list[dict[str, Any]]:
         """Async list branches"""
         cursor = self._db[self.BRANCHES].find().sort("created_at", -1)
         return await cursor.to_list(length=None)
-    
+
     def delete_branch(self, branch_id: str) -> bool:
         """Delete a branch and its commits"""
         return self._run_async(self._delete_branch_async(branch_id))
-    
+
     async def _delete_branch_async(self, branch_id: str) -> bool:
         """Async delete branch"""
         # Check if branch exists
         branch = await self._db[self.BRANCHES].find_one({"_id": branch_id})
         if not branch:
             return False
-        
+
         # Don't allow deleting default branch
         if branch.get("is_default"):
             raise ValueError("Cannot delete default branch")
-        
+
         # Delete branch
         result = await self._db[self.BRANCHES].delete_one({"_id": branch_id})
         return result.deleted_count > 0

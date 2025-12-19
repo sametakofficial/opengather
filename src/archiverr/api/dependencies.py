@@ -10,17 +10,15 @@ This file is kept for backward compatibility only.
 
 import warnings
 
+from archiverr.api.deps.common import AsyncPersistenceWrapper, get_persistence
+
 # Re-export from new location for backward compatibility
 from archiverr.api.deps.database import (
-    get_async_db,
-    get_sync_db,
-    get_database,
     close_connections,
-    reset_connections
-)
-from archiverr.api.deps.common import (
-    AsyncPersistenceWrapper,
-    get_persistence
+    get_async_db,
+    get_database,
+    get_sync_db,
+    reset_connections,
 )
 
 # Emit deprecation warning on import

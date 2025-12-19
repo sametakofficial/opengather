@@ -1,11 +1,13 @@
 """TMDb Plugin - Clean orchestration layer"""
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any
+
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
+
 from .extras import TMDbExtras
 from .normalize.normalizer import TMDbNormalizer
 from .utils.api import TMDbAPI
 from .utils.fetchers import TMDbMovieFetcher, TMDbShowFetcher
-from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 
 class TMDbPlugin(OutputPlugin):
@@ -18,31 +20,31 @@ class TMDbPlugin(OutputPlugin):
     - normalize/normalizer.py: Response normalization to community standard
     - extras.py: Raw endpoint calls
     """
-    
-    def __init__(self, config: Dict[str, Any]):
+
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.name = "tmdb"
         self.api_key = config.get('api_key', '')
         self.lang = config.get('language', config.get('lang', 'en-US'))
         self.region = config.get('region', 'TR')
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
-        
+
         # Components initialized in setup() - None until then
-        self.api: Optional[TMDbAPI] = None
-        self.extras_client: Optional[TMDbExtras] = None
-        self.normalizer: Optional[TMDbNormalizer] = None
-        self.movie_fetcher: Optional[TMDbMovieFetcher] = None
-        self.show_fetcher: Optional[TMDbShowFetcher] = None
-        
+        self.api: TMDbAPI | None = None
+        self.extras_client: TMDbExtras | None = None
+        self.normalizer: TMDbNormalizer | None = None
+        self.movie_fetcher: TMDbMovieFetcher | None = None
+        self.show_fetcher: TMDbShowFetcher | None = None
+
         # Get extras configuration
         self.extras_config = config.get('extras', {})
-    
+
     async def setup(self) -> None:
         """Initialize API clients and fetchers (called once on load)"""
         self.api = TMDbAPI(self.api_key, self.lang, self.region)
         self.extras_client = TMDbExtras(self.api_key, self.lang)
         self.normalizer = TMDbNormalizer()
-        
+
         # Initialize fetchers - pass None for debugger, they should use self.log too
         self.movie_fetcher = TMDbMovieFetcher(
             self.api, self.extras_client, self.normalizer,
@@ -54,7 +56,7 @@ class TMDbPlugin(OutputPlugin):
         )
         self._initialized = True
         self.info("TMDb plugin initialized", api_key_set=bool(self.api_key))
-    
+
     def _sync_setup(self) -> None:
         """Synchronous setup for backwards compatibility"""
         self.api = TMDbAPI(self.api_key, self.lang, self.region)
@@ -69,7 +71,7 @@ class TMDbPlugin(OutputPlugin):
             self.extras_config, self.include_raw, None
         )
         self._initialized = True
-    
+
     def execute(self, job: Any, services: Any) -> PluginResult:
         """
         Fetch metadata from TMDb (Session 12).
@@ -82,30 +84,30 @@ class TMDbPlugin(OutputPlugin):
             PluginResult with movie/show/episode/season/extras/normalized data
         """
         started_at = datetime.now()
-        
+
         if not self._initialized:
             self._sync_setup()
-        
+
         # Session 17: Get parsed data from plugin.renamer.parsed (flat structure)
         parsed_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
             renamer_data = job.plugins.get('renamer', {})
             # Session 17: Flat structure - parsed is directly in renamer data
             parsed_data = renamer_data.get('parsed', {})
-        
+
         # Fallback: try services.state
         if not parsed_data and hasattr(services, 'state'):
             renamer_data = services.state.get_plugin_data(job.id, 'renamer')
             if renamer_data:
                 parsed_data = renamer_data.get('parsed', {})
-        
+
         if not parsed_data:
             return PluginResult.error_result("No parsed data available", started_at=started_at)
-        
+
         # Route to appropriate fetcher
         movie_data = parsed_data.get('movie')
         show_data = parsed_data.get('show')
-        
+
         try:
             result = None
             if movie_data and movie_data.get('name'):
@@ -137,7 +139,7 @@ class TMDbPlugin(OutputPlugin):
                     self.warn("Show not found on TMDb", name=show_data.get('name'))
             else:
                 return PluginResult.error_result("No movie or show data", started_at=started_at)
-            
+
             # Add validation if result successful
             if result and result.get('status', {}).get('success'):
                 # Session 17: Get ffprobe data (flat structure)
@@ -147,7 +149,7 @@ class TMDbPlugin(OutputPlugin):
                 elif hasattr(services, 'state'):
                     ffprobe_data = services.state.get_plugin_data(job.id, 'ffprobe') or {}
                 result['validation'] = self._perform_validation(ffprobe_data, result)
-                
+
                 # Emit task example - notify about found metadata
                 if result.get('movie'):
                     movie = result['movie']
@@ -179,31 +181,23 @@ class TMDbPlugin(OutputPlugin):
                         "type": "print",
                         "template": f"  ✓ TMDb: {show_name}"
                     })
-            
+
             # Convert dict result to PluginResult
             # Remove status from data (PluginResult handles it)
             data = {k: v for k, v in result.items() if k != 'status'}
-            
-            # Session 12: Update plugin state via services
-            self.debug("TMDb services check", 
-                      services_type=str(type(services)),
-                      has_updatePlugin=hasattr(services, 'updatePlugin'),
-                      data_keys=list(data.keys()))
-            
-            if hasattr(services, 'updatePlugin'):
-                self.debug("Calling updatePlugin")
-                services.updatePlugin(data=data)
-                self.info("TMDb data updated via updatePlugin")
-            else:
-                self.warn("Services does not have updatePlugin method")
-            
+
+            # Update plugin state via services (Session 17: snake_case API)
+            if hasattr(services, 'update_plugin'):
+                services.update_plugin(data=data)
+                self.debug("TMDb data updated", data_keys=list(data.keys()))
+
             return PluginResult.success_result(data=data, started_at=started_at)
-                
+
         except Exception as e:
             self.error("Execution failed", error=str(e))
             return PluginResult.error_result(str(e), started_at=started_at)
-    
-    def _perform_validation(self, ffprobe_data: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _perform_validation(self, ffprobe_data: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         """
         Perform validation tests (e.g., duration matching)
         
@@ -217,11 +211,11 @@ class TMDbPlugin(OutputPlugin):
         tests = {}
         tests_passed = 0
         tests_total = 0
-        
+
         # Duration validation (for movies and episodes)
         container = ffprobe_data.get('container', {})
         ffprobe_duration = container.get('duration', 0)
-        
+
         if ffprobe_duration > 0:
             # Get runtime from result
             runtime_minutes = None
@@ -229,23 +223,23 @@ class TMDbPlugin(OutputPlugin):
                 runtime_minutes = result['movie'].get('runtime')
             elif result.get('episode'):
                 runtime_minutes = result['episode'].get('runtime')
-            
+
             # Perform validation
             validation_result = self._validate_duration(
                 ffprobe_duration,
                 runtime_minutes,
                 tolerance_seconds=600  # 10 minutes
             )
-            
+
             tests['duration_match'] = validation_result.details
             tests_total += 1
             if validation_result.passed:
                 tests_passed += 1
-        
+
         return {
             'tests_passed': tests_passed,
             'tests_total': tests_total,
             'details': tests
         }
-    
+
     # _error_result() removed - using PluginResult.error_result() instead

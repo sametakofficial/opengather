@@ -1,7 +1,7 @@
 """Filters for variable manipulation"""
-from typing import Any
 import re
 import unicodedata
+from typing import Any
 
 
 def apply_filter(value: Any, filter_name: str) -> Any:
@@ -59,36 +59,36 @@ def apply_filter(value: Any, filter_name: str) -> Any:
     """
     if value is None:
         return ''
-    
+
     filter_lower = filter_name.lower().strip()
-    
+
     # ===== CASE FILTERS =====
     if filter_lower in ['uppercase', 'upper', 'u']:
         return str(value).upper()
-    
+
     elif filter_lower in ['lowercase', 'lower', 'l']:
         return str(value).lower()
-    
+
     elif filter_lower in ['title', 't']:
         return str(value).title()
-    
+
     elif filter_lower in ['capitalize', 'cap']:
         text = str(value)
         return text[0].upper() + text[1:] if text else ''
-    
+
     elif filter_lower == 'swapcase':
         return str(value).swapcase()
-    
+
     # ===== STRING MANIPULATION =====
     elif filter_lower in ['strip', 'trim']:
         return str(value).strip()
-    
+
     elif filter_lower == 'lstrip':
         return str(value).lstrip()
-    
+
     elif filter_lower == 'rstrip':
         return str(value).rstrip()
-    
+
     elif filter_lower == 'normalize':
         text = str(value)
         # Remove accents
@@ -99,7 +99,7 @@ def apply_filter(value: Any, filter_name: str) -> Any:
         # Collapse multiple spaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
-    
+
     elif filter_lower == 'slugify':
         text = str(value).lower()
         # Remove accents
@@ -112,71 +112,71 @@ def apply_filter(value: Any, filter_name: str) -> Any:
         # Remove multiple hyphens
         text = re.sub(r'-+', '-', text)
         return text.strip('-')
-    
+
     elif filter_lower == 'clean':
         text = str(value)
         # Collapse multiple spaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
-    
+
     elif filter_lower == 'reverse':
         return str(value)[::-1]
-    
+
     # ===== EXTRACTION =====
     elif filter_lower == 'year':
         text = str(value)
         match = re.search(r'(\d{4})', text)
         return match.group(1) if match else ''
-    
+
     elif filter_lower == 'first':
         if isinstance(value, (list, tuple)):
             return value[0] if value else ''
         text = str(value)
         return text.split()[0] if text.split() else text[:1]
-    
+
     elif filter_lower == 'last':
         if isinstance(value, (list, tuple)):
             return value[-1] if value else ''
         text = str(value)
         return text.split()[-1] if text.split() else text[-1:]
-    
+
     elif filter_lower in ['length', 'len']:
         if isinstance(value, (list, tuple, dict, str)):
             return len(value)
         return 0
-    
+
     # ===== NUMERIC =====
     elif filter_lower == 'int':
         try:
             return int(float(value))
         except (ValueError, TypeError):
             return 0
-    
+
     elif filter_lower == 'float':
         try:
             return float(value)
         except (ValueError, TypeError):
             return 0.0
-    
+
     elif filter_lower == 'abs':
         try:
             return abs(float(value))
         except (ValueError, TypeError):
             return 0
-    
+
     elif filter_lower == 'round':
         try:
             return round(float(value))
         except (ValueError, TypeError):
             return 0
-    
+
     elif filter_lower.startswith('round') and filter_lower[5:].isdigit():
         try:
             decimals = int(filter_lower[5:])
             return round(float(value), decimals)
         except (ValueError, TypeError):
             return 0
-    
+
     # Zero-padded number formats (02d, 03d, 04d, etc.)
     elif re.match(r'0\dd', filter_lower):
         try:
@@ -184,7 +184,7 @@ def apply_filter(value: Any, filter_name: str) -> Any:
             return str(int(value)).zfill(width)
         except (ValueError, TypeError):
             return str(value)
-    
+
     # ===== BOOLEAN =====
     elif filter_lower == 'bool':
         if isinstance(value, bool):
@@ -192,28 +192,28 @@ def apply_filter(value: Any, filter_name: str) -> Any:
         if isinstance(value, str):
             return value.lower() in ['true', '1', 'yes', 'on']
         return bool(value)
-    
+
     elif filter_lower == 'not':
         return not bool(value)
-    
+
     # ===== ENCODING =====
     elif filter_lower == 'ascii':
         return ascii(str(value))
-    
+
     elif filter_lower == 'base64':
         try:
             import base64
             return base64.b64encode(str(value).encode()).decode()
         except Exception:
             return str(value)
-    
+
     elif filter_lower in ['urlencode', 'quote']:
         try:
             from urllib.parse import quote
             return quote(str(value))
         except Exception:
             return str(value)
-    
+
     # Default: return as-is
     else:
         return value

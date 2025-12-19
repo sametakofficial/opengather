@@ -1,7 +1,7 @@
 """
 Archiverr Exception Hierarchy
 
-Session 11 - Phase 4: Orchestrator exceptions for structured error handling.
+- Phase 4: Orchestrator exceptions for structured error handling.
 
 Exception Levels:
 - CriticalError: Stops entire run (config failure, no plugins, db connection failure)
@@ -10,7 +10,7 @@ Exception Levels:
 - ValidationError: Config or manifest validation failed
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 class ArchiverrError(Exception):
@@ -22,19 +22,19 @@ class ArchiverrError(Exception):
     - Easy filtering in exception handlers
     - Structured error context
     """
-    
-    def __init__(self, message: str, context: Optional[Dict[str, Any]] = None):
+
+    def __init__(self, message: str, context: dict[str, Any] | None = None):
         super().__init__(message)
         self.message = message
         self.context = context or {}
-    
+
     def __str__(self) -> str:
         if self.context:
             ctx = ", ".join(f"{k}={v}" for k, v in self.context.items())
             return f"{self.message} ({ctx})"
         return self.message
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for API responses and logging"""
         return {
             "error": self.__class__.__name__,
@@ -78,12 +78,12 @@ class StageError(ArchiverrError):
     Usage:
         raise StageError("Input stage failed", {"stage": "input", "failed_plugins": 3})
     """
-    
+
     def __init__(
         self,
         message: str,
-        stage: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        stage: str | None = None,
+        context: dict[str, Any] | None = None
     ):
         ctx = context or {}
         if stage:
@@ -112,12 +112,12 @@ class PluginError(ArchiverrError):
             context={"timeout_ms": 5000, "endpoint": "/movie/search"}
         )
     """
-    
+
     def __init__(
         self,
         message: str,
-        plugin_name: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        plugin_name: str | None = None,
+        context: dict[str, Any] | None = None
     ):
         ctx = context or {}
         if plugin_name:
@@ -142,12 +142,12 @@ class ValidationError(ArchiverrError):
             context={"plugin": "tmdb", "field": "api_key"}
         )
     """
-    
+
     def __init__(
         self,
         message: str,
-        errors: Optional[list] = None,
-        context: Optional[Dict[str, Any]] = None
+        errors: list | None = None,
+        context: dict[str, Any] | None = None
     ):
         ctx = context or {}
         if errors:
@@ -196,6 +196,26 @@ class RequiresError(PluginError):
             "Missing required data: renamer.parsed",
             plugin_name="tmdb",
             context={"requires": ["renamer.parsed"], "missing": ["renamer.parsed"]}
+        )
+    """
+    pass
+
+
+class PersistenceError(ArchiverrError):
+    """
+    Database/persistence operation failed.
+    
+    Non-critical - the main workflow continues but data may not be persisted.
+    
+    Examples:
+    - Database write failed
+    - Connection timeout
+    - Document update failed
+    
+    Usage:
+        raise PersistenceError(
+            "Failed to save plugin data",
+            context={"job_id": "abc123", "plugin": "tmdb"}
         )
     """
     pass

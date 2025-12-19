@@ -5,7 +5,8 @@ Type-safe interfaces for plugin dependency injection.
 All plugin services must implement these protocols.
 """
 
-from typing import Protocol, Dict, Any, List, Optional, Callable, TYPE_CHECKING, runtime_checkable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from archiverr.state.models import JobState, RunState
@@ -22,7 +23,7 @@ class StateService(Protocol):
     Note: Plugin data is stored in separate 'plugins' collection,
     accessed via get_plugin_data() method.
     """
-    
+
     def get_current_job(self) -> 'JobState':
         """
         Get currently executing job.
@@ -31,7 +32,7 @@ class StateService(Protocol):
             RuntimeError: If no current job is set
         """
         ...
-    
+
     def get_job(self, job_id: str) -> Optional['JobState']:
         """
         Get job by ID.
@@ -43,7 +44,7 @@ class StateService(Protocol):
             JobState or None if not found
         """
         ...
-    
+
     def get_job_by_index(self, index: int) -> Optional['JobState']:
         """
         Get job by index within current run.
@@ -55,8 +56,8 @@ class StateService(Protocol):
             JobState or None if not found
         """
         ...
-    
-    def get_all_jobs(self) -> List['JobState']:
+
+    def get_all_jobs(self) -> list['JobState']:
         """
         Get all jobs in current run.
         
@@ -64,7 +65,7 @@ class StateService(Protocol):
             List of JobState objects
         """
         ...
-    
+
     def get_run(self) -> 'RunState':
         """
         Get current run state.
@@ -73,8 +74,8 @@ class StateService(Protocol):
             RuntimeError: If no active run
         """
         ...
-    
-    def get_plugin_data(self, job_id: str, plugin_name: str) -> Dict[str, Any]:
+
+    def get_plugin_data(self, job_id: str, plugin_name: str) -> dict[str, Any]:
         """
         Get plugin result data for a job.
         
@@ -88,14 +89,14 @@ class StateService(Protocol):
             Plugin data dict or empty dict if not found
         """
         ...
-    
+
     def save_plugin_data(
         self,
         job_id: str,
         plugin_name: str,
         stage: str,
-        data: Dict[str, Any],
-        status: Dict[str, Any] = None
+        data: dict[str, Any],
+        status: dict[str, Any] = None
     ) -> None:
         """
         Save plugin execution result.
@@ -117,8 +118,8 @@ class EventService(Protocol):
     
     Provides event emission and subscription for plugins.
     """
-    
-    def emit(self, event: str, data: Optional[Dict[str, Any]] = None) -> None:
+
+    def emit(self, event: str, data: dict[str, Any] | None = None) -> None:
         """
         Emit an event.
         
@@ -127,7 +128,7 @@ class EventService(Protocol):
             data: Event payload
         """
         ...
-    
+
     def subscribe(self, event: str, handler: Callable) -> None:
         """
         Subscribe to an event.
@@ -146,19 +147,19 @@ class LoggerService(Protocol):
     
     Provides consistent logging with plugin context.
     """
-    
+
     def debug(self, message: str, **kwargs) -> None:
         """Log debug message with optional context"""
         ...
-    
+
     def info(self, message: str, **kwargs) -> None:
         """Log info message with optional context"""
         ...
-    
+
     def warn(self, message: str, **kwargs) -> None:
         """Log warning message with optional context"""
         ...
-    
+
     def error(self, message: str, **kwargs) -> None:
         """Log error message with optional context"""
         ...
@@ -171,7 +172,7 @@ class ConfigService(Protocol):
     
     Provides read-only access to configuration.
     """
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get config value by key (supports dot notation).
@@ -184,8 +185,8 @@ class ConfigService(Protocol):
             Config value or default
         """
         ...
-    
-    def get_plugin(self, plugin_name: str) -> Dict[str, Any]:
+
+    def get_plugin(self, plugin_name: str) -> dict[str, Any]:
         """
         Get plugin configuration.
         
@@ -196,7 +197,7 @@ class ConfigService(Protocol):
             Plugin config dict or empty dict
         """
         ...
-    
+
     def get_option(self, option: str, default: Any = None) -> Any:
         """
         Get from options section.
@@ -220,8 +221,8 @@ class TemplateService(Protocol):
     
     Provides Jinja2 template rendering with context.
     """
-    
-    def render(self, template: str, context: Dict[str, Any] = None) -> str:
+
+    def render(self, template: str, context: dict[str, Any] = None) -> str:
         """
         Render a template string.
         
@@ -233,8 +234,8 @@ class TemplateService(Protocol):
             Rendered string
         """
         ...
-    
-    def build_context(self, job_id: str) -> Dict[str, Any]:
+
+    def build_context(self, job_id: str) -> dict[str, Any]:
         """
         Build template context for a job.
         
@@ -273,7 +274,7 @@ class ProvidesService(Protocol):
             
             return PluginResult.success(response)
     """
-    
+
     def complete(self, provide: str) -> None:
         """
         Mark a provide as completed early.
@@ -282,7 +283,7 @@ class ProvidesService(Protocol):
             provide: Provide value (e.g., "http.request", "fs.write")
         """
         ...
-    
+
     def is_completed(self, provide: str) -> bool:
         """
         Check if a provide is completed (by any plugin).
@@ -294,8 +295,8 @@ class ProvidesService(Protocol):
             True if provide is completed
         """
         ...
-    
-    def get_status(self, provide: str) -> Dict[str, str]:
+
+    def get_status(self, provide: str) -> dict[str, str]:
         """
         Get status of a provide from all plugins.
         
