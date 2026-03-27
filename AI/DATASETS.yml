@@ -1,0 +1,638 @@
+run:
+  id: run_abc12345
+  status:
+    state: success
+    success: true
+    total_jobs: 3
+    completed: 3
+    failed: 0
+    plugins: {}
+    started_at: 2024-12-19T10:00:00Z
+    finished_at: 2024-12-19T10:01:00Z
+    duration_ms: 60000
+  config:
+    options:
+      log_level: INFO
+      debug: false
+      dry_run: true
+      hardlink: false
+    aliases:
+      movie: renamer.parsed.movie
+      show: renamer.parsed.show
+  plugins: {}
+
+job:
+  id: job_run_abc12345_0
+  index: 0
+  run_id: run_abc12345
+  input:
+    value: /data/movies/Movie.Name.2024.1080p.BluRay.x264.mkv
+    data:
+      filename: Movie.Name.2024.1080p.BluRay.x264.mkv
+      extension: mkv
+      size_bytes: 5368709120
+      modified_at: 2024-12-19T09:00:00Z
+      source: filesystem
+  output:
+    values:
+      - /srv/archive/Movie (2024)/Movie.mkv
+    data: {}
+  status:
+    state: success
+    success: true
+    plugins:
+      scanner:
+        state: completed
+        success: true
+        duration_ms: 50
+      renamer:
+        state: completed
+        success: true
+        duration_ms: 120
+      tmdb:
+        state: completed
+        success: true
+        duration_ms: 850
+      tasker:
+        state: completed
+        success: true
+        duration_ms: 200
+    started_at: 2024-12-19T10:00:01Z
+    finished_at: 2024-12-19T10:00:02Z
+    duration_ms: 1220
+  plugins:
+    scanner:
+      path: /data/movies/Movie.Name.2024.1080p.BluRay.x264.mkv
+      virtual: false
+      size: 5368709120
+      extension: mkv
+    renamer:
+      parsed:
+        movie:
+          name: Movie Name
+          year: 2024
+          resolution: 1080p
+          source: BluRay
+          codec: x264
+        show: null
+      category: movie
+      confidence: 0.95
+    tmdb:
+      movie:
+        media_type: movie
+        identifiers:
+          tmdb_id: "12345"
+          imdb_id: tt1234567
+        title:
+          primary: Movie Name
+          original: Movie Name
+          localized: Film Adı
+        release:
+          date: "2024-06-15"
+          year: 2024
+          status: Released
+        runtime: 120
+        ratings:
+          tmdb:
+            score: 7.8
+            votes: 5432
+        overview: A compelling story about...
+        genres:
+          - Action
+          - Drama
+        financial:
+          budget: 150000000
+          revenue: 450000000
+        images:
+          poster: /abc123.jpg
+          backdrop: /def456.jpg
+        people:
+          cast:
+            - name: Actor Name
+              character: Character Name
+              profile_path: /actor.jpg
+              order: 0
+          crew:
+            - name: Director Name
+              job: Director
+              department: Directing
+        videos:
+          - name: Official Trailer
+            key: abc123xyz
+            site: YouTube
+            type: Trailer
+        keywords:
+          - action
+          - drama
+      show: null
+      episode: null
+    tasker:
+      tasks_executed: 3
+      tasks_skipped: 0
+      output_files:
+        - /output/run_abc12345_state.json
+
+jobs:
+  - id: job_run_abc12345_0
+    index: 0
+    run_id: run_abc12345
+    input:
+      value: /data/movies/Movie.Name.2024.1080p.mkv
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    output:
+      values:
+        - /srv/archive/Movie (2024)/Movie.mkv
+      data: {}
+    status:
+      state: success
+      success: true
+      plugins:
+        scanner: {state: completed, success: true}
+        renamer: {state: completed, success: true}
+        tmdb: {state: completed, success: true}
+        tasker: {state: completed, success: true}
+    plugins:
+      renamer:
+        parsed:
+          movie: {name: Movie Name, year: 2024}
+        category: movie
+      tmdb:
+        movie: {title: {primary: Movie Name}, release: {year: 2024}}
+  - id: job_run_abc12345_1
+    index: 1
+    run_id: run_abc12345
+    input:
+      value: /data/shows/Show.Name.S01E01.720p.mkv
+      data:
+        filename: Show.Name.S01E01.720p.mkv
+        extension: mkv
+        size_bytes: 1073741824
+    output:
+      values: []
+      data: {}
+    status:
+      state: success
+      success: true
+      plugins:
+        scanner: {state: completed, success: true}
+        renamer: {state: completed, success: true}
+        tmdb: {state: completed, success: true}
+        tasker: {state: completed, success: true}
+    plugins:
+      renamer:
+        parsed:
+          show: {name: Show Name, season: 1, episode: 1}
+        category: show
+      tmdb:
+        show: {title: {primary: Show Name}, air_dates: {year: 2024}}
+        episode: {season_number: 1, episode_number: 1, title: {primary: Pilot}}
+
+plugin:
+  job_id: job_run_abc12345_0
+  run_id: run_abc12345
+  scanner:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-12-19T10:00:01Z
+      finished_at: 2024-12-19T10:00:01Z
+      duration_ms: 50
+      error: null
+    data:
+      filename: Movie.Name.2024.1080p.mkv
+      extension: mkv
+      size_bytes: 5368709120
+      modified_at: 2024-12-19T09:00:00Z
+  renamer:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-12-19T10:00:01Z
+      finished_at: 2024-12-19T10:00:01Z
+      duration_ms: 120
+      error: null
+    data:
+      parsed:
+        movie:
+          name: Movie Name
+          year: 2024
+          quality: 1080p
+          source: BluRay
+          codec: x264
+        show: null
+      category: movie
+  tmdb:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-12-19T10:00:01Z
+      finished_at: 2024-12-19T10:00:02Z
+      duration_ms: 850
+      error: null
+    data:
+      movie:
+        media_type: movie
+        identifiers:
+          tmdb_id: "12345"
+          imdb_id: tt1234567
+        title:
+          primary: Movie Name
+          original: Movie Name
+          localized: Film Adı
+        release:
+          date: "2024-06-15"
+          year: 2024
+        runtime: 120
+        ratings:
+          tmdb:
+            score: 7.8
+            votes: 5432
+        overview: A compelling story...
+        genres: [Action, Drama]
+  ffprobe:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-12-19T10:00:02Z
+      finished_at: 2024-12-19T10:00:02Z
+      duration_ms: 300
+      error: null
+    data:
+      format:
+        filename: Movie.Name.2024.1080p.mkv
+        format_name: matroska,webm
+        format_long_name: Matroska / WebM
+        duration: "7200.000"
+        size: "5368709120"
+        bit_rate: "5000000"
+      streams:
+        - index: 0
+          codec_type: video
+          codec_name: h264
+          width: 1920
+          height: 1080
+        - index: 1
+          codec_type: audio
+          codec_name: aac
+          channels: 6
+          language: eng
+  tasker:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-12-19T10:00:02Z
+      finished_at: 2024-12-19T10:00:02Z
+      duration_ms: 200
+      error: null
+    data:
+      tasks:
+        print_header:
+          type: print
+          success: true
+          rendered: "========== JOB 0 =========="
+        print_result:
+          type: print
+          success: true
+          rendered: "MOVIE: Movie Name (2024)"
+
+plugins:
+  - job_id: job_run_abc12345_0
+    job_index: 0
+    run_id: run_abc12345
+    scanner:
+      status: {state: completed, success: true, duration_ms: 50}
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    renamer:
+      status: {state: completed, success: true, duration_ms: 120}
+      data:
+        parsed:
+          movie: {name: Movie Name, year: 2024, quality: 1080p}
+        category: movie
+    tmdb:
+      status: {state: completed, success: true, duration_ms: 850}
+      data:
+        movie: {identifiers: {tmdb_id: "12345"}, title: {primary: Movie Name}, release: {year: 2024}}
+    ffprobe:
+      status: {state: completed, success: true, duration_ms: 300}
+      data:
+        format: {duration: "7200.000", size: "5368709120"}
+        streams: [{codec_type: video, width: 1920, height: 1080}]
+    tasker:
+      status: {state: completed, success: true, duration_ms: 200}
+      data:
+        tasks_executed: 3
+  - job_id: job_run_abc12345_1
+    job_index: 1
+    run_id: run_abc12345
+    scanner:
+      status: {state: completed, success: true, duration_ms: 45}
+      data:
+        filename: Show.Name.S01E01.720p.mkv
+    renamer:
+      status: {state: completed, success: true, duration_ms: 100}
+      data:
+        parsed:
+          show: {name: Show Name, season: 1, episode: 1}
+        category: show
+    tmdb:
+      status: {state: completed, success: true, duration_ms: 920}
+      data:
+        show: {identifiers: {tmdb_id: "67890"}, title: {primary: Show Name}}
+        episode: {season_number: 1, episode_number: 1, title: {primary: Pilot}}
+
+job_stages:
+  - parse
+  - data
+  - output
+
+execution_modes:
+  per_run:
+    stage: null
+    access:
+      - run
+      - config
+    cannot_access:
+      - job
+      - jobs
+      - plugin
+      - plugins
+    methods:
+      - createJob(input_value, input_data)
+  per_job:
+    stage: parse | data | output
+    access:
+      - run
+      - config
+      - job
+      - jobs
+      - plugin
+      - plugins
+    methods:
+      - createJob(input_value, input_data)
+      - updateJob(job_id, key, value)
+      - updatePlugin(plugin_name, data)
+
+trigger_rules:
+  - all_success
+  - one_success
+  - all_done
+  - all_fail
+  - none_fail
+
+global_state_structure:
+  run:
+    scope: entire run
+    access: read-only
+    example: run.total_jobs, run.status.state
+  config:
+    scope: frozen at startup
+    access: read-only
+    example: config.options.debug, config.tmdb.api_key
+  job:
+    scope: current job
+    access: read-write for per_job
+    example: job.input.value, job.output.values
+  jobs:
+    scope: all jobs
+    access: read-only
+    example: jobs[0].input.value
+  plugin:
+    scope: current job plugins
+    access: read-write for per_job
+    example: plugin.tmdb.movie.title
+  plugins:
+    scope: all jobs plugins
+    access: read-only
+    example: plugins[0].tmdb.movie
+
+manifest:
+  name: string
+  version: string
+  description: string
+  run_mode: per_run | per_job
+  stage: input | parse | data | output
+  requires:
+    - plugin.renamer.data.parsed:success
+  fs_lock:
+    - /downloads/movies
+  trigger_rule: all_success
+  class_name: string
+  entry_point: client.py
+  config_schema:
+    api_key:
+      type: string
+      required: true
+      secret: true
+    language:
+      type: string
+      default: en-US
+
+config_example:
+  options:
+    log_level: INFO
+    debug: false
+    dry_run: true
+    hardlink: false
+  aliases:
+    movie: plugin.renamer.data.parsed.movie
+    show: plugin.renamer.data.parsed.show
+  scanner:
+    enabled: true
+    targets:
+      - /downloads/movies
+      - /downloads/shows
+    recursive: true
+    extensions: [mkv, mp4, avi]
+    min_size_mb: 100
+  renamer:
+    enabled: true
+    media_type: auto
+  tmdb:
+    enabled: true
+    api_key: ${TMDB_API_KEY}
+    language: tr-TR
+    region: TR
+    extras:
+      movie_credits: true
+      movie_images: true
+      tv_credits: true
+  tasker:
+    enabled: true
+    dry_run: true
+    save_output: true
+    output_dir: output
+    tasks:
+      - name: print_header
+        type: print
+        template: "========== JOB {{ index }} =========="
+      - name: save_movie
+        type: save
+        condition: "{% if plugin.renamer.data.category == 'movie' %}true{% endif %}"
+        template: "{{ plugin.tmdb.data.movie | tojson }}"
+        destination: "{{ config.options.output_dir }}/{{ run.id }}_{{ job.index }}.json"
+
+template_context:
+  run: run state object
+  job: current job state
+  jobs: all jobs
+  plugin: current job plugins
+  plugins: all jobs plugins
+  config: frozen config
+  options: config.options
+  index: current job index
+
+mongodb_runs:
+  _id: ObjectId
+  id: run_abc12345
+  status:
+    state: success
+    success: true
+    total_jobs: 3
+    completed: 3
+    failed: 0
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 60000
+  config:
+    options:
+      debug: false
+      dry_run: true
+    aliases: {}
+  created_at: ISODate
+  updated_at: ISODate
+
+mongodb_jobs:
+  _id: ObjectId
+  run_id: run_abc12345
+  index: 0
+  id: job_run_abc12345_0
+  input:
+    value: /data/movies/Movie.Name.2024.1080p.mkv
+    data:
+      filename: Movie.Name.2024.1080p.mkv
+      extension: mkv
+      size_bytes: 5368709120
+  output:
+    values:
+      - /srv/archive/Movie (2024)/Movie.mkv
+    data: {}
+  status:
+    state: success
+    success: true
+    plugins:
+      scanner: {state: completed, success: true, duration_ms: 50}
+      renamer: {state: completed, success: true, duration_ms: 120}
+      tmdb: {state: completed, success: true, duration_ms: 850}
+      tasker: {state: completed, success: true, duration_ms: 200}
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 1220
+  plugins:
+    renamer:
+      parsed: {movie: {name: Movie Name, year: 2024}}
+      category: movie
+    tmdb:
+      movie: {title: {primary: Movie Name}, release: {year: 2024}}
+  created_at: ISODate
+  updated_at: ISODate
+
+mongodb_plugins:
+  _id: ObjectId
+  run_id: run_abc12345
+  job_id: job_run_abc12345_0
+  job_index: 0
+  plugin_name: tmdb
+  stage: data
+  status:
+    success: true
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 850
+    error: null
+  data:
+    movie:
+      identifiers:
+        tmdb_id: "12345"
+        imdb_id: tt1234567
+      title:
+        primary: Movie Name
+        original: Movie Name
+      release:
+        date: "2024-06-15"
+        year: 2024
+      ratings:
+        tmdb:
+          score: 7.8
+          votes: 5432
+      genres: [Action, Drama]
+      runtime: 120
+  created_at: ISODate
+
+events:
+  run:
+    - run.started
+    - run.completed
+    - run.failed
+    - run.error
+  stage:
+    - stage.started
+    - stage.completed
+    - stage.failed
+  job:
+    - job.created
+    - job.started
+    - job.completed
+    - job.failed
+    - job.updated
+    - job.stage_completed
+  plugin:
+    - plugin.started
+    - plugin.completed
+    - plugin.failed
+    - plugin.skipped
+    - plugin.progress
+    - plugin.updated
+  task:
+    - task.started
+    - task.completed
+    - task.failed
+  state:
+    - state.changed
+  db:
+    - db.connected
+    - db.disconnected
+    - db.synced
+    - db.error
+
+state_enum:
+  - pending
+  - running
+  - success
+  - failed
+  - partial
+  - cancelled
+
+plugin_status_enum:
+  - pending
+  - running
+  - completed
+  - failed
+  - skipped
+
+media_categories:
+  - movie
+  - show
+  - episode
+  - season
+
+id_formats:
+  run: run_{uuid8}
+  job: job_{run_id}_{index}
+  example_run: run_abc12345
+  example_job: job_run_abc12345_0

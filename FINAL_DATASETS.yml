@@ -1,0 +1,699 @@
+run:
+  id: run_abc123
+  status:
+    state: completed
+    success: true
+    total_jobs: 10
+    completed: 10
+    failed: 0
+    started_at: 2024-01-15T12:00:00Z
+    finished_at: 2024-01-15T12:01:00Z
+    duration_ms: 60000
+  config:
+    options:
+      debug: true
+      dry_run: false
+    aliases: {}
+
+job:
+  index: 0
+  id: job_run_abc123_0
+  run_id: run_abc123
+  input:
+    value: /data/movies/Movie.Name.2024.1080p.mkv
+    data:
+      filename: Movie.Name.2024.1080p.mkv
+      extension: mkv
+      size_bytes: 5368709120
+      modified_at: 2024-01-15T10:00:00Z
+      source: filesystem
+  output:
+    values:
+      - /srv/archive/Movie (2024)/Movie.mkv
+      - /srv/archive/Movie (2024)/Movie.nfo
+    data:
+      tasks:
+        save_movie:
+          type: save
+          template: "{{config.archive_path}}/{{m.title}} ({{m.release_date[:4]}})/{{m.title}}.mkv"
+          output: /srv/archive/Movie (2024)/Movie.mkv
+        log_result:
+          type: print
+          template: "{{m.title}} | {{m.release_date[:4]}} | {{job.status.success}}"
+          output: "Movie | 2024 | true"
+  status:
+    state: completed
+    success: true
+    executed:
+      - scanner
+      - renamer
+      - tmdb
+      - ffprobe
+      - tasker
+    failed: []
+    skipped:
+      - tvdb
+    started_at: 2024-01-15T12:00:01Z
+    finished_at: 2024-01-15T12:00:05Z
+    duration_ms: 4000
+
+jobs:
+  - index: 0
+    id: job_run_abc123_0
+    run_id: run_abc123
+    input:
+      value: /data/movies/Movie.Name.2024.1080p.mkv
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    output:
+      values:
+        - /srv/archive/Movie (2024)/Movie.mkv
+      data:
+        tasks:
+          save_movie:
+            type: save
+            output: /srv/archive/Movie (2024)/Movie.mkv
+    status:
+      state: completed
+      success: true
+      executed: [scanner, renamer, tmdb, ffprobe, tasker]
+      failed: []
+      skipped: [tvdb]
+  - index: 1
+    id: job_run_abc123_1
+    run_id: run_abc123
+    input:
+      value: /data/movies/Another.Movie.2023.mkv
+      data:
+        filename: Another.Movie.2023.mkv
+        extension: mkv
+        size_bytes: 4294967296
+    output:
+      values: []
+      data: {}
+    status:
+      state: running
+      success: false
+      executed: [scanner, renamer]
+      failed: []
+      skipped: []
+  - index: 2
+    id: job_run_abc123_2
+    run_id: run_abc123
+    input:
+      value: /data/movies/Third.Movie.2025.mkv
+      data:
+        filename: Third.Movie.2025.mkv
+        extension: mkv
+        size_bytes: 6442450944
+    output:
+      values: []
+      data: {}
+    status:
+      state: pending
+      success: false
+      executed: []
+      failed: []
+      skipped: []
+
+plugin:
+  job_id: job_run_abc123_0
+  run_id: run_abc123
+  scanner:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-01-15T12:00:01Z
+      finished_at: 2024-01-15T12:00:01Z
+      duration_ms: 100
+      error: null
+    data:
+      filename: Movie.Name.2024.1080p.mkv
+      extension: mkv
+      size_bytes: 5368709120
+      modified_at: 2024-01-15T10:00:00Z
+  renamer:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-01-15T12:00:01Z
+      finished_at: 2024-01-15T12:00:02Z
+      duration_ms: 200
+      error: null
+    data:
+      parsed:
+        movie:
+          name: Movie Name
+          year: 2024
+          quality: 1080p
+          source: BluRay
+          codec: x265
+        show: null
+  tmdb:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-01-15T12:00:02Z
+      finished_at: 2024-01-15T12:00:03Z
+      duration_ms: 800
+      error: null
+    data:
+      movie:
+        id: 12345
+        title: Movie
+        original_title: Movie
+        release_date: 2024-01-15
+        overview: A compelling story about...
+        poster_path: /abc123.jpg
+        vote_average: 7.5
+        genres: [Action, Drama]
+        runtime: 120
+        imdb_id: tt1234567
+  ffprobe:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-01-15T12:00:03Z
+      finished_at: 2024-01-15T12:00:04Z
+      duration_ms: 500
+      error: null
+    data:
+      video:
+        codec: hevc
+        width: 1920
+        height: 1080
+        fps: 23.976
+        hdr: true
+      audio:
+        - codec: aac
+          channels: 6
+          language: eng
+          default: true
+  tasker:
+    status:
+      state: completed
+      success: true
+      started_at: 2024-01-15T12:00:04Z
+      finished_at: 2024-01-15T12:00:05Z
+      duration_ms: 800
+      error: null
+    data:
+      tasks:
+        save_movie:
+          type: save
+          success: true
+          destination: /srv/archive/Movie (2024)/Movie.mkv
+        log_result:
+          type: print
+          success: true
+          rendered: "Movie | 2024 | true"
+
+plugins:
+  - job_id: job_run_abc123_0
+    job_index: 0
+    run_id: run_abc123
+    scanner:
+      status: {state: completed, success: true, duration_ms: 100}
+      data:
+        filename: Movie.Name.2024.1080p.mkv
+        extension: mkv
+        size_bytes: 5368709120
+    renamer:
+      status: {state: completed, success: true, duration_ms: 200}
+      data:
+        parsed:
+          movie: {name: Movie Name, year: 2024, quality: 1080p}
+    tmdb:
+      status: {state: completed, success: true, duration_ms: 800}
+      data:
+        movie: {id: 12345, title: Movie, release_date: 2024-01-15}
+    ffprobe:
+      status: {state: completed, success: true, duration_ms: 500}
+      data:
+        video: {codec: hevc, width: 1920, height: 1080}
+    tasker:
+      status: {state: completed, success: true, duration_ms: 800}
+      data:
+        tasks:
+          save_movie: {type: save, success: true}
+  - job_id: job_run_abc123_1
+    job_index: 1
+    run_id: run_abc123
+    scanner:
+      status: {state: completed, success: true, duration_ms: 95}
+      data:
+        filename: Another.Movie.2023.mkv
+    renamer:
+      status: {state: completed, success: true, duration_ms: 180}
+      data:
+        parsed:
+          movie: {name: Another Movie, year: 2023}
+  - job_id: job_run_abc123_2
+    job_index: 2
+    run_id: run_abc123
+    scanner:
+      status: {state: pending, success: false, duration_ms: 0}
+      data: {}
+
+# Session 12: Job stages (input stage removed, 3 stages remain)
+job_stages:
+  - parse   # Filename parsing, basic analysis - per_job plugins
+  - data    # External data fetching (metadata, media info) - per_job plugins
+  - output  # File operations, task execution - per_job plugins
+
+# Session 12: Execution modes (plugin run_mode)
+execution_modes:
+  per_run:
+    description: Run once per entire run, creates jobs
+    stage: null
+    access:
+      - run (read-only)
+      - config (read-only)
+    cannot_access:
+      - job (no current job context)
+      - jobs (no jobs created yet)
+      - plugin (no plugin context)
+      - plugins (no plugin data yet)
+    methods:
+      - createJob(input_value, input_data) -> job_id
+    examples: [scanner, config_loader]
+  
+  per_job:
+    description: Run once per each job in stages
+    stage: parse | data | output
+    access:
+      - run (read-only)
+      - config (read-only)
+      - job (read-write current job)
+      - jobs (read-only all jobs)
+      - plugin (read-write current job plugins)
+      - plugins (read-only all jobs plugins)
+    methods:
+      - createJob(input_value, input_data) -> job_id
+      - updateJob(job_id, key, value)
+      - updatePlugin(plugin_name, data)
+    examples: [renamer, tmdb, tasker]
+
+
+
+trigger_rules:
+  - all_success
+  - one_success
+  - all_done
+  - all_fail
+  - none_fail
+
+global_state_structure:
+  description: Six global state objects available in templates and trigger rules
+  states:
+    run:
+      scope: entire run
+      access: read-only for all plugins
+      content: run metadata, status, timing
+      example: run.total_jobs, run.status.state
+    
+    config:
+      scope: frozen at startup
+      access: read-only for all plugins
+      content: merged config + manifest options
+      example: config.options.debug, config.tmdb.api_key
+    
+    job:
+      scope: current job being processed
+      access: read-write for per_job plugins only
+      access_denied: per_run plugins (no job context)
+      content: input, output, status
+      example: job.input.value, job.output.values
+    
+    jobs:
+      scope: all jobs in this run
+      access: read-only for per_job plugins
+      access_denied: per_run plugins (jobs not created yet)
+      content: array of all job states
+      example: jobs[0].input.value, jobs[1].status.state
+    
+    plugin:
+      scope: current job's all plugin data
+      access: read-write for per_job plugins
+      access_denied: per_run plugins (no plugin data yet)
+      content: plugin_name -> plugin_data mapping
+      example: plugin.tmdb.movie.title, plugin.renamer.parsed
+    
+    plugins:
+      scope: all jobs' all plugin data
+      access: read-only for per_job plugins
+      access_denied: per_run plugins (no plugin data yet)
+      content: array of {job_id, plugin_data} mappings
+      example: plugins[0].tmdb.movie, plugins[1].renamer.parsed
+
+# Session 12: Updated manifest examples
+manifest_tmdb:
+  name: tmdb
+  version: 1.0.0
+  description: TMDb metadata provider
+  run_mode: per_job
+  stage: data
+  requires:
+    - plugin.renamer.data.parsed:success    # Plugin success check
+  fs_lock: []                                # ❌ Variables yasak, sadece static path
+  trigger_rule: all_success
+  class_name: TMDbPlugin
+  entry_point: client.py
+  config_schema:
+    api_key:
+      type: string
+      required: true
+    language:
+      type: string
+      default: en-US
+    region:
+      type: string
+      default: US
+
+manifest_scanner:
+  name: scanner
+  version: 1.0.0
+  description: File discovery plugin
+  run_mode: per_run
+  requires: []
+  fs_lock:
+    - /downloads/movies
+    - /downloads/shows
+  trigger_rule: all_success
+  class_name: ScannerPlugin
+
+manifest_renamer:
+  name: renamer
+  version: 1.0.0
+  description: Filename parser
+  run_mode: per_job
+  stage: parse
+  requires: []
+  fs_lock: []
+  trigger_rule: all_success
+  class_name: RenamerPlugin
+
+manifest_tasker:
+  name: tasker
+  version: 1.0.0
+  description: Output task executor
+  run_mode: per_job
+  stage: output
+  requires:
+    - plugin.tmdb.data:success              # Plugin data exists check
+    - plugin.renamer.data:success           # Plugin data exists check
+  fs_lock:
+    - /srv/archive                          # ✅ Static path only, no variables
+  trigger_rule: all_success
+  class_name: TaskerPlugin
+
+
+
+config_example:
+  options:
+    debug: true
+    dry_run: false
+    force_conflicts: false
+
+  aliases:
+    m: plugin.tmdb.data.movie
+    s: plugin.tmdb.data.show
+    p: plugin.renamer.data.parsed
+    movie: plugin.renamer.data.parsed.movie
+    show: plugin.renamer.data.parsed.show
+    video: plugin.ffprobe.data.video
+    audio: plugin.ffprobe.data.audio
+
+  scanner:
+    targets:
+      - /downloads/movies
+      - /downloads/shows
+    recursive: true
+    extensions:
+      - mkv
+      - mp4
+      - avi
+    min_size_mb: 100
+
+  renamer:
+    media_type: auto
+
+  tmdb:
+    api_key: ${TMDB_API_KEY}
+    language: tr-TR
+    region: TR
+    include_adult: false
+
+  tvdb: false
+
+  ffprobe:
+    timeout: 30
+    cache_enabled: true
+
+  tasker:
+    fs_lock:
+      - /srv/media
+    tasks:
+      - name: save_movie
+        path: "{% if p.movie %}{{config.archive_path}}/{{m.title}} ({{m.release_date[:4]}})/{{m.title}}.mkv{% endif %}"
+      - name: save_show
+        path: "{% if p.show %}{{config.archive_path}}/{{s.name}}/Season {{p.show.season}}/{{s.name}} S{{p.show.season|pad(2)}}E{{p.show.episode|pad(2)}}.mkv{% endif %}"
+      - name: log_result
+        type: print
+        template: "{{job.input.value}} -> {{job.output.values[0]}}"
+
+config_include:
+  scanner:
+    targets:
+      - /downloads
+
+  tasker:
+    tasks: "!include ./tasks/"
+
+# Session 12: Value-based trigger rule examples
+trigger_rule_examples:
+  plugin_success_check:
+    description: "Check if plugin data exists (success/fail only for plugins)"
+    requires:
+      - plugin.tmdb.data.movie:success        # ✅ Plugin için OK
+      - plugin.renamer.data.parsed:success    # ✅ Plugin için OK
+    trigger_rule: all_success
+  
+  primitive_value_check:
+    description: "Exact value match for non-plugin states"
+    requires:
+      - run.total_jobs:10                     # ✅ int exact match
+      - config.options.debug:true             # ✅ boolean exact match
+      - job.input.value:"/path/to/file"      # ✅ string exact match
+    trigger_rule: all_success
+  
+  mixed:
+    description: "Mix plugin success/fail with primitive checks"
+    requires:
+      - plugin.renamer.data.parsed:success    # ✅ Plugin success check
+      - run.total_jobs:10                     # ✅ Primitive value
+      - config.options.debug:true             # ✅ Primitive value
+    trigger_rule: all_success
+  
+  invalid_examples:
+    description: "YASAK: Non-plugin paths için success/fail kullanılamaz"
+    # ❌ run.status:success        → VALIDATION ERROR
+    # ❌ job.output:success        → VALIDATION ERROR
+    # ❌ config.tmdb:success       → VALIDATION ERROR
+  
+
+
+# Session 12: Updated manifest fields
+immutable_fields:
+  - name
+  - version
+  - run_mode         # Changed from 'stage'
+  - stage            # New field
+  - class_name
+  - entry_point
+
+mutable_fields:
+  - requires
+  - fs_lock          # Changed from 'provides'
+  - trigger_rule
+  - config_schema
+
+validation_stages:
+  startup:
+    - config_syntax
+    - schema_validation
+    - plugin_discovery
+    - conflict_detection
+    - dynamic_variable_check
+  pre_execution:
+    - requires_satisfaction
+    - plugin_initialization
+
+error_codes:
+  E001: config file not found
+  E002: yaml parse error
+  E003: required field missing
+  E010: invalid manifest
+  E011: plugin class not found
+  E012: plugin import failed
+  E020: conflict detected
+  W001: unknown field
+  W002: parent-child path overlap
+
+
+template_context:
+  run: run state object
+  job: current job state object
+  jobs: all jobs in current run
+  plugins: all jobs plugins data
+  plugin: current jobs plugin data
+  config: frozen config
+  options: config.options
+
+mongodb_runs:
+  _id: ObjectId
+  id: run_abc123
+  status:
+    state: completed
+    success: true
+    total_jobs: 10
+    completed: 10
+    failed: 0
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 60000
+  config:
+    options:
+      debug: true
+      dry_run: false
+    aliases: {}
+  created_at: ISODate
+  updated_at: ISODate
+
+mongodb_jobs:
+  _id: ObjectId
+  run_id: run_abc123
+  index: 0
+  id: job_run_abc123_0
+  input:
+    value: /data/movies/Movie.Name.2024.1080p.mkv
+    data:
+      filename: Movie.Name.2024.1080p.mkv
+      extension: mkv
+      size_bytes: 5368709120
+      modified_at: ISODate
+      source: filesystem
+  output:
+    values:
+      - /srv/archive/Movie (2024)/Movie.mkv
+      - /srv/archive/Movie (2024)/Movie.nfo
+    data:
+      tasks:
+        save_movie:
+          type: save
+          output: /srv/archive/Movie (2024)/Movie.mkv
+        log_result:
+          type: print
+          output: "Movie | 2024 | true"
+  status:
+    state: completed
+    success: true
+    executed:
+      - scanner
+      - renamer
+      - tmdb
+      - ffprobe
+      - tasker
+    failed: []
+    skipped:
+      - tvdb
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 4000
+  created_at: ISODate
+  updated_at: ISODate
+
+mongodb_plugins:
+  _id: ObjectId
+  run_id: run_abc123
+  job_id: job_run_abc123_0
+  job_index: 0
+  plugin_name: tmdb
+  stage: data
+  status:
+    success: true
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: 800
+    error: null
+  data:
+    movie:
+      id: 12345
+      title: Movie
+      original_title: Movie
+      release_date: 2024-01-15
+      overview: A compelling story about...
+      poster_path: /abc123.jpg
+      backdrop_path: /def456.jpg
+      vote_average: 7.5
+      vote_count: 1234
+      genres:
+        - Action
+        - Drama
+      runtime: 120
+      imdb_id: tt1234567
+  created_at: ISODate
+
+events: !# anlattığım gii promptda artık config zerinden events erişimi olmayacak , isteyen plugin event bus ile iletişim kurar o kısmı planlarsın
+  run:
+    - run.started
+    - run.completed
+    - run.failed
+  job:
+    - job.created
+    - job.started
+    - job.completed
+    - job.failed
+  stage:
+    - stage.started
+    - stage.completed
+    - stage.failed
+  plugin:
+    - plugin.started
+    - plugin.completed
+    - plugin.failed
+  file:
+    - file.created
+    - file.deleted
+    - file.moved
+    - file.copied
+
+# Session 12: Updated execution modes
+execution_modes:
+  per_run:
+    description: tum run icin bir kez calisir (job creation)
+    method: execute_run(self, services)
+    stage: null
+    examples:
+      - scanner
+      - config_loader
+    use_cases:
+      - Job creation
+      - Global configuration
+      - Run-level initialization
+  
+  per_job:
+    description: her job icin bir kez calisir (job processing)
+    method: execute(self, job, services)
+    stage: parse | data | output
+    examples:
+      - renamer (parse stage)
+      - tmdb (data stage)
+      - tasker (output stage)
+    use_cases:
+      - Filename parsing
+      - Metadata fetching
+      - File operations
+
