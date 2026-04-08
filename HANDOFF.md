@@ -1,54 +1,59 @@
-# Handoff - Session 29 Complete
+# Handoff - Session 30 Complete
 
 **Date:** April 8, 2026
 **Branch:** `dev/communication-refactoring`
-**Uncommitted changes:** Yes (all session 29 work)
+**Uncommitted changes:** No (all committed)
 
 ## TL;DR
 
-Session 29 fixed the #1 architecture violation: hardcoded plugin names in core. All plugins now have `manifest.yml` with explicit metadata. UUID collision risk fixed. PARTIAL state added. Environment rebuilt. 340 tests passing.
+Session 30: Deep architecture audit, decomposed the 200 LOC monolith in stage_executor.py into 5 SRP methods, wrote 69 core tests (orchestrator + stage_executor), set up session-end workflow automation. Total test count: 461 (was 340).
 
 ## State of the Code
 
-- Venv: Working (Python 3.14.2, all deps installed)
-- Tests: 340 passed, 4 failed (MongoDB not running), 17 skipped
-- Lint: 928 pre-existing whitespace warnings (cosmetic)
-- Architecture: Plugin-agnostic core ENFORCED with guard test
+- Venv: Working (Python 3.14.2)
+- Tests: 461 passed, 14 failed (MongoDB/API -- expected), 47 skipped
+- Lint: 40 pre-existing whitespace warnings (cosmetic, stage_executor only)
+- Architecture: Plugin-agnostic core ENFORCED, stage_executor decomposed
 
-## What Was Changed (Uncommitted)
+## What Was Changed
 
-See `memory-bank/sessions/SESSION_29_EXECUTION.md` for full details.
+### Source Code
+- `core/plugins/stage_executor.py` -- Decomposed `_execute_plugin_for_job()` into 5 methods
+- `core/plugins/stage_executor.py` -- Fixed `result.status is None` bug
+- `tests/test_full_pipeline.py` -- Fixed `.deleted/` dir being treated as plugin
 
-Key files modified:
-- `core/plugins/manifest_normalizer.py` - hardcoded maps deleted
-- `core/plugins/loader.py` - import removed
-- `core/plugins/sdk/manifest.py` - deprecation warnings added
-- `state/manager.py` - full UUID
-- `state/models.py` - PARTIAL state
-- 9x `plugins/*/manifest.yml` - created or updated
-- 7x `plugins/*/plugin.json` - moved to .deleted/
-- 3x test files updated
+### New Test Files
+- `tests/unit/core/plugins/test_stage_executor.py` -- 45 tests (613 LOC)
+- `tests/unit/core/test_orchestrator.py` -- 24 tests (423 LOC)
+
+### Configuration
+- `.claude/CLAUDE.md` -- Cleaned up, added Session End Protocol
+- `.claude/settings.json` -- Added Stop hook for uncommitted change detection
+
+### Documentation
+- `memory-bank/sessions/SESSION_30_DEEP_ANALYSIS.md` -- Full analysis + session report
 
 ## Next Session Should
 
-1. **Commit session 29 changes** (they're verified and passing)
-2. **Write `test_orchestrator.py`** - 903 LOC of core logic with 0 tests
-3. **Write `test_stage_executor.py`** - Critical execution path
-4. **Fix FastAPI `process_executor.py`** - reads old report path format
-5. **Move deprecated `mongodb.py` to .deleted/** - 527 LOC dead code
+1. **Fix 928 ruff whitespace warnings** (cosmetic but noisy)
+2. **Define Plugin Protocol** -- Replace 4 `hasattr()` checks with proper ABC/Protocol
+3. **Consolidate plugin data** -- Single authoritative store instead of 5 locations
+4. **Move deprecated `mongodb.py` to .deleted/** -- 526 LOC dead Motor code
+5. **Wire config validation** -- `config.schema.json` exists but not enforced at startup
+6. **MongoDB backend** -- pymongo_persistence.py exists but not connected to orchestrator
 
 ## Critical Files to Know
 
 | File | Why It Matters |
 |------|---------------|
-| `core/orchestrator.py` (903 LOC) | Main coordinator, 0 tests |
-| `core/plugins/stage_executor.py` (903 LOC) | Per-job execution, 0 tests |
-| `core/plugins/manifest_normalizer.py` | Just cleaned up, guard test protects |
-| `state/models.py` | PARTIAL state newly added |
-| `tests/unit/core/test_plugin_agnostic.py` | Guard test scans core for violations |
+| `core/plugins/stage_executor.py` (918 LOC) | Just decomposed, 45 tests cover it |
+| `core/orchestrator.py` (468 LOC) | 24 tests cover it now |
+| `tests/unit/core/plugins/test_stage_executor.py` | New -- 45 comprehensive tests |
+| `tests/unit/core/test_orchestrator.py` | New -- 24 comprehensive tests |
+| `.claude/CLAUDE.md` | Updated with Session End Protocol |
 
 ## Read First
 
-- `memory-bank/activeContext.md` - Current state and decisions
-- `memory-bank/systemPatterns.md` - Architecture rules (MUST follow)
-- `.claude/CLAUDE.md` - Development conventions
+- `memory-bank/activeContext.md` -- Current state and decisions
+- `memory-bank/systemPatterns.md` -- Architecture rules (MUST follow)
+- `.claude/CLAUDE.md` -- Development conventions + session end protocol

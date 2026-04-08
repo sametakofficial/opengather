@@ -286,197 +286,212 @@ class StageExecutor:
     ) -> PluginExecutionResult:
         """
         Execute a single plugin for a job.
-        
-        Handles:
-        - Requires validation
-        - Plugin execution
-        - Result caching
-        - Error handling
+
+        Coordinates: requires check -> invoke -> extract -> update state -> emit.
+        Each step is delegated to a focused method.
         """
         plugin_name = self._get_plugin_name(plugin)
         start_time = datetime.now()
-
-        # Get requires and trigger_rule from manifest
         manifest = self._registry.get_manifest(plugin_name)
-        requires = manifest.get('requires', []) if manifest else []
-        trigger_rule = manifest.get('trigger_rule', 'all_success') if manifest else 'all_success'
 
-        # Also check legacy expects/depends_on
-        if not requires:
-            requires = manifest.get('expects', []) if manifest else []
-
-        # Validate requires with trigger rules
-        if requires:
-            # Build global state for trigger evaluation
-            global_state = self._build_global_state(job)
-
-            # Check if plugin should execute
-            should_run, reason = self._trigger_manager.should_execute(
-                trigger_rule=trigger_rule,
-                requirements=requires,
-                state=global_state
-            )
-
-            if not should_run:
-                self._log("debug",
-                         f"Skipping {plugin_name} for job {job.id}: "
-                         f"trigger_rule={trigger_rule} - {reason}")
-
-                # Mark as skipped
-                self._mark_skipped(job, plugin_name)
-
-                return PluginExecutionResult(
-                    plugin_name=plugin_name,
-                    success=True,
-                    data={},
-                    skipped=True,
-                    skip_reason=f"Trigger rule '{trigger_rule}': {reason}"
-                )
+        # Step 1: Check if plugin should run (requires + trigger rules)
+        skip_result = self._check_plugin_requires(plugin_name, manifest, job)
+        if skip_result:
+            return skip_result
 
         try:
             self._log("debug", f"Executing {plugin_name} for job {job.id}")
 
-            # Create services with job context
+            # Step 2: Invoke plugin (handles signature detection)
             services = self._create_services(plugin_name, job_id=job.id)
-
-            # Execute plugin - try new signature first, then legacy
-            if hasattr(plugin, 'execute'):
-                # Try new signature: execute(job, services) or execute(match_data, services)
-                try:
-                    import inspect
-                    sig = inspect.signature(plugin.execute)
-                    params = list(sig.parameters.keys())
-
-                    # New format: execute(job, services)
-                    if len(params) >= 2:
-                        result = plugin.execute(job, services)
-                    else:
-                        # Legacy format: execute(match_data)
-                        legacy_data = self._job_to_legacy_data(job)
-                        result = plugin.execute(legacy_data)
-                except TypeError:
-                    # Fallback: try legacy format
-                    legacy_data = self._job_to_legacy_data(job)
-                    result = plugin.execute(legacy_data)
-            elif hasattr(plugin, 'process'):
-                # Legacy: process(match_data, context) pattern
-                legacy_data = self._job_to_legacy_data(job)
-                result = plugin.process(legacy_data, {})
-            else:
-                self._log("warn", f"Plugin {plugin_name} has no execute method")
+            result = self._invoke_plugin(plugin, job, services, plugin_name)
+            if result is None:
                 return PluginExecutionResult(
-                    plugin_name=plugin_name,
-                    success=False,
-                    data={},
+                    plugin_name=plugin_name, success=False, data={},
                     error="No execute method"
                 )
 
             duration_ms = self._calc_duration(start_time)
 
-            # Extract result data
-            result_data = {}
-            if hasattr(result, 'data') and result.data:
-                result_data = result.data
-            elif isinstance(result, dict):
-                result_data = result
+            # Step 3: Extract result data and success status
+            result_data, success = self._extract_plugin_result(result)
 
-            # Determine success status
-            success = True
-            if hasattr(result, 'status'):
-                success = result.status.value == "success" if hasattr(result.status, 'value') else bool(result.status)
-
-            # Cache result for trigger rules
+            # Step 4: Cache + update job state
             if result_data:
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
+            self._update_job_plugin_state(job, plugin_name, result_data, success, duration_ms)
 
-            # Flat plugin data structure
-            # - Plugin data stored flat in job.plugins[plugin_name] (no status/data wrapper)
-            # - Plugin status stored in job.status.plugins[plugin_name]
-            if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                if plugin_name not in job.plugins or not job.plugins[plugin_name]:
-                    # Plugin didn't use update_plugin() - store result data directly (flat)
-                    job.plugins[plugin_name] = result_data if result_data else {}
-                    self._log("debug", f"Plugin {plugin_name}: stored result data flat",
-                             data_keys=list(result_data.keys()) if result_data else [])
-                else:
-                    # Plugin already has data from update_plugin() - keep it flat
-                    self._log("debug", f"Plugin {plugin_name}: data exists from update_plugin",
-                             data_keys=list(job.plugins[plugin_name].keys()))
-
-            # Store plugin status in job.status.plugins
-            if hasattr(job, 'status') and hasattr(job.status, 'plugins'):
-                if not isinstance(job.status.plugins, dict):
-                    job.status.plugins = {}
-                job.status.plugins[plugin_name] = {
-                    'state': 'completed',
-                    'success': success,
-                    'duration_ms': duration_ms
-                }
-
-            self._mark_executed(job, plugin_name, success)
-
-            # Emit event
+            # Step 5: Emit event and return
             self._emit_plugin_completed(
-                plugin_name=plugin_name,
-                stage=stage,
-                mode="per_job",
-                success=success,
-                data=result_data,
-                duration_ms=duration_ms,
+                plugin_name=plugin_name, stage=stage, mode="per_job",
+                success=success, data=result_data, duration_ms=duration_ms,
                 job_id=job.id
             )
-
             return PluginExecutionResult(
-                plugin_name=plugin_name,
-                success=success,
-                data=result_data,
-                duration_ms=duration_ms
+                plugin_name=plugin_name, success=success,
+                data=result_data, duration_ms=duration_ms
             )
 
-        except PluginError as e:
-            duration_ms = self._calc_duration(start_time)
-            error_msg = str(e)
-
-            self._log("error", f"Plugin {plugin_name} error for job {job.id}: {e}")
-            self._mark_failed(job, plugin_name)
-
-            self._emit_plugin_failed(
-                plugin_name=plugin_name,
-                stage=stage,
-                error=error_msg,
-                duration_ms=duration_ms,
-                job_id=job.id
+        except (PluginError, Exception) as e:
+            return self._handle_plugin_error(
+                e, plugin_name, job, stage, start_time
             )
 
-            return PluginExecutionResult(
-                plugin_name=plugin_name,
-                success=False,
-                data={},
-                error=error_msg,
-                duration_ms=duration_ms
-            )
-        except Exception as e:
-            duration_ms = self._calc_duration(start_time)
-            error_msg = str(e)
+    def _check_plugin_requires(
+        self,
+        plugin_name: str,
+        manifest: dict[str, Any] | None,
+        job: JobState
+    ) -> PluginExecutionResult | None:
+        """
+        Check if plugin's requires/trigger_rule are satisfied.
 
-            self._log("error", f"Plugin {plugin_name} unexpected error for job {job.id}: {e}")
-            self._mark_failed(job, plugin_name)
+        Returns PluginExecutionResult (skipped) if plugin should NOT run, None if OK.
+        """
+        requires = manifest.get('requires', []) if manifest else []
+        trigger_rule = manifest.get('trigger_rule', 'all_success') if manifest else 'all_success'
 
-            self._emit_plugin_failed(
-                plugin_name=plugin_name,
-                stage=stage,
-                error=error_msg,
-                duration_ms=duration_ms,
-                job_id=job.id
+        # Legacy expects fallback
+        if not requires:
+            requires = manifest.get('expects', []) if manifest else []
+
+        if not requires:
+            return None
+
+        global_state = self._build_global_state(job)
+        should_run, reason = self._trigger_manager.should_execute(
+            trigger_rule=trigger_rule,
+            requirements=requires,
+            state=global_state
+        )
+
+        if should_run:
+            return None
+
+        self._log("debug",
+                  f"Skipping {plugin_name} for job {job.id}: "
+                  f"trigger_rule={trigger_rule} - {reason}")
+        self._mark_skipped(job, plugin_name)
+
+        return PluginExecutionResult(
+            plugin_name=plugin_name, success=True, data={},
+            skipped=True, skip_reason=f"Trigger rule '{trigger_rule}': {reason}"
+        )
+
+    def _invoke_plugin(
+        self,
+        plugin: Any,
+        job: JobState,
+        services: PluginServices,
+        plugin_name: str
+    ) -> Any | None:
+        """
+        Invoke plugin's execute method with signature detection.
+
+        Tries: execute(job, services) -> execute(legacy_data) -> process(legacy_data, {}).
+        Returns None if plugin has no execute method.
+        """
+        if hasattr(plugin, 'execute'):
+            try:
+                import inspect
+                sig = inspect.signature(plugin.execute)
+                params = list(sig.parameters.keys())
+
+                if len(params) >= 2:
+                    return plugin.execute(job, services)
+                else:
+                    return plugin.execute(self._job_to_legacy_data(job))
+            except TypeError:
+                return plugin.execute(self._job_to_legacy_data(job))
+
+        if hasattr(plugin, 'process'):
+            return plugin.process(self._job_to_legacy_data(job), {})
+
+        self._log("warn", f"Plugin {plugin_name} has no execute method")
+        return None
+
+    def _extract_plugin_result(self, result: Any) -> tuple[dict[str, Any], bool]:
+        """
+        Extract data dict and success bool from a plugin result.
+
+        Handles PluginResult objects, plain dicts, and other return types.
+        """
+        # Extract data
+        result_data: dict[str, Any] = {}
+        if hasattr(result, 'data') and result.data:
+            result_data = result.data
+        elif isinstance(result, dict):
+            result_data = result
+
+        # Determine success
+        success = True
+        if hasattr(result, 'status') and result.status is not None:
+            success = (
+                result.status.value == "success"
+                if hasattr(result.status, 'value')
+                else bool(result.status)
             )
 
-            return PluginExecutionResult(
-                plugin_name=plugin_name,
-                success=False,
-                data={},
-                error=error_msg,
-                duration_ms=duration_ms
-            )
+        return result_data, success
+
+    def _update_job_plugin_state(
+        self,
+        job: JobState,
+        plugin_name: str,
+        result_data: dict[str, Any],
+        success: bool,
+        duration_ms: int
+    ) -> None:
+        """
+        Update job.plugins (flat data) and job.status.plugins (status tracking).
+        """
+        # Store flat plugin data
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            if plugin_name not in job.plugins or not job.plugins[plugin_name]:
+                job.plugins[plugin_name] = result_data if result_data else {}
+                self._log("debug", f"Plugin {plugin_name}: stored result data flat",
+                          data_keys=list(result_data.keys()) if result_data else [])
+            else:
+                self._log("debug", f"Plugin {plugin_name}: data exists from update_plugin",
+                          data_keys=list(job.plugins[plugin_name].keys()))
+
+        # Store plugin status
+        if hasattr(job, 'status') and hasattr(job.status, 'plugins'):
+            if not isinstance(job.status.plugins, dict):
+                job.status.plugins = {}
+            job.status.plugins[plugin_name] = {
+                'state': 'completed',
+                'success': success,
+                'duration_ms': duration_ms
+            }
+
+        self._mark_executed(job, plugin_name, success)
+
+    def _handle_plugin_error(
+        self,
+        error: Exception,
+        plugin_name: str,
+        job: JobState,
+        stage: Stage,
+        start_time: datetime
+    ) -> PluginExecutionResult:
+        """Handle plugin execution error: log, mark failed, emit event, return result."""
+        duration_ms = self._calc_duration(start_time)
+        error_msg = str(error)
+        level = "error" if isinstance(error, PluginError) else "error"
+        label = "error" if isinstance(error, PluginError) else "unexpected error"
+
+        self._log(level, f"Plugin {plugin_name} {label} for job {job.id}: {error}")
+        self._mark_failed(job, plugin_name)
+        self._emit_plugin_failed(
+            plugin_name=plugin_name, stage=stage, error=error_msg,
+            duration_ms=duration_ms, job_id=job.id
+        )
+
+        return PluginExecutionResult(
+            plugin_name=plugin_name, success=False, data={},
+            error=error_msg, duration_ms=duration_ms
+        )
 
     def _execute_mixed(self, stage: Stage, plugins: list[Any]) -> None:
         """

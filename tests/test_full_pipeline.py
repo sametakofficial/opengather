@@ -234,7 +234,7 @@ class TestPluginSystem:
         plugins_dir = PROJECT_ROOT / "src" / "archiverr" / "plugins"
         
         for plugin_dir in plugins_dir.iterdir():
-            if plugin_dir.is_dir() and not plugin_dir.name.startswith("_"):
+            if plugin_dir.is_dir() and not plugin_dir.name.startswith(("_", ".")):
                 # Check for manifest (json or yml)
                 manifest_json = plugin_dir / "plugin.json"
                 manifest_yml = plugin_dir / "manifest.yml"
