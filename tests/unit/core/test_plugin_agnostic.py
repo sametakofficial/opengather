@@ -10,15 +10,84 @@ This pattern ensures:
 3. Plugin-agnostic architecture is maintained
 """
 
+import re
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock, patch
 
 from archiverr.state import GlobalStateManager
 
-if not hasattr(GlobalStateManager, "start_execution"):
-    pytest.skip("Legacy GlobalStateManager execution API removed", allow_module_level=True)
+
+# ============================================================================
+# Static Analysis Guard - scans core source files for hardcoded plugin names
+# ============================================================================
+
+KNOWN_PLUGIN_NAMES = {
+    'scanner', 'file-reader', 'file-input', 'renamer',
+    'tmdb', 'tvdb', 'tvmaze', 'omdb', 'ffprobe', 'tasker', 'rclone',
+}
+
+# Pattern: dict literal mapping a known plugin name string to another string
+# e.g. 'scanner': 'input' or "tmdb": "data"
+HARDCODED_MAP_PATTERN = re.compile(
+    r"""['"](%s)['"]\s*:\s*['"]""" % '|'.join(re.escape(n) for n in KNOWN_PLUGIN_NAMES)
+)
+
+CORE_DIR = Path(__file__).resolve().parents[3] / "src" / "archiverr" / "core"
 
 
+class TestCorePluginAgnosticGuard:
+    """Static analysis: ensure core source files don't contain hardcoded plugin names."""
+
+    def _get_core_python_files(self) -> list[Path]:
+        return sorted(CORE_DIR.rglob("*.py"))
+
+    def test_no_hardcoded_plugin_name_maps_in_core(self):
+        """Core must not contain dict mappings from known plugin names to values."""
+        violations = []
+        for path in self._get_core_python_files():
+            rel = path.relative_to(CORE_DIR)
+            in_docstring = False
+            for i, line in enumerate(path.read_text().splitlines(), 1):
+                stripped = line.lstrip()
+                # Track triple-quoted docstrings
+                if '"""' in stripped or "'''" in stripped:
+                    count = stripped.count('"""') + stripped.count("'''")
+                    if count == 1:
+                        in_docstring = not in_docstring
+                    continue
+                if in_docstring or stripped.startswith('#'):
+                    continue
+                match = HARDCODED_MAP_PATTERN.search(line)
+                if match:
+                    violations.append(f"  {rel}:{i} -> {match.group(0)!r}")
+
+        assert not violations, (
+            "Hardcoded plugin name mappings found in core:\n"
+            + "\n".join(violations)
+            + "\n\nPlugins must declare stage/provides in their manifest.yml."
+        )
+
+    def test_manifest_normalizer_has_no_plugin_stage_map(self):
+        """manifest_normalizer.py must not define PLUGIN_STAGE_MAP."""
+        normalizer = CORE_DIR / "plugins" / "manifest_normalizer.py"
+        content = normalizer.read_text()
+        assert "PLUGIN_STAGE_MAP" not in content, (
+            "PLUGIN_STAGE_MAP still exists in manifest_normalizer.py. "
+            "Stage inference must be generic (category-based or explicit)."
+        )
+
+
+# ============================================================================
+# Legacy test suite (skipped if old API removed)
+# ============================================================================
+
+_LEGACY_SKIP = not hasattr(GlobalStateManager, "start_execution")
+_legacy_skip = pytest.mark.skipif(_LEGACY_SKIP, reason="Legacy GlobalStateManager execution API removed")
+
+
+@_legacy_skip
 class TestPluginAgnosticExecution:
     """Test execution flow without real plugins."""
     
@@ -115,6 +184,7 @@ class TestPluginAgnosticExecution:
             assert plugin_name in job.plugins
 
 
+@_legacy_skip
 class TestPluginAgnosticConfiguration:
     """Test configuration without hardcoded plugin names."""
     
@@ -135,6 +205,7 @@ class TestPluginAgnosticConfiguration:
             assert isinstance(plugin_name, str)
 
 
+@_legacy_skip
 class TestPluginAgnosticMetadata:
     """Test plugin metadata handling without specific plugins."""
     
@@ -161,6 +232,7 @@ class TestPluginAgnosticMetadata:
         assert len(output_meta["depends_on"]) > 0
 
 
+@_legacy_skip
 class TestPluginAgnosticDiscovery:
     """Test plugin discovery with mock data."""
     
@@ -200,6 +272,7 @@ class TestPluginAgnosticDiscovery:
         assert input_index <= output_index, "Input should execute before output"
 
 
+@_legacy_skip
 class TestNoHardcodedPluginNames:
     """Verify tests don't use hardcoded plugin names."""
     

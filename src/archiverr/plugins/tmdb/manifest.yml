@@ -13,6 +13,10 @@ entry_point: client.py
 requires:
   - plugin.renamer.parsed:success
 
+provides:
+  - http.request
+  - state.update
+
 # FS lock for static paths only (no variables allowed)
 fs_lock: []
 

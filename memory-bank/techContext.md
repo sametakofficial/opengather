@@ -1,176 +1,104 @@
-# Technical Context
+# Tech Context
 
-## Technology Stack
+## Stack
 
-### Core Runtime
-- **Python**: 3.10+ (required for modern type hints, dataclasses)
-- **Package Manager**: pip + venv
-- **Dependency Management**: requirements.txt
-
-### Key Dependencies
-```
-requests>=2.31.0          # HTTP client for TMDb API
-python-dateutil>=2.8.2    # Date parsing from filenames
-pyyaml>=6.0              # Config file parsing
-```
-
-### External Tools
-- **FFprobe**: Part of ffmpeg package, video file analysis
-- **TMDb API**: v3, requires API key (free tier sufficient)
-
-### Development Tools
-- Standard library only for core functionality
-- No heavy frameworks (Django/Flask) in CLI
-- FastAPI planned for future web API
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Language | Python | 3.10+ (dev on 3.14.2) |
+| Models | Pydantic | v2.4+ |
+| Templates | Jinja2 | 3.1+ |
+| HTTP | Requests | 2.31+ |
+| Config | PyYAML | 6.0+ |
+| Database | PyMongo (sync) | 4.10+ |
+| API Framework | FastAPI | 0.104+ (optional) |
+| Linting | Ruff | 0.1+ |
+| Typing | Mypy | 1.5+ |
+| Formatting | Black | 23+ |
+| Testing | Pytest | 7.4+ |
 
 ## Project Structure
 
 ```
-archiverr/
-├── config.yml                       # User configuration
-├── docs/
-│   ├── API_MAPPING.md               # Variable reference
-│   └── TODO.md                      # Development tracking
-├── memory-bank/                     # Agent memory system
-│   ├── projectbrief.md
-│   ├── productContext.md
-│   ├── systemPatterns.md
-│   ├── techContext.md
-│   ├── activeContext.md
-│   └── progress.md
-├── reports/                         # Generated reports
-│   ├── api_response_full_*.json     # Full API data
-│   └── api_response_compact_*.json  # Compact structure view
-├── src/archiverr/
-│   ├── __main__.py                  # CLI entry point
-│   ├── models/
-│   │   └── response_builder.py      # API response builder
-│   ├── core/
-│   │   ├── plugins/                 # Plugin discovery, loading, execution
-│   │   │   ├── __init__.py
-│   │   │   ├── discovery.py
-│   │   │   ├── loader.py
-│   │   │   ├── resolver.py
-│   │   │   └── executor.py
-│   │   ├── tasks/                   # Template rendering, task execution
-│   │   │   ├── __init__.py
-│   │   │   ├── template_manager.py
-│   │   │   └── task_manager.py
-│   │   └── reports/                 # Response simplification
-│   │       ├── __init__.py
-│   │       ├── response_simplifier.py
-│   │       └── report_generator.py
-│   ├── plugins/                     # ALL domain logic
-│   │   ├── base.py                  # BasePlugin, InputPlugin, OutputPlugin
-│   │   ├── scanner/                 # Input plugin
-│   │   ├── file_reader/             # Input plugin
-│   │   ├── ffprobe/                 # Output plugin
-│   │   ├── renamer/                 # Output plugin
-│   │   ├── tmdb/                    # Output plugin
-│   │   ├── tvdb/                    # Output plugin
-│   │   ├── tvmaze/                  # Output plugin
-│   │   └── omdb/                    # Output plugin
-│   └── utils/
-│       ├── debug.py                 # Debug logging system
-│       └── formatters.py            # Utility functions
-└── tests/
-    └── targets.txt                  # Test file list
+codebase/archiverr/
+  src/archiverr/
+    core/
+      plugins/          # Registry, discovery, loader, executor, resolver
+        sdk/            # PluginManifest Pydantic model, base classes
+      tasks/            # Task execution
+      reports/          # Compact response system
+      config/           # Config management
+      services/         # Service layer
+      validation/       # Validators (manifest, requires, dependency)
+      triggers/         # Trigger system
+      locking/          # FS lock system
+    plugins/            # 9 plugins, each with manifest.yml + client.py
+    api/                # FastAPI v1 routes (partially connected)
+    cli/                # CLI entry point
+    events/             # EventBus pub/sub
+    infrastructure/     # MongoDB (pymongo_persistence.py is active)
+    state/              # GlobalStateManager, JobState, RunState
+    models/             # Response builder
+    utils/              # Config loader, debug, Jinja2 filters
+  tests/
+    unit/               # 340+ passing tests
+      core/             # Manifest normalizer, plugin agnostic guard
+      api/              # Endpoint tests (4 fail without MongoDB)
+      state/            # State models, manager
+      utils/            # Config normalizer, YAML loader
+    e2e/                # Empty (needs implementation)
+    integration/        # Empty (needs implementation)
+  config.yml            # Main config
+  pyproject.toml        # PEP 621 project config
 ```
 
-## Development Setup
+## Key Files
 
-### Initial Setup
+| File | Purpose |
+|------|---------|
+| `core/plugins/manifest_normalizer.py` | Normalizes legacy manifests to stage-based format |
+| `core/plugins/loader.py` | Loads and instantiates plugins with config validation |
+| `core/plugins/discovery.py` | Discovers plugins from manifest files |
+| `core/plugins/resolver.py` | Topological dependency resolution |
+| `core/plugins/stage_executor.py` | Per-job plugin execution in stages |
+| `core/orchestrator.py` | Main execution coordinator (903 LOC) |
+| `state/manager.py` | GlobalStateManager with SRP delegation |
+| `state/models.py` | RunState, JobState, StateEnum (includes PARTIAL) |
+| `infrastructure/database/pymongo_persistence.py` | Active MongoDB driver (sync) |
+| `infrastructure/database/interface.py` | Persistence interface (sync only) |
+| `utils/config_loader.py` | YAML loader with env var expansion, includes |
+
+## Commands
+
 ```bash
-cd /home/samet/Workspace/archiverr
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd codebase/archiverr && source .venv/bin/activate
+pytest tests/ -v                          # all tests
+pytest tests/unit/ -v                     # unit only
+ruff check src/                           # lint
+mypy src/archiverr/                       # typecheck
+black src/ --check                        # format check
+python -m archiverr                       # CLI (dry-run default)
 ```
 
-### Configuration
-```bash
-cp config/config.yml.example config/config.yml
-# Edit config.yml: Add TMDb API key
-vim config/config.yml
-```
+## Git
 
-### Running
-```bash
-source .venv/bin/activate
-archiverr --help
-archiverr --paths-from tests/targets.txt --type tv --dry-run
-```
+- Remote: `origin -> github.com/sametakofficial/archiverr.git`
+- Active branch: `dev/communication-refactoring`
+- Stale branch: `feature/mongodb-implementation` (295 files diverged, unusable)
+- Commit style: `session N: description` or `wip:`, `cleanup:`, `fix:`
 
-## Technical Constraints
+## API Extras Support
 
-### Performance
-- **Target**: <1s per file with cache
-- **Bottleneck**: TMDb API latency (~200-500ms per request)
-- **Mitigation**: Parallel workers (default: 8)
+| Extra | TMDb | TVDb | TVMaze | OMDb |
+|-------|------|------|--------|------|
+| Credits/Cast | movie, episode | show, movie, episode | show, episode | - |
+| Images | movie, show, episode | show, movie, episode | show | - |
+| Videos | movie, show | - | - | - |
+| Keywords | movie | - | - | - |
+| Ratings | - | - | - | imdb |
 
-### API Limits
-- **TMDb**: 40 requests/10 seconds (free tier)
-- **Strategy**: Parallel processing stays under limit with 8 workers
-- **Future**: Response caching to reduce API calls
+## Performance Constraints
 
-### File System
-- **Hardlink Requirement**: Source and destination on same filesystem
-- **Permission**: Write access to destination directories
-- **Safety**: Dry-run mode enabled by default
-
-### Memory
-- **Footprint**: Minimal (<100MB for typical batches)
-- **Scaling**: Linear with batch size (all results in memory)
-- **Future**: Database persistence for large operations
-
-## Code Standards
-
-### Style
-- PEP 8 compliance
-- Type hints on all public functions
-- Dataclasses for configuration structures
-- No emojis in production code/logs
-
-### Logging
-```python
-# Format: TIMESTAMP LEVEL COMPONENT [context] message
-2025-10-31T16:24:11.004+03:00  INFO   parse.start          [file=Friends.S01E01.mkv] Starting filename parse
-```
-
-### Error Handling
-- Exception isolation at file level
-- Clear error messages with context
-- Failed files logged separately
-- No silent failures
-
-### Configuration
-- YAML primary, .env fallback for compatibility
-- Dataclass validation on load
-- Explicit defaults in code
-- No magic values
-
-## Testing Strategy
-
-### Current
-- Manual testing with `tests/targets.txt`
-- Dry-run validation before real operations
-- Visual inspection of structured logs
-
-### Planned
-- Unit tests for variable engine filters
-- Integration tests for TMDb matching
-- End-to-end tests for full pipeline
-- Regression tests for edge cases
-
-## Deployment
-
-### Current
-- Local installation via pip install -e .
-- Virtual environment required
-- Configuration in user space
-
-### Future
-- Docker container
-- Systemd service for background processing
-- Web UI with FastAPI backend
-- Database migrations
+- TMDb API: 40 req/10s (free tier)
+- Target: <1s per file with cache
+- Memory: <100MB for typical batches
+- Dry-run mode enabled by default for safety

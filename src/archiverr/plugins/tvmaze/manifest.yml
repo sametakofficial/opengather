@@ -1,0 +1,15 @@
+name: tvmaze
+version: 1.0.0
+description: Fetches TV show metadata from TVmaze API
+stage: data
+run_mode: per_job
+class_name: TVMazePlugin
+entry_point: client.py
+requires:
+  - plugin.renamer.parsed:success
+provides:
+  - http.request
+  - state.update
+trigger_rule: all_success
+categories:
+  - show

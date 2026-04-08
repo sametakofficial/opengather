@@ -439,17 +439,31 @@ class TestRunState:
         assert run.status.state == StateEnum.SUCCESS
         assert run.status.success is True
     
-    def test_complete_method_with_failures(self):
-        """Test RunState complete() with failures"""
+    def test_complete_method_with_partial_failures(self):
+        """Test RunState complete() with partial failures uses PARTIAL state"""
         from archiverr.state.models import RunState, StateEnum
-        
+
         run = RunState(id="run_test")
         run.start()
         run.status.total_jobs = 5
         run.status.completed = 4
         run.status.failed = 1
         run.complete()
-        
+
+        assert run.status.state == StateEnum.PARTIAL
+        assert run.status.success is False
+
+    def test_complete_method_with_all_failures(self):
+        """Test RunState complete() with all jobs failed uses FAILED state"""
+        from archiverr.state.models import RunState, StateEnum
+
+        run = RunState(id="run_test")
+        run.start()
+        run.status.total_jobs = 3
+        run.status.completed = 0
+        run.status.failed = 3
+        run.complete()
+
         assert run.status.state == StateEnum.FAILED
         assert run.status.success is False
     

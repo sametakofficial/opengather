@@ -1,0 +1,16 @@
+name: omdb
+version: 1.0.0
+description: Fetches movie and TV metadata from OMDb API (IMDb-based)
+stage: data
+run_mode: per_job
+class_name: OMDbPlugin
+entry_point: client.py
+requires:
+  - plugin.renamer.parsed:success
+provides:
+  - http.request
+  - state.update
+trigger_rule: all_success
+categories:
+  - movie
+  - show

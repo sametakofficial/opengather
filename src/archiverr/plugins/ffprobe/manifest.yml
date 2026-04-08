@@ -11,9 +11,11 @@ entry_point: client.py
 # No dependencies - can run in parallel with other data plugins
 requires: []
 
-# Provides process execution capability
+run_mode: per_job
+
 provides:
   - process.execute
+  - state.update
 
 trigger_rule: all_success
 

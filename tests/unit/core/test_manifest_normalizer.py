@@ -33,7 +33,7 @@ class TestNormalizeManifest:
         
         normalized = normalize_manifest(old_manifest)
         
-        assert normalized["stage"] == "data"  # output → data for tmdb
+        assert normalized["stage"] == "data"  # output category → data stage (generic)
         assert "job.plugins.renamer.parsed.movie" in normalized["requires"]
         assert "category" not in normalized or normalized.get("category") == "output"
         assert "depends_on" not in normalized
@@ -57,17 +57,28 @@ class TestNormalizeManifest:
         assert normalized["provides"] == ["http.request", "state.update"]
         assert normalized["trigger_rule"] == "all_success"
     
-    def test_infer_stage_from_plugin_name(self):
-        """Should infer stage from known plugin names."""
-        scanner = normalize_manifest({"name": "scanner", "class_name": "S"})
-        renamer = normalize_manifest({"name": "renamer", "class_name": "R"})
-        tmdb = normalize_manifest({"name": "tmdb", "class_name": "T"})
-        tasker = normalize_manifest({"name": "tasker", "class_name": "Ta"})
-        
-        assert scanner["stage"] == "input"
-        assert renamer["stage"] == "parse"
-        assert tmdb["stage"] == "data"
-        assert tasker["stage"] == "output"
+    def test_infer_stage_from_category(self):
+        """Should infer stage from category (generic, no plugin-name lookup)."""
+        input_plugin = normalize_manifest(
+            {"name": "any-input", "category": "input", "class_name": "S"}
+        )
+        output_plugin = normalize_manifest(
+            {"name": "any-output", "category": "output", "class_name": "T"}
+        )
+        no_category = normalize_manifest(
+            {"name": "any-plugin", "class_name": "P"}
+        )
+
+        assert input_plugin["stage"] == "input"
+        assert output_plugin["stage"] == "data"  # output category -> data stage
+        assert no_category["stage"] == "data"  # default
+
+    def test_explicit_stage_preserved(self):
+        """Should preserve explicit stage regardless of plugin name."""
+        manifest = normalize_manifest(
+            {"name": "custom-plugin", "stage": "parse", "class_name": "C"}
+        )
+        assert manifest["stage"] == "parse"
     
     def test_convert_expects_to_requires(self):
         """Should add job.plugins. prefix to expects."""
@@ -103,13 +114,22 @@ class TestNormalizeManifest:
         # Should not have double prefix
         assert not any("job.plugins.job." in r for r in normalized["requires"])
     
-    def test_infer_provides(self):
-        """Should infer provides based on stage."""
-        input_plugin = normalize_manifest({"name": "scanner", "class_name": "S"})
-        data_plugin = normalize_manifest({"name": "unknown-data", "stage": "data", "class_name": "D"})
-        
+    def test_infer_provides_from_stage(self):
+        """Should infer provides based on stage (generic, no plugin-name lookup)."""
+        input_plugin = normalize_manifest(
+            {"name": "any-input", "stage": "input", "class_name": "I"}
+        )
+        data_plugin = normalize_manifest(
+            {"name": "any-data", "stage": "data", "class_name": "D"}
+        )
+        output_plugin = normalize_manifest(
+            {"name": "any-output", "stage": "output", "class_name": "O"}
+        )
+
         assert "job.create" in input_plugin["provides"]
+        assert "fs.read" in input_plugin["provides"]
         assert "state.update" in data_plugin["provides"]
+        assert "output.render" in output_plugin["provides"]
     
     def test_default_trigger_rule(self):
         """Should default to all_success trigger rule."""

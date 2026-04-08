@@ -1,0 +1,13 @@
+name: file-reader
+version: 1.0.0
+description: Reads target file paths from a targets.txt file
+stage: input
+run_mode: per_run
+class_name: FileReaderPlugin
+entry_point: client.py
+requires: []
+provides:
+  - job.create
+  - fs.read
+trigger_rule: all_success
+categories: []

@@ -13,6 +13,10 @@ entry_point: client.py
 # Input plugins have no dependencies
 requires: []
 
+provides:
+  - job.create
+  - fs.read
+
 # FS lock for static paths only (no variables allowed)
 fs_lock: []
 

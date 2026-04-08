@@ -453,7 +453,7 @@ class MongoDBPersistence(PersistenceInterface):
         """Async create branch"""
         from uuid import uuid4
 
-        branch_id = f"branch_{str(uuid4())[:8]}"
+        branch_id = f"branch_{str(uuid4())}"
         now = datetime.utcnow()
 
         # If this is default branch, unset others

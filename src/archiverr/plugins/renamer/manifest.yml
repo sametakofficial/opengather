@@ -12,6 +12,9 @@ entry_point: client.py
 # No dependencies - runs first in parse stage
 requires: []
 
+provides:
+  - state.update
+
 # FS lock for static paths only
 fs_lock: []
 

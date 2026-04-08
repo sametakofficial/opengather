@@ -179,7 +179,12 @@ class RunState:
             delta = self.status.finished_at - self.status.started_at
             self.status.duration_ms = int(delta.total_seconds() * 1000)
         self.status.success = self.status.failed == 0
-        self.status.state = StateEnum.SUCCESS if self.status.success else StateEnum.FAILED
+        if self.status.failed == 0:
+            self.status.state = StateEnum.SUCCESS
+        elif 0 < self.status.failed < self.status.total_jobs:
+            self.status.state = StateEnum.PARTIAL
+        else:
+            self.status.state = StateEnum.FAILED
 
     def increment_jobs(self):
         """Increment total job count."""

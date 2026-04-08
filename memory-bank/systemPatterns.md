@@ -1,111 +1,77 @@
 # System Patterns
 
-## Core Architecture
+## Architecture Rules (STRICTLY ENFORCED)
 
-### Plugin-Agnostic Principle (STRICTLY ENFORCED)
+### 1. Plugin-Agnostic Core
+- Core MUST NEVER reference plugin names or implementations
+- Zero hardcoded plugin names in core (ZERO tolerance)
+- `test_plugin_agnostic.py` has static analysis guard that scans core source files
+- Plugins declare stage, provides, requires in `manifest.yml`
+- Core discovers via manifest files, resolves dependencies generically
 
-**Rule:** Core system MUST NEVER know plugin names or implementations.
-
-**Status (November 10, 2025):**
-- ✅ No hardcoded plugin names in core
-- ✅ All patterns are generic
-- ✅ Dynamic imports only
-- ✅ Config opaque to core
-- ✅ Clean folder structure (plugins/, tasks/, reports/)
-- ✅ Consistent naming (globals everywhere)
-
----
-
-## Expects System Pattern
-
-Check data availability at runtime before plugin execution.
-
+### 2. Expects System (Runtime Validation)
 ```python
-# Extract available data
-available_data = self._extract_available_data(result)
+# Plugins declare what data they need
+requires:
+  - plugin.renamer.parsed:success
 
-# Filter plugins by expects
+# Core checks at runtime before executing
+available_data = extract_available_data(result)
 ready = [p for p in group if resolver.check_expects(p, available_data)]
-
-# Execute only ready plugins
-results = self.execute_group(plugins, ready, result)
 ```
 
----
+### 3. 3-Stage Pipeline
+```
+INIT -> PER_RUN (input plugins) -> PARSE -> DATA -> OUTPUT -> FINALIZE
+```
+Each stage executes plugins in dependency-resolved groups. Parallel within groups.
 
-## Compact Response Pattern (NEW - November 10, 2025)
+### 4. Manifest-Driven Plugin Discovery
+```yaml
+# Every plugin declares in manifest.yml:
+name: tmdb
+stage: data           # REQUIRED - no inference from plugin name
+run_mode: per_job     # REQUIRED - per_run or per_job
+provides:             # REQUIRED - what this plugin provides
+  - http.request
+  - state.update
+requires:             # Dependencies on other plugin data
+  - plugin.renamer.parsed:success
+```
+Discovery priority: manifest.yml > manifest.yaml > plugin.yml > plugin.yaml > plugin.json
 
-Structural simplification - show API structure, not content.
-
-```python
-class ResponseSimplifier:
-    def _simplify_list(self, data: List[Any]) -> List[Any]:
-        seen_types = set()
-        examples = []
-        
-        for item in data:
-            item_type = "object" if isinstance(item, dict) else type(item).__name__
-            
-            # Keep first example of each type
-            if item_type not in seen_types:
-                seen_types.add(item_type)
-                examples.append(item)
-        
-        return [self.simplify(item) for item in examples]
+### 5. State Management (SRP)
+```
+GlobalStateManager
+  -> JobManager (job lifecycle)
+  -> PluginDataManager (plugin data CRUD)
+  -> PersistenceDelegate (MongoDB writes, error handling)
+  -> StateEventEmitter (EventBus events)
+  -> TemplateContextBuilder (Jinja2 context)
 ```
 
-**Purpose:** AI can analyze structure without processing massive data.
+### 6. Compact Response Pattern
+Type-based structural simplification. Keep 1 example per type, discard redundant data.
+Result: 145 KB -> 9 KB (94% reduction). Used for AI analysis.
 
-**Results:**
-- 101 cast → 1 example
-- 16 keywords → 1 example
-- 94% file size reduction
+### 7. No-Delete Policy
+NEVER use rm/rmdir. Always `mkdir -p .deleted && mv target .deleted/`
 
----
-
-## Design Principles
-
-1. **Plugin-Agnostic**: Core never knows plugin names
-2. **Expects-Based**: Runtime data validation
-3. **Generic Patterns**: Work with any plugin
-4. **Professional Debug**: Consistent logging
-5. **Clean Separation**: Core vs plugins vs tasks
-6. **Structural Simplification**: Type-based, not content-based
-7. **Dual Reports**: Full data + compact structure
-
----
-
-## Folder Structure Pattern
-
-**Clean Naming (November 10, 2025):**
+### 8. Response Structure v4
 ```
-src/archiverr/core/
-├── plugins/     # NOT plugin_system
-├── tasks/       # NOT task_system
-└── reports/     # NEW: Response simplification
+response.globals.status        -> Run-level status
+response.matches[].globals     -> Job-level status
+response.matches[].plugins.X   -> Plugin data (plugin-managed)
 ```
+Validation lives in `plugin.globals.validation`, never aggregated by core.
 
-**No _system suffixes** - cleaner, more professional.
+## Design Patterns Used
 
----
-
-## Response Naming Pattern
-
-**Consistent globals naming:**
-```json
-{
-  "globals": {...},         // API-level
-  "matches": [{
-    "globals": {...}        // Match-level (NOT match_globals)
-  }]
-}
-```
-
-**Template access:**
-- `$globals` → API-level
-- `$0.globals` → Match 0 level
-- No naming conflicts!
-
----
-
-For implementation details, see activeContext.md
+| Pattern | Location | Notes |
+|---------|----------|-------|
+| Factory | `build_orchestrator()` | Assembles orchestrator with DI |
+| Registry | `PluginRegistry` | Plugin discovery/loading |
+| Observer | `EventBus` | Loose coupling between components |
+| Strategy | Executor + Resolver | Pluggable execution strategies |
+| DI | `ExecutionContext` | Runtime dependencies for plugins |
+| Template Method | `BasePlugin.execute()` | Plugin execution contract |

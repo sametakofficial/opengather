@@ -120,7 +120,7 @@ class GlobalStateManager:
 
     def _generate_id(self) -> str:
         """Generate unique ID."""
-        return str(uuid4())[:8]
+        return str(uuid4())
 
     def start_run(self, config: dict[str, Any]) -> str:
         """Start new run with given config. Returns run ID."""

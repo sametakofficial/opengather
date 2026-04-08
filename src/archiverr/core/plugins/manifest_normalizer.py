@@ -22,28 +22,6 @@ CATEGORY_TO_STAGE: dict[str, str] = {
     'output': 'data',  # Most legacy output plugins do data fetching
 }
 
-# Known plugins with their correct stages
-PLUGIN_STAGE_MAP: dict[str, str] = {
-    # Input stage - file discovery
-    'scanner': 'input',
-    'file-input': 'input',
-    'file-reader': 'input',
-
-    # Parse stage - filename parsing
-    'renamer': 'parse',
-
-    # Data stage - external API calls
-    'tmdb': 'data',
-    'tvdb': 'data',
-    'tvmaze': 'data',
-    'omdb': 'data',
-    'ffprobe': 'data',
-
-    # Output stage - results
-    'tasker': 'output',
-    'rclone': 'output',
-}
-
 # Valid stages
 VALID_STAGES = {'input', 'parse', 'data', 'output'}
 
@@ -136,19 +114,10 @@ def normalize_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
 def _infer_stage(manifest: dict[str, Any]) -> str:
     """
     Infer stage from manifest fields.
-    
-    Priority:
-    1. Known plugin mapping
-    2. Category mapping
-    3. Default to 'output'
+
+    Uses generic category-to-stage mapping only. No plugin-name lookup.
+    Plugins should declare their stage explicitly in manifest.yml.
     """
-    name = manifest.get('name', '')
-
-    # Check known plugin mapping first
-    if name in PLUGIN_STAGE_MAP:
-        return PLUGIN_STAGE_MAP[name]
-
-    # Fall back to category mapping
     category = manifest.get('category', 'output')
     return CATEGORY_TO_STAGE.get(category, 'data')
 
@@ -200,33 +169,11 @@ def _add_requires_prefix(path: str) -> str:
 
 def _infer_provides(manifest: dict[str, Any], stage: str) -> list[str]:
     """
-    Infer provides based on stage and plugin type.
-    
-    Provides indicate:
-    - Technical effects (http.request, fs.write)
-    - Data availability (state.update)
+    Infer provides based on stage only. No plugin-name lookup.
+
+    Plugins should declare their provides explicitly in manifest.yml.
+    This fallback uses generic stage-based defaults for backward compatibility.
     """
-    name = manifest.get('name', '')
-
-    # Plugin-specific provides
-    plugin_provides: dict[str, list[str]] = {
-        'scanner': ['job.create', 'fs.read'],
-        'file-input': ['job.create', 'fs.read'],
-        'file-reader': ['job.create', 'fs.read'],
-        'renamer': ['state.update'],
-        'tmdb': ['http.request', 'state.update'],
-        'tvdb': ['http.request', 'state.update'],
-        'tvmaze': ['http.request', 'state.update'],
-        'omdb': ['http.request', 'state.update'],
-        'ffprobe': ['process.execute', 'state.update'],
-        'tasker': ['output.render'],
-        'rclone': ['fs.write', 'process.execute'],
-    }
-
-    if name in plugin_provides:
-        return plugin_provides[name]
-
-    # Stage-based defaults
     stage_provides: dict[str, list[str]] = {
         'input': ['job.create', 'fs.read'],
         'parse': ['state.update'],

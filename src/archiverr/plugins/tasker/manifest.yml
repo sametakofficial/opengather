@@ -9,6 +9,9 @@ stage: output
 class_name: TaskerPlugin
 entry_point: plugin.py
 
+provides:
+  - output.render
+
 # Session 12: Plugin data dependencies (wait for data stage)
 requires:
   - plugin.tmdb.data:success

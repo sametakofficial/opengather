@@ -163,9 +163,8 @@ class PluginLoader:
 
             # Map legacy category to stage if needed
             if plugin_stage == 'output' and metadata.get('stage') is None:
-                # Legacy output plugin - determine actual stage from manifest normalizer map
-                from archiverr.core.plugins.manifest_normalizer import PLUGIN_STAGE_MAP
-                plugin_stage = PLUGIN_STAGE_MAP.get(plugin_name, 'data')
+                # Legacy output plugin - default to data stage
+                plugin_stage = 'data'
 
             if plugin_stage in target_stages:
                 plugin = self.load_plugin(plugin_name)

@@ -6,6 +6,7 @@ Updated to support stage-based format.
 Validates plugin manifest files at load time to catch errors early.
 """
 
+import warnings
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -98,9 +99,17 @@ class PluginManifest(BaseModel):
     @model_validator(mode='after')
     def ensure_stage_or_category(self):
         """Ensure either stage or category is set."""
+        if self.stage is None and self.category is not None:
+            warnings.warn(
+                f"Plugin '{self.name}': 'category' is deprecated, "
+                f"use 'stage' in manifest.yml instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if self.stage is None and self.category is None:
-            # Default to data stage for unknown plugins
             self.stage = "data"
+        if self.run_mode is None:
+            self.run_mode = "per_run" if self.effective_stage == "input" else "per_job"
         return self
 
     @property
