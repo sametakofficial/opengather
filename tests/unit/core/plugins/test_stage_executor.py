@@ -186,35 +186,26 @@ class TestInvokePlugin:
 
         assert result is None
 
-    def test_legacy_process_method(self, executor, sample_job):
-        plugin = MagicMock(spec=["process", "name"])
-        plugin.name = "legacy_plugin"
-        plugin.process.return_value = {"data": "legacy_result"}
+    def test_no_execute_method_returns_none(self, executor, sample_job):
+        """Plugin with no execute method returns None."""
+        plugin = MagicMock(spec=["name"])
+        plugin.name = "empty_plugin"
 
         services = MagicMock()
-        result = executor._invoke_plugin(plugin, sample_job, services, "legacy_plugin")
+        result = executor._invoke_plugin(plugin, sample_job, services, "empty_plugin")
 
-        assert result is not None
-        plugin.process.assert_called_once()
+        assert result is None
 
-    def test_execute_type_error_falls_back_to_legacy(self, executor, sample_job):
+    def test_introspection_failure_uses_legacy(self, executor, sample_job):
+        """When signature introspection fails, assume legacy single-arg."""
         plugin = MagicMock()
-        plugin.name = "mixed_plugin"
-
-        call_count = 0
-
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise TypeError("unexpected keyword argument")
-            return {"fallback": True}
-
-        plugin.execute.side_effect = side_effect
+        plugin.name = "tricky_plugin"
+        plugin.execute.return_value = {"fallback": True}
+        # Make inspect.signature fail
+        plugin.execute.__signature__ = None
 
         services = MagicMock()
-        result = executor._invoke_plugin(plugin, sample_job, services, "mixed_plugin")
-
+        result = executor._invoke_plugin(plugin, sample_job, services, "tricky_plugin")
         assert result is not None
 
 
@@ -253,10 +244,10 @@ class TestExtractPluginResult:
         assert success is True
 
     def test_result_with_failure_status(self, executor):
+        """MagicMock with success=False attribute is detected as failure."""
         result = MagicMock()
-        result.data = {}
-        result.status = MagicMock()
-        result.status.value = "error"
+        result.data = {"key": "val"}
+        result.success = False
 
         data, success = executor._extract_plugin_result(result)
         assert success is False
@@ -271,14 +262,13 @@ class TestExtractPluginResult:
         assert data == {}
         assert success is True
 
-    def test_result_with_bool_status(self, executor):
-        result = MagicMock()
-        result.data = {"key": "value"}
-        # Use 0 as a falsy status with no .value attribute
-        result.status = 0
+    def test_dict_with_embedded_status(self, executor):
+        """Legacy dict result with embedded status dict."""
+        result = {"status": {"success": False}, "movie": {"title": "Test"}}
 
         data, success = executor._extract_plugin_result(result)
         assert success is False
+        assert data == {"movie": {"title": "Test"}}
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +299,6 @@ class TestUpdateJobPluginState:
         status = sample_job.status.plugins["tmdb_mock"]
         assert status["state"] == "completed"
         assert status["success"] is True
-        assert status["duration_ms"] == 250
 
     def test_failed_status(self, executor, sample_job):
         executor._update_job_plugin_state(

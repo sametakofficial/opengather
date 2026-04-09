@@ -1,6 +1,5 @@
 """Plugin System - Discovery, Loading, Resolution, Execution, SDK"""
 from .discovery import PluginDiscovery
-from .executor import PluginExecutor
 from .loader import PluginLoader
 
 # additions
@@ -24,11 +23,10 @@ from .sdk import (
 from .stage_executor import STAGE_MODES, ExecutionMode, StageExecutor
 
 __all__ = [
-    # System (legacy)
+    # System
     'PluginDiscovery',
     'PluginLoader',
     'DependencyResolver',
-    'PluginExecutor',
 
     # Registry & Execution
     'PluginRegistry',

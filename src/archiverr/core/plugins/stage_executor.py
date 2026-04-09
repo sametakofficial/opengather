@@ -19,7 +19,7 @@ from enum import Enum
 from typing import Any
 
 from archiverr.core.exceptions import PluginError, StageError
-from archiverr.core.provides_registry import get_provides_registry, ProvidesRegistry
+from archiverr.core.provides_registry import ProvidesRegistry, get_provides_registry
 from archiverr.core.services.plugin_services import PluginServices
 from archiverr.core.triggers import TriggerRuleManager
 from archiverr.events import EventBus, Events
@@ -28,6 +28,8 @@ from archiverr.utils.debug import Debugger, get_debugger
 
 from .registry import PluginRegistry, Stage
 from .resolver import DependencyResolver
+from .sdk.result import PluginResult
+from .sdk.types import PerRunPlugin
 
 
 class ExecutionMode(Enum):
@@ -202,22 +204,15 @@ class StageExecutor:
                 services = self._create_services(plugin_name)
 
                 # Execute plugin (per_run mode uses execute_run)
-                if hasattr(plugin, 'execute_run'):
+                if isinstance(plugin, PerRunPlugin):
                     result = plugin.execute_run(services)
                 elif hasattr(plugin, 'get_matches'):
-                    # Legacy: input plugins use get_matches (guarded)
-                    allow_legacy = bool(self._config.get('options', {}).get('allow_legacy_get_matches', False))
-                    if not allow_legacy:
-                        self._log(
-                            "warn",
-                            f"Plugin {plugin_name} has legacy get_matches() but legacy mode is disabled",
-                            hint="Enable options.allow_legacy_get_matches to allow this"
-                        )
-                        continue
+                    # Legacy fallback: old input plugins use get_matches
+                    self._log("warn", f"Plugin {plugin_name} uses legacy get_matches() -- migrate to execute_run()")
                     matches = plugin.get_matches()
                     result = self._create_jobs_from_matches(matches)
                 else:
-                    self._log("warn", f"Plugin {plugin_name} has no execute_run or get_matches method")
+                    self._log("warn", f"Plugin {plugin_name} has no execute_run method")
                     continue
 
                 duration_ms = self._calc_duration(start_time)
@@ -446,27 +441,25 @@ class StageExecutor:
         """
         Invoke plugin's execute method with signature detection.
 
-        Tries: execute(job, services) -> execute(legacy_data) -> process(legacy_data, {}).
+        New-style (2+ params): plugin.execute(job, services) -> PluginResult
+        Legacy (1 param): plugin.execute(match_data) -> dict
         Returns None if plugin has no execute method.
         """
-        if hasattr(plugin, 'execute'):
-            try:
-                import inspect
-                sig = inspect.signature(plugin.execute)
-                params = list(sig.parameters.keys())
+        if not hasattr(plugin, 'execute'):
+            self._log("warn", f"Plugin {plugin_name} has no execute method")
+            return None
 
-                if len(params) >= 2:
-                    return plugin.execute(job, services)
-                else:
-                    return plugin.execute(self._job_to_legacy_data(job))
-            except TypeError:
-                return plugin.execute(self._job_to_legacy_data(job))
+        import inspect
+        try:
+            sig = inspect.signature(plugin.execute)
+            param_count = len(sig.parameters)
+        except (ValueError, TypeError):
+            param_count = 1  # Assume legacy on introspection failure
 
-        if hasattr(plugin, 'process'):
-            return plugin.process(self._job_to_legacy_data(job), {})
-
-        self._log("warn", f"Plugin {plugin_name} has no execute method")
-        return None
+        if param_count >= 2:
+            return plugin.execute(job, services)
+        else:
+            return plugin.execute(self._job_to_legacy_data(job))
 
     def _extract_plugin_result(self, result: Any) -> tuple[dict[str, Any], bool]:
         """
@@ -474,21 +467,29 @@ class StageExecutor:
 
         Handles PluginResult objects, plain dicts, and other return types.
         """
-        # Extract data
+        # PluginResult (from sdk) -- preferred return type
+        if isinstance(result, PluginResult):
+            return result.data or {}, result.success
+
+        # Plain dict -- legacy plugins return these directly
+        if isinstance(result, dict):
+            # Check for embedded status dict (legacy format: {status: {success: bool}, ...data})
+            status = result.get('status')
+            if isinstance(status, dict):
+                success = status.get('success', True)
+                # Data is everything except the status key
+                result_data = {k: v for k, v in result.items() if k != 'status'}
+                return result_data, success
+            return result, True
+
+        # Unknown return type -- try attribute access as fallback
         result_data: dict[str, Any] = {}
         if hasattr(result, 'data') and result.data:
             result_data = result.data
-        elif isinstance(result, dict):
-            result_data = result
 
-        # Determine success
         success = True
-        if hasattr(result, 'status') and result.status is not None:
-            success = (
-                result.status.value == "success"
-                if hasattr(result.status, 'value')
-                else bool(result.status)
-            )
+        if hasattr(result, 'success'):
+            success = bool(result.success)
 
         return result_data, success
 
@@ -504,24 +505,22 @@ class StageExecutor:
         Update job.plugins (flat data) and job.status.plugins (status tracking).
         """
         # Store flat plugin data
-        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-            if plugin_name not in job.plugins or not job.plugins[plugin_name]:
-                job.plugins[plugin_name] = result_data if result_data else {}
-                self._log("debug", f"Plugin {plugin_name}: stored result data flat",
-                          data_keys=list(result_data.keys()) if result_data else [])
-            else:
-                self._log("debug", f"Plugin {plugin_name}: data exists from update_plugin",
-                          data_keys=list(job.plugins[plugin_name].keys()))
+        if plugin_name not in job.plugins or not job.plugins[plugin_name]:
+            job.plugins[plugin_name] = result_data if result_data else {}
+            self._log("debug", f"Plugin {plugin_name}: stored result data flat",
+                      data_keys=list(result_data.keys()) if result_data else [])
+        else:
+            self._log("debug", f"Plugin {plugin_name}: data exists from update_plugin",
+                      data_keys=list(job.plugins[plugin_name].keys()))
 
         # Store plugin status
-        if hasattr(job, 'status') and hasattr(job.status, 'plugins'):
-            if not isinstance(job.status.plugins, dict):
-                job.status.plugins = {}
-            job.status.plugins[plugin_name] = {
-                'state': 'completed',
-                'success': success,
-                'duration_ms': duration_ms
-            }
+        if not isinstance(job.status.plugins, dict):
+            job.status.plugins = {}
+        job.status.plugins[plugin_name] = {
+            'state': 'completed',
+            'success': success,
+            'duration_ms': duration_ms
+        }
 
         self._mark_executed(job, plugin_name, success)
 
@@ -848,12 +847,8 @@ class StageExecutor:
         return []
 
     def _get_plugin_name(self, plugin: Any) -> str:
-        """Get plugin name from plugin instance"""
-        if hasattr(plugin, 'name'):
-            return plugin.name
-        if hasattr(plugin, '_name'):
-            return plugin._name
-        return str(type(plugin).__name__)
+        """Get plugin name from plugin instance."""
+        return getattr(plugin, 'name', None) or getattr(plugin, '_name', None) or type(plugin).__name__
 
     def _job_to_legacy_data(self, job: JobState) -> dict[str, Any]:
         """Convert JobState to legacy data format for old plugins"""
@@ -861,18 +856,12 @@ class StageExecutor:
         input_value = ""
         input_data = {}
 
-        if hasattr(job, 'input'):
-            if hasattr(job.input, 'value'):
-                input_value = job.input.value
-            if hasattr(job.input, 'data'):
-                input_data = job.input.data
-        elif hasattr(job, 'input_path'):
-            input_value = job.input_path
+        # JobState has typed input field with value and data attributes
+        input_value = job.input.value
+        input_data = job.input.data
 
         # Get existing plugin data for downstream plugins
-        plugin_data = {}
-        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-            plugin_data = job.plugins
+        plugin_data = job.plugins
 
         return {
             "input": {
@@ -885,43 +874,30 @@ class StageExecutor:
             "run_id": job.run_id
         }
 
+    def _ensure_status_plugins(self, job: JobState) -> None:
+        """Ensure job.status.plugins is a dict."""
+        if not isinstance(job.status.plugins, dict):
+            job.status.plugins = {}
+
     def _mark_executed(self, job: JobState, plugin_name: str, success: bool) -> None:
         """Mark plugin as executed in job.status.plugins."""
         if not success:
             self._mark_failed(job, plugin_name)
             return
 
-        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
-            job.status.plugins = {}
-
-        if plugin_name not in job.status.plugins:
-            job.status.plugins[plugin_name] = {'state': 'completed', 'success': True}
-        else:
-            job.status.plugins[plugin_name]['state'] = 'completed'
-            job.status.plugins[plugin_name]['success'] = True
+        self._ensure_status_plugins(job)
+        job.status.plugins[plugin_name] = {'state': 'completed', 'success': True}
 
     def _mark_failed(self, job: JobState, plugin_name: str) -> None:
         """Mark plugin as failed in job.status.plugins."""
-        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
-            job.status.plugins = {}
-
-        if plugin_name not in job.status.plugins:
-            job.status.plugins[plugin_name] = {'state': 'failed', 'success': False}
-        else:
-            job.status.plugins[plugin_name]['state'] = 'failed'
-            job.status.plugins[plugin_name]['success'] = False
-
+        self._ensure_status_plugins(job)
+        job.status.plugins[plugin_name] = {'state': 'failed', 'success': False}
         job.status.success = False
 
     def _mark_skipped(self, job: JobState, plugin_name: str) -> None:
         """Mark plugin as skipped in job.status.plugins."""
-        if not hasattr(job.status, 'plugins') or not isinstance(job.status.plugins, dict):
-            job.status.plugins = {}
-
-        if plugin_name not in job.status.plugins:
-            job.status.plugins[plugin_name] = {'state': 'skipped', 'success': True}
-        else:
-            job.status.plugins[plugin_name]['state'] = 'skipped'
+        self._ensure_status_plugins(job)
+        job.status.plugins[plugin_name] = {'state': 'skipped', 'success': True}
 
     def _calc_duration(self, start_time: datetime) -> int:
         """Calculate duration in milliseconds"""

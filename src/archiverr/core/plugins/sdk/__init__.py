@@ -15,7 +15,7 @@ from .base import BasePlugin, InputPlugin, OutputPlugin, ValidationResult
 from .context import ExecutionContext
 from .manifest import PluginManifest
 from .result import PluginResult
-from .types import MediaCategory, PluginCategory, PluginStatus
+from .types import MediaCategory, PerJobPlugin, PerRunPlugin, PluginCategory, PluginStatus
 from .validators import (
     ConfigValidator,
     validate_plugin_config,
@@ -49,4 +49,8 @@ __all__ = [
     'PluginCategory',
     'PluginStatus',
     'MediaCategory',
+
+    # Protocols
+    'PerRunPlugin',
+    'PerJobPlugin',
 ]
