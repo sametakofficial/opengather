@@ -19,6 +19,7 @@ from enum import Enum
 from typing import Any
 
 from archiverr.core.exceptions import PluginError, StageError
+from archiverr.core.provides_registry import get_provides_registry, ProvidesRegistry
 from archiverr.core.services.plugin_services import PluginServices
 from archiverr.core.triggers import TriggerRuleManager
 from archiverr.events import EventBus, Events
@@ -26,6 +27,7 @@ from archiverr.state.models import JobState
 from archiverr.utils.debug import Debugger, get_debugger
 
 from .registry import PluginRegistry, Stage
+from .resolver import DependencyResolver
 
 
 class ExecutionMode(Enum):
@@ -117,6 +119,20 @@ class StageExecutor:
         # Trigger rule manager for dependency resolution
         self._trigger_manager = TriggerRuleManager()
 
+        # Provides registry -- tracks plugin provide completion status
+        self._provides_registry: ProvidesRegistry = get_provides_registry()
+        self._register_provides_from_manifests()
+
+    def _register_provides_from_manifests(self) -> None:
+        """Register all plugin provides from manifests into the ProvidesRegistry."""
+        all_manifests = self._registry.get_all_manifests()
+        for plugin_name, manifest in all_manifests.items():
+            provides = manifest.get('provides', [])
+            if provides:
+                self._provides_registry.register_from_manifest(plugin_name, provides)
+        if all_manifests:
+            self._log("debug", f"Registered provides from {len(all_manifests)} plugin manifests")
+
     def execute_stage(self, stage: Stage) -> None:
         """
         Execute all plugins for a given stage.
@@ -137,20 +153,22 @@ class StageExecutor:
 
         self._log("debug", f"Stage {stage.value}: {len(plugins)} plugins")
 
-        # Sort plugins by dependency order
-        sorted_plugins = self._topological_sort(plugins, stage)
+        # Resolve execution groups using proper topological sort
+        execution_groups = self._resolve_execution_groups(plugins, stage)
 
         # Determine execution mode
         mode = STAGE_MODES.get(stage, ExecutionMode.PER_JOB)
 
         try:
             if stage == Stage.OUTPUT:
-                # OUTPUT stage uses mixed mode
-                self._execute_mixed(stage, sorted_plugins)
+                # OUTPUT stage uses mixed mode -- flatten groups for mixed dispatch
+                all_plugins = [p for group in execution_groups for p in group]
+                self._execute_mixed(stage, all_plugins)
             elif mode == ExecutionMode.PER_RUN:
-                self._execute_per_run(stage, sorted_plugins)
+                all_plugins = [p for group in execution_groups for p in group]
+                self._execute_per_run(stage, all_plugins)
             else:
-                self._execute_per_job(stage, sorted_plugins)
+                self._execute_per_job_grouped(stage, execution_groups)
 
         except StageError:
             raise  # Re-raise StageError as-is
@@ -237,10 +255,42 @@ class StageExecutor:
                 )
                 # Continue with next plugin (best effort)
 
+    def _execute_per_job_grouped(self, stage: Stage, groups: list[list[Any]]) -> None:
+        """
+        Execute pre-resolved plugin groups for each job.
+
+        Groups come from DependencyResolver -- plugins within a group
+        can safely run in parallel (no dependency conflicts).
+        Groups execute sequentially in dependency order.
+        """
+        jobs = self._get_all_jobs()
+
+        if not jobs:
+            self._log("warn", f"No jobs to process for stage: {stage.value}")
+            return
+
+        total_plugins = sum(len(g) for g in groups)
+        self._log("debug", f"Executing {total_plugins} plugins in {len(groups)} groups for {len(jobs)} jobs")
+
+        for job in jobs:
+            if job.id not in self._plugin_data_cache:
+                self._plugin_data_cache[job.id] = {}
+
+            for group in groups:
+                if len(group) > 1:
+                    self._execute_plugin_group_parallel(group, job, stage)
+                else:
+                    self._execute_plugin_for_job(group[0], job, stage)
+
+            self._event_bus.emit(Events.JOB_STAGE_COMPLETED, {
+                "job_id": job.id,
+                "stage": stage.value
+            })
+
     def _execute_per_job(self, stage: Stage, plugins: list[Any]) -> None:
         """
         Execute plugins for each job (PARSE, DATA stages).
-        
+
         For each job, groups plugins by requires/provides conflicts
         and executes conflict-free plugins in parallel.
         """
@@ -321,6 +371,12 @@ class StageExecutor:
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
             self._update_job_plugin_state(job, plugin_name, result_data, success, duration_ms)
 
+            # Step 4.5: Update provides registry
+            if success:
+                self._provides_registry.complete_all(plugin_name)
+            else:
+                self._provides_registry.fail_all(plugin_name)
+
             # Step 5: Emit event and return
             self._emit_plugin_completed(
                 plugin_name=plugin_name, stage=stage, mode="per_job",
@@ -333,6 +389,8 @@ class StageExecutor:
             )
 
         except (PluginError, Exception) as e:
+            # Mark provides as failed on error
+            self._provides_registry.fail_all(plugin_name)
             return self._handle_plugin_error(
                 e, plugin_name, job, stage, start_time
             )
@@ -520,6 +578,62 @@ class StageExecutor:
         # Then per_run plugins
         if per_run_plugins:
             self._execute_per_run(stage, per_run_plugins)
+
+    def _resolve_execution_groups(self, plugins: dict[str, Any], stage: Stage) -> list[list[Any]]:
+        """
+        Resolve plugin execution groups using proper topological sort.
+
+        Uses DependencyResolver for cycle detection and dependency-ordered grouping.
+        Plugins within a group can run in parallel safely.
+
+        Args:
+            plugins: Dict of plugin_name -> plugin_instance from registry
+            stage: Current execution stage
+
+        Returns:
+            List of groups, each group is a list of plugin instances
+        """
+        if isinstance(plugins, list):
+            self._log("error", f"_resolve_execution_groups received list instead of dict for stage {stage.value}")
+            return [plugins]
+
+        if not plugins:
+            return []
+
+        # Build metadata dict for DependencyResolver: {name: manifest}
+        metadata = {}
+        for name in plugins:
+            manifest = self._registry.get_manifest(name)
+            if manifest:
+                metadata[name] = manifest
+            else:
+                metadata[name] = {}
+
+        # Resolve execution order with proper topological sort
+        resolver = DependencyResolver(metadata)
+        try:
+            name_groups = resolver.resolve(list(plugins.keys()))
+        except ValueError as e:
+            self._log("error", f"Dependency resolution failed for stage {stage.value}: {e}")
+            # Fallback: all plugins in a single group
+            return [list(plugins.values())]
+
+        # Convert name groups to instance groups
+        instance_groups = []
+        for name_group in name_groups:
+            group = []
+            for name in name_group:
+                if name in plugins:
+                    group.append(plugins[name])
+            if group:
+                instance_groups.append(group)
+
+        if len(instance_groups) > 1:
+            self._log("debug",
+                       f"Dependency resolution: {len(plugins)} plugins -> "
+                       f"{len(instance_groups)} sequential groups")
+
+        return instance_groups
 
     def _topological_sort(self, plugins: dict[str, Any], stage: Stage) -> list[Any]:
         """
@@ -914,5 +1028,9 @@ class StageExecutor:
         for plugin_name, plugin_data in job.plugins.items():
             if isinstance(plugin_data, dict):
                 global_state['plugin'][plugin_name] = plugin_data
+
+        # Add provides registry data for provides.* prefix resolution
+        # This enables requires like: provides.http.request
+        global_state['provides'] = self._provides_registry.to_dict()
 
         return global_state

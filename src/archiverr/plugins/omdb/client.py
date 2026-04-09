@@ -34,17 +34,19 @@ class OMDbPlugin(OutputPlugin):
         if not self.api_key:
             return self._not_supported_result()
 
-        # Check category - OMDb only supports movie and show
-        input_metadata = match_data.get('input', {})
-        category = input_metadata.get('category', 'unknown')
+        # Get renamer data from plugins dict (legacy format: match_data['plugins'])
+        plugins_data = match_data.get('plugins', {})
+        renamer_data = plugins_data.get('renamer', {})
+        category = renamer_data.get('category', 'unknown')
 
+        # Check category - OMDb only supports movie and show
         if category not in ['movie', 'show']:
             self.debugger.debug("omdb", "Category not supported", category=category)
             return self._not_supported_result()
 
         start_time = datetime.now()
 
-        parsed = match_data.get('renamer', {}).get('parsed', {})
+        parsed = renamer_data.get('parsed', {})
         movie_data = parsed.get('movie')
         show_data = parsed.get('show')
 

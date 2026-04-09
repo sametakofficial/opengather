@@ -611,3 +611,212 @@ class TestEventEmission:
             duration_ms=50, job_id="job1"
         )
         assert len(events) == 1
+
+
+# ---------------------------------------------------------------------------
+# DependencyResolver Integration Tests (Step 1.1)
+# ---------------------------------------------------------------------------
+
+class TestResolveExecutionGroups:
+    """Tests for _resolve_execution_groups using DependencyResolver."""
+
+    def test_empty_plugins_returns_empty(self, executor):
+        result = executor._resolve_execution_groups({}, Stage.DATA)
+        assert result == []
+
+    def test_single_plugin_returns_one_group(self, executor, mock_registry):
+        plugin = _make_plugin("alpha")
+        mock_registry.get_manifest.return_value = {"requires": []}
+        result = executor._resolve_execution_groups({"alpha": plugin}, Stage.DATA)
+        assert len(result) == 1
+        assert len(result[0]) == 1
+
+    def test_independent_plugins_in_single_group(self, executor, mock_registry):
+        """Plugins with no dependencies can run in parallel (same group)."""
+        p1 = _make_plugin("tmdb")
+        p2 = _make_plugin("ffprobe")
+        plugins = {"tmdb": p1, "ffprobe": p2}
+
+        def manifest_side_effect(name):
+            return {"requires": []}
+
+        mock_registry.get_manifest.side_effect = manifest_side_effect
+        result = executor._resolve_execution_groups(plugins, Stage.DATA)
+        # Both independent -> single group
+        assert len(result) == 1
+        assert len(result[0]) == 2
+
+    def test_dependent_plugins_in_separate_groups(self, executor, mock_registry):
+        """Plugin B depends on A -> different sequential groups."""
+        p_renamer = _make_plugin("renamer")
+        p_tmdb = _make_plugin("tmdb")
+        plugins = {"renamer": p_renamer, "tmdb": p_tmdb}
+
+        def manifest_side_effect(name):
+            if name == "tmdb":
+                return {"requires": ["plugin.renamer.parsed:success"]}
+            return {"requires": []}
+
+        mock_registry.get_manifest.side_effect = manifest_side_effect
+        result = executor._resolve_execution_groups(plugins, Stage.DATA)
+        # renamer first, then tmdb -> 2 groups
+        assert len(result) == 2
+        # First group should be renamer (no deps)
+        first_names = [executor._get_plugin_name(p) for p in result[0]]
+        assert "renamer" in first_names
+        second_names = [executor._get_plugin_name(p) for p in result[1]]
+        assert "tmdb" in second_names
+
+    def test_diamond_dependency(self, executor, mock_registry):
+        """A -> B, A -> C, B -> D, C -> D produces correct ordering."""
+        plugins = {n: _make_plugin(n) for n in ["a", "b", "c", "d"]}
+
+        manifests = {
+            "a": {"requires": []},
+            "b": {"requires": ["plugin.a.data:success"]},
+            "c": {"requires": ["plugin.a.data:success"]},
+            "d": {"requires": ["plugin.b.data:success", "plugin.c.data:success"]},
+        }
+
+        mock_registry.get_manifest.side_effect = lambda name: manifests.get(name, {})
+        result = executor._resolve_execution_groups(plugins, Stage.DATA)
+
+        # a first, then b+c in parallel, then d
+        assert len(result) >= 2
+        # Flatten to check ordering
+        flat = []
+        for group in result:
+            flat.extend([executor._get_plugin_name(p) for p in group])
+        assert flat.index("a") < flat.index("b")
+        assert flat.index("a") < flat.index("c")
+        assert flat.index("b") < flat.index("d")
+        assert flat.index("c") < flat.index("d")
+
+    def test_cycle_detection_fallback(self, executor, mock_registry):
+        """Circular dependency falls back to single group."""
+        p1 = _make_plugin("x")
+        p2 = _make_plugin("y")
+        plugins = {"x": p1, "y": p2}
+
+        manifests = {
+            "x": {"requires": ["plugin.y.data:success"]},
+            "y": {"requires": ["plugin.x.data:success"]},
+        }
+
+        mock_registry.get_manifest.side_effect = lambda name: manifests.get(name, {})
+        # Should not crash -- falls back to single group
+        result = executor._resolve_execution_groups(plugins, Stage.DATA)
+        assert len(result) >= 1
+
+    def test_list_input_returns_single_group(self, executor):
+        """If accidentally given a list, wraps it in one group."""
+        plugins = [_make_plugin("a")]
+        result = executor._resolve_execution_groups(plugins, Stage.DATA)
+        assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# ProvidesRegistry Integration Tests (Step 1.3)
+# ---------------------------------------------------------------------------
+
+class TestProvidesRegistryIntegration:
+    """Tests for ProvidesRegistry wiring in StageExecutor."""
+
+    def test_provides_registered_on_init(self, mock_state, event_bus, config):
+        """ProvidesRegistry should be populated from manifests on init."""
+        registry = MagicMock()
+        registry.get_all_manifests.return_value = {
+            "tmdb": {"provides": ["http.request", "state.update"]},
+            "scanner": {"provides": ["job.create", "fs.read"]},
+        }
+        registry.get_plugins_by_stage.return_value = {}
+        registry.get_manifest.return_value = {}
+
+        from archiverr.core.provides_registry import reset_provides_registry
+        reset_provides_registry()
+
+        executor = StageExecutor(
+            state=mock_state,
+            plugin_registry=registry,
+            event_bus=event_bus,
+            config=config,
+        )
+
+        provides_data = executor._provides_registry.to_dict()
+        assert "http.request" in provides_data
+        assert "tmdb" in provides_data["http.request"]
+        assert "job.create" in provides_data
+        assert "scanner" in provides_data["job.create"]
+
+        reset_provides_registry()
+
+    def test_provides_completed_on_success(self, mock_state, event_bus, config, sample_job):
+        """After successful plugin execution, provides should be marked completed."""
+        from archiverr.core.provides_registry import reset_provides_registry
+        reset_provides_registry()
+
+        registry = MagicMock()
+        registry.get_all_manifests.return_value = {
+            "test_plugin": {"provides": ["http.request"]},
+        }
+        registry.get_plugins_by_stage.return_value = {}
+        registry.get_manifest.return_value = {"requires": [], "trigger_rule": "all_success"}
+
+        executor = StageExecutor(
+            state=mock_state,
+            plugin_registry=registry,
+            event_bus=event_bus,
+            config=config,
+        )
+
+        plugin = _make_plugin("test_plugin", execute_result={"data": {"key": "val"}})
+        executor._execute_plugin_for_job(plugin, sample_job, Stage.DATA)
+
+        assert executor._provides_registry.is_completed("http.request")
+
+        reset_provides_registry()
+
+    def test_provides_failed_on_error(self, mock_state, event_bus, config, sample_job):
+        """After failed plugin execution, provides should be marked failed."""
+        from archiverr.core.provides_registry import reset_provides_registry, ProvideStatus
+        reset_provides_registry()
+
+        registry = MagicMock()
+        registry.get_all_manifests.return_value = {
+            "failing_plugin": {"provides": ["state.update"]},
+        }
+        registry.get_plugins_by_stage.return_value = {}
+        registry.get_manifest.return_value = {"requires": [], "trigger_rule": "all_success"}
+
+        executor = StageExecutor(
+            state=mock_state,
+            plugin_registry=registry,
+            event_bus=event_bus,
+            config=config,
+        )
+
+        plugin = _make_plugin("failing_plugin")
+        plugin.execute.side_effect = PluginError("test error")
+        executor._execute_plugin_for_job(plugin, sample_job, Stage.DATA)
+
+        status = executor._provides_registry.get_status("state.update")
+        assert "failing_plugin" in status
+        assert status["failing_plugin"] == "failed"
+
+        reset_provides_registry()
+
+    def test_provides_in_global_state(self, executor, sample_job):
+        """Global state should include provides data for trigger evaluation."""
+        from archiverr.core.provides_registry import reset_provides_registry
+        reset_provides_registry()
+
+        # Re-register after reset
+        executor._provides_registry.register("tmdb", "http.request")
+        executor._provides_registry.complete("tmdb", "http.request")
+
+        state = executor._build_global_state(sample_job)
+        assert "provides" in state
+        assert "http.request" in state["provides"]
+        assert state["provides"]["http.request"]["tmdb"] == "completed"
+
+        reset_provides_registry()

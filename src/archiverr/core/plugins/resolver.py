@@ -92,38 +92,49 @@ class DependencyResolver:
     def _extract_plugin_from_requires(self, require: str) -> str:
         """
         Extract plugin name from a requires path.
-        
+
         format examples:
+            'plugin.renamer.parsed:success' -> 'renamer'
+            'plugin.tmdb.data:success' -> 'tmdb'
             'job.plugins.renamer.parsed' -> 'renamer'
             'job.plugins.tmdb.movie' -> 'tmdb'
             'provides.http.request' -> None (capability, not plugin)
             'events.job.created' -> None (event, not plugin)
             'renamer' -> 'renamer' (legacy direct plugin name)
-            
+
         Returns:
             Plugin name or None if not a plugin dependency
         """
         if not require:
             return None
 
-        # Check for job.plugins.{plugin_name}.{path} format
-        if require.startswith('job.plugins.'):
-            parts = require.split('.')
+        # Strip value matcher suffix (e.g., ":success", ":fail")
+        path = require.split(':', 1)[0].strip()
+
+        # Current format: plugin.{plugin_name}.{path}
+        if path.startswith('plugin.'):
+            parts = path.split('.')
+            if len(parts) >= 2:
+                return parts[1]  # plugin.{plugin_name}
+
+        # Legacy format: job.plugins.{plugin_name}.{path}
+        if path.startswith('job.plugins.'):
+            parts = path.split('.')
             if len(parts) >= 3:
                 return parts[2]  # job.plugins.{plugin_name}
 
         # Skip provides.* and events.* (not plugin dependencies)
-        if require.startswith('provides.') or require.startswith('events.'):
+        if path.startswith('provides.') or path.startswith('events.'):
             return None
 
         # Skip job.input.* and job.output.* (not plugin dependencies)
-        if require.startswith('job.input.') or require.startswith('job.output.'):
+        if path.startswith('job.input.') or path.startswith('job.output.'):
             return None
 
         # Legacy format: direct plugin name
         # Only if it doesn't contain dots (to avoid false positives)
-        if '.' not in require:
-            return require
+        if '.' not in path:
+            return path
 
         return None
 

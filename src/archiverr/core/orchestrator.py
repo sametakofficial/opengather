@@ -191,6 +191,35 @@ class Orchestrator:
             )
 
         manifests = self._plugin_registry.get_all_manifests()
+
+        # Startup validation: config, manifests, dependencies, provides conflicts
+        from archiverr.core.validation.startup_validator import validate_at_startup
+        validation_result = validate_at_startup(
+            config=self._config,
+            manifests=manifests,
+            enabled_plugins=self._plugin_registry.enabled_plugins
+        )
+
+        # Log warnings
+        for warning in validation_result.warnings:
+            self._log("warn", f"Startup validation: {warning}")
+
+        # Fatal errors stop execution
+        if validation_result.has_fatal():
+            error_msgs = validation_result.format_errors()
+            for msg in error_msgs:
+                self._log("error", f"Startup validation: {msg}")
+            raise CriticalError(
+                "Startup validation failed with fatal errors",
+                {"errors": error_msgs}
+            )
+
+        # Non-fatal errors are logged as warnings (plugin-level issues)
+        if not validation_result.valid:
+            for error in validation_result.errors:
+                self._log("warn", f"Startup validation: {error}")
+
+        # FS Lock validation (static path enforcement)
         is_valid, fs_errors = self._fs_lock_manager.validate_all_manifests(manifests)
 
         if not is_valid:
@@ -206,13 +235,6 @@ class Orchestrator:
         if conflicts:
             for conflict in conflicts:
                 self._log("warn", f"FS Lock conflict: {conflict}")
-
-        # Legacy dependency validation (will be removed after full migration)
-        dep_errors = self._plugin_registry.validate_dependencies()
-        if dep_errors:
-            self._log("warn", f"Dependency warnings: {len(dep_errors)}")
-            for err in dep_errors:
-                self._log("warn", err)
 
         # Start run in state
         self._run_id = self._state.start_run(self._config)

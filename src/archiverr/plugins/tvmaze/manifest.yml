@@ -9,7 +9,6 @@ requires:
   - plugin.renamer.parsed:success
 provides:
   - http.request
-  - state.update
 trigger_rule: all_success
 categories:
   - show
