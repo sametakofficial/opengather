@@ -1,6 +1,6 @@
 # Progress
 
-**Last Updated:** Session 31 - April 10, 2026
+**Last Updated:** Session 31 Phase 2 - April 10, 2026
 
 ## What Works
 
@@ -22,6 +22,10 @@
 - [x] DependencyResolver wired into StageExecutor (proper topo sort, cycle detection)
 - [x] ProvidesRegistry wired into execution lifecycle (register/complete/fail)
 - [x] StartupValidator wired into Orchestrator._initialize()
+- [x] PerRunPlugin/PerJobPlugin protocols (runtime_checkable, type-safe dispatch)
+- [x] hasattr reduced 23->8 in stage_executor (Protocol-based dispatch)
+- [x] Orphaned executor.py moved to .deleted/
+- [x] Dead PluginServices dataclass removed from services/__init__.py
 
 ### All 9 Plugins Working
 - [x] scanner, file-reader (input)
@@ -39,7 +43,7 @@
 - [x] Per-match and summary task execution
 - [x] Conditional templates
 
-### Testing (420 unit passed, 4 MongoDB fail, 17 skipped)
+### Testing (419 unit passed, 4 MongoDB fail, 17 skipped)
 - [x] Orchestrator tests (24) -- run lifecycle, init, stages, finalize, errors, factory
 - [x] Stage executor tests (56) -- all 5 decomposed methods, parallel grouping, caching, DependencyResolver integration (7), ProvidesRegistry lifecycle (4)
 - [x] Manifest normalizer tests (24)
@@ -63,7 +67,7 @@
 - [ ] FastAPI endpoint connection to live orchestrator
 - [ ] Async persistence interface for FastAPI
 - [ ] Config validation enforcement (StartupValidator wired, config.schema.json not yet enforced)
-- [ ] Plugin Protocol/ABC (still using 4x hasattr() checks)
+- [ ] Further hasattr reduction (8 remaining, down from 23; PerRunPlugin/PerJobPlugin protocols defined)
 - [ ] Web UI
 
 ### Technical Debt
@@ -89,4 +93,4 @@
 | 28 | Apr 8, 2026 | Full analysis | SESSION_28_REPORT.md, 6 SVG diagrams |
 | 29 | Apr 8, 2026 | Architecture fix | Hardcoded names removed, manifests completed, UUID+PARTIAL |
 | 30 | Apr 8, 2026 | Deep audit + core tests | stage_executor decomposed, 69 tests, 462 total passed, workflow automation |
-| **31** | **Apr 10, 2026** | **Wire orphaned infrastructure** | **DependencyResolver+ProvidesRegistry+StartupValidator wired into live pipeline, 11 new tests, manifest fixes, OMDb bug fix** |
+| **31** | **Apr 10, 2026** | **Wire infrastructure + Protocol cleanup** | **Phase 1: DependencyResolver+ProvidesRegistry+StartupValidator wired, 11 new tests. Phase 2: PerRunPlugin/PerJobPlugin protocols, hasattr 23->8, orphaned code removed, 419 tests passing** |

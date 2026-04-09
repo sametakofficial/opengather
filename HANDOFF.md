@@ -1,4 +1,4 @@
-# Handoff - Session 31 Complete
+# Handoff - Session 31 Phase 2 Complete
 
 **Date:** April 10, 2026
 **Branch:** `dev/communication-refactoring`
@@ -6,36 +6,38 @@
 
 ## TL;DR
 
-Session 31: Wired three orphaned infrastructure components into the live pipeline -- DependencyResolver (proper topo sort replacing pseudo-sort), ProvidesRegistry (tracks plugin provide completion), StartupValidator (config/manifest/dependency checks at boot). Fixed OMDb category bug, fixed manifest inaccuracies. 11 new tests, 420 unit tests passing.
+Session 31 Phase 2: Defined PerRunPlugin/PerJobPlugin `@runtime_checkable` protocols for type-safe plugin dispatch. Reduced `hasattr` calls from 23 to 8 in stage_executor.py. Moved orphaned executor.py to .deleted/. Removed dead PluginServices dataclass + factory functions from services/__init__.py. 419 unit tests passing.
+
+Phase 1 (earlier): Wired DependencyResolver, ProvidesRegistry, StartupValidator into live pipeline. Fixed OMDb category bug, manifest inaccuracies. 11 new tests.
 
 ## State of the Code
 
 - Venv: Working (Python 3.14.2)
-- Tests: 420 passed, 4 failed (MongoDB -- expected), 17 skipped
+- Tests: 419 passed, 4 failed (MongoDB -- expected), 17 skipped
 - Lint: 40 pre-existing whitespace warnings (cosmetic, stage_executor only)
-- Architecture: Plugin-agnostic core ENFORCED, dependency resolution now uses proper topological sort
+- Architecture: Plugin-agnostic core ENFORCED, PerRunPlugin/PerJobPlugin protocols for dispatch
 
 ## What Was Changed
 
-### Source Code
-- `core/plugins/stage_executor.py` (1036 LOC) -- Wired DependencyResolver via `_resolve_execution_groups()`, wired ProvidesRegistry (register/complete/fail lifecycle), added `_execute_per_job_grouped()`, injected provides data into global_state
-- `core/orchestrator.py` (490 LOC) -- Wired StartupValidator into `_initialize()`, removed legacy `validate_dependencies()` call
-- `core/plugins/resolver.py` -- Fixed `_extract_plugin_from_requires()` to handle `plugin.*.field:success` format (strips value matcher suffix)
-- `plugins/omdb/client.py` -- Fixed category bug (was reading from `input.category`, now reads from `plugins.renamer.category`)
+### Phase 2 (Latest Commit: b9941b4)
+- `core/plugins/sdk/types.py` -- PerRunPlugin and PerJobPlugin `@runtime_checkable` Protocol classes
+- `core/plugins/stage_executor.py` -- hasattr 23->8: isinstance-based plugin dispatch, extracted `_ensure_status_plugins`, removed dead `process` fallback
+- `core/plugins/.deleted/executor.py` -- Moved orphaned async PluginExecutor here
+- `core/services/__init__.py` -- Removed dead PluginServices dataclass + factory functions
+- `core/plugins/sdk/__init__.py` -- Updated exports for new protocols
 
-### Manifest Fixes
-- `plugins/omdb/manifest.yml` -- Removed false `state.update` provide
-- `plugins/tvdb/manifest.yml` -- Removed false `state.update` provide
-- `plugins/tvmaze/manifest.yml` -- Removed false `state.update` provide
-- `plugins/tasker/manifest.yml` -- Fixed requires path (`plugin.renamer.data` -> `plugin.renamer.parsed`)
-
-### New Tests
-- `tests/unit/core/plugins/test_stage_executor.py` -- 11 new tests: DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
+### Phase 1 (Commit: 358fd02)
+- `core/plugins/stage_executor.py` -- Wired DependencyResolver + ProvidesRegistry
+- `core/orchestrator.py` -- Wired StartupValidator, removed legacy validate_dependencies()
+- `core/plugins/resolver.py` -- Fixed plugin.*.field:success format handling
+- `plugins/omdb/client.py` -- Fixed category path bug
+- Manifest fixes: omdb, tvdb, tvmaze (removed false provides), tasker (fixed requires)
+- 11 new tests in test_stage_executor.py
 
 ## Next Session Should
 
 1. **Fix ruff whitespace warnings** (40 cosmetic issues in stage_executor)
-2. **Define Plugin Protocol** -- Replace 4 `hasattr()` checks with proper ABC/Protocol
+2. **Reduce remaining 8 hasattr calls** -- Further Protocol adoption for result extraction and state guards
 3. **Consolidate plugin data** -- Single authoritative store instead of 5 locations
 4. **Move deprecated `mongodb.py` to .deleted/** -- 526 LOC dead Motor code
 5. **Fix FastAPI output path** -- `process_executor.py` expects old report format
@@ -45,10 +47,11 @@ Session 31: Wired three orphaned infrastructure components into the live pipelin
 
 | File | Why It Matters |
 |------|---------------|
-| `core/plugins/stage_executor.py` (1036 LOC) | DependencyResolver + ProvidesRegistry wired in Session 31 |
-| `core/orchestrator.py` (490 LOC) | StartupValidator wired in Session 31 |
+| `core/plugins/stage_executor.py` | hasattr 23->8, DependencyResolver+ProvidesRegistry wired |
+| `core/plugins/sdk/types.py` | PerRunPlugin/PerJobPlugin protocols (new in Phase 2) |
+| `core/orchestrator.py` (490 LOC) | StartupValidator wired in Phase 1 |
 | `core/plugins/resolver.py` | Fixed plugin.*.field:success format handling |
-| `core/provides_registry.py` | New: tracks plugin provide completion status |
+| `core/provides_registry.py` | Tracks plugin provide completion status |
 | `tests/unit/core/plugins/test_stage_executor.py` | 56 tests covering executor + resolver + provides |
 
 ## Read First
