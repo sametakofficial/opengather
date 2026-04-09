@@ -1,67 +1,58 @@
 # Active Context
 
-**Last Updated:** Session 29 - April 8, 2026
-**Version:** v2.3.1-dev
+**Last Updated:** Session 31 - April 10, 2026
+**Version:** v2.3.2-dev
 **Branch:** `dev/communication-refactoring`
 
-## What Just Happened (Session 29)
+## What Just Happened (Session 31)
 
 ### Completed
-1. **Venv rebuilt** - Python 3.14.2, all deps installed (`pip install -e ".[all]"`)
-2. **Hardcoded plugin names removed from core** - The #1 architecture violation is FIXED
-   - Deleted `PLUGIN_STAGE_MAP` (11 plugin names) from `manifest_normalizer.py`
-   - Deleted `plugin_provides` (11 plugin names) from `manifest_normalizer.py`
-   - Replaced with generic stage-based inference only
-   - Removed `PLUGIN_STAGE_MAP` import from `loader.py`
-3. **All plugins now have manifest.yml** with explicit `stage` and `provides`
-   - Created: file-reader, tvdb, omdb, tvmaze
-   - Updated: scanner, renamer, tmdb, ffprobe, tasker (added `provides`)
-4. **Legacy plugin.json files removed** - Moved 7 files to `.deleted/`
-5. **PluginManifest Pydantic model tightened** - `category` deprecation warning, `run_mode` auto-inference
-6. **Regression guard test added** - Static analysis scans core for hardcoded plugin name maps
-7. **UUID[:8] fixed** - Full UUID4 in `state/manager.py` and `mongodb.py`
-8. **PARTIAL state added** - `RunState.complete()` now uses PARTIAL when some jobs fail
-9. **Backup files cleaned** - 3 `.bak` files moved to `.deleted/`
-10. **pyproject.toml updated** - package-data now includes `manifest.yml`
+1. **DependencyResolver wired into StageExecutor** - Replaced `len(requires)` pseudo-sort with proper topological sort and cycle detection via `_resolve_execution_groups()`
+2. **ProvidesRegistry wired into execution lifecycle** - Register on init from manifests, complete/fail after plugin execution, injected into global_state for trigger evaluation
+3. **StartupValidator wired into Orchestrator._initialize()** - Config, manifest, dependency validation at startup; replaces legacy `validate_dependencies()`
+4. **DependencyResolver fixed** - Now handles `plugin.*.field:success` requires format (strips value matcher suffix)
+5. **OMDb category bug fixed** - Was reading category from wrong path (`input.category` instead of `plugins.renamer.category`), always got 'unknown'
+6. **Manifest accuracy fixes** - Removed false `state.update` provides from tvdb/tvmaze/omdb; fixed tasker requires (`plugin.renamer.data` -> `plugin.renamer.parsed`)
+7. **New execution method** - `_execute_per_job_grouped()` uses pre-resolved dependency groups instead of ad-hoc parallel grouping
+8. **11 new tests** - DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
 
-### Test Results After Changes
-- **340 passed** (+4 from baseline), 4 failed (MongoDB not running - expected), 17 skipped
-- Ruff: Pre-existing 928 whitespace errors (unchanged)
+### Test Results
+- **420 unit tests passed** (+11 new), 4 failed (MongoDB), 17 skipped
+- Ruff: 40 whitespace warnings on stage_executor (cosmetic, pre-existing)
 
 ## Active Decisions
 
 | Decision | Status | Rationale |
 |----------|--------|-----------|
 | Plugin-agnostic core | ENFORCED | Guard test prevents regression |
-| manifest.yml as single source | DONE | All plugins migrated, plugin.json deleted |
-| UUID4 full length | DONE | Birthday paradox at 65K with truncated IDs |
-| PARTIAL state for mixed results | DONE | 99/100 success shouldn't show as FAILED |
-| PyMongo sync for CLI | ACTIVE | Motor deprecated, pymongo async for FastAPI |
-| Beanie ODM dropped | ACTIVE | Using raw pymongo instead |
+| manifest.yml as single source | DONE | All plugins migrated |
+| Stage executor decomposed | DONE | 5 SRP methods, each independently testable |
+| PyMongo sync for CLI | ACTIVE | Motor deprecated |
+| Beanie ODM dropped | ACTIVE | Raw pymongo instead |
+| Session End Protocol | ENFORCED | CLAUDE.md mandates commit + report + HANDOFF + audit |
 
 ## Known Issues (Current)
 
 ### Blocking Nothing
-- 4 API endpoint tests fail without MongoDB running (expected)
-- 928 ruff whitespace warnings (pre-existing cosmetic debt)
+- 4 tests fail without MongoDB running (expected)
+- 40 ruff whitespace warnings on stage_executor (cosmetic)
 
 ### Needs Attention
-- `tests/unit/core/test_orchestrator.py` - 0 bytes (orchestrator untested)
-- `tests/unit/core/test_stage_executor.py` - 0 bytes
 - `tests/unit/core/test_plugin_services.py` - 0 bytes
+- `tests/unit/core/validation/test_startup_validator.py` - 0 bytes
+- `tests/unit/infrastructure/test_pymongo_persistence.py` - 0 bytes
 - `tests/e2e/` and `tests/integration/` - empty directories
-- FastAPI endpoints disconnected from orchestrator (`process_executor.py` reads old path)
+- FastAPI endpoints disconnected from orchestrator
 - Plugin data stored in 5 places (consistency risk)
-- No async persistence interface for FastAPI
-- Deprecated Motor code still exists (`infrastructure/database/mongodb.py`, 527 LOC)
+- Deprecated Motor code still exists (`mongodb.py`, 526 LOC)
 - Config validation schema exists but not enforced
+- 4 legacy plugin method variants via `hasattr()` (no Protocol/ABC)
 
 ## What To Do Next (Priority Order)
 
-1. **Write orchestrator tests** - `test_orchestrator.py` is 0 bytes, orchestrator is 903 LOC
-2. **Write stage executor tests** - Critical execution path untested
-3. **Fix FastAPI output path** - `process_executor.py` expects old report format
-4. **Consolidate plugin data** - Single source of truth instead of 5 copies
-5. **Remove deprecated Motor code** - Move `mongodb.py` to `.deleted/`
-6. **Implement config validation** - Wire `config.schema.json` into startup
-7. **MongoDB backend integration** - Models, repositories, connection wiring
+1. **Fix ruff whitespace warnings** - 40 cosmetic issues in stage_executor
+2. **Define Plugin Protocol** - Replace 4 `hasattr()` checks with ABC/Protocol
+3. **Consolidate plugin data** - Single authoritative store instead of 5 locations
+4. **Move deprecated Motor code** - `mongodb.py` to `.deleted/`
+5. **Fix FastAPI output path** - `process_executor.py` expects old report format
+6. **MongoDB backend integration** - Connect pymongo_persistence.py to orchestrator

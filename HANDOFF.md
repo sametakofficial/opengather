@@ -1,56 +1,55 @@
-# Handoff - Session 30 Complete
+# Handoff - Session 31 Complete
 
-**Date:** April 8, 2026
+**Date:** April 10, 2026
 **Branch:** `dev/communication-refactoring`
 **Uncommitted changes:** No (all committed)
 
 ## TL;DR
 
-Session 30: Deep architecture audit, decomposed the 200 LOC monolith in stage_executor.py into 5 SRP methods, wrote 69 core tests (orchestrator + stage_executor), set up session-end workflow automation. Total test count: 461 (was 340).
+Session 31: Wired three orphaned infrastructure components into the live pipeline -- DependencyResolver (proper topo sort replacing pseudo-sort), ProvidesRegistry (tracks plugin provide completion), StartupValidator (config/manifest/dependency checks at boot). Fixed OMDb category bug, fixed manifest inaccuracies. 11 new tests, 420 unit tests passing.
 
 ## State of the Code
 
 - Venv: Working (Python 3.14.2)
-- Tests: 461 passed, 14 failed (MongoDB/API -- expected), 47 skipped
+- Tests: 420 passed, 4 failed (MongoDB -- expected), 17 skipped
 - Lint: 40 pre-existing whitespace warnings (cosmetic, stage_executor only)
-- Architecture: Plugin-agnostic core ENFORCED, stage_executor decomposed
+- Architecture: Plugin-agnostic core ENFORCED, dependency resolution now uses proper topological sort
 
 ## What Was Changed
 
 ### Source Code
-- `core/plugins/stage_executor.py` -- Decomposed `_execute_plugin_for_job()` into 5 methods
-- `core/plugins/stage_executor.py` -- Fixed `result.status is None` bug
-- `tests/test_full_pipeline.py` -- Fixed `.deleted/` dir being treated as plugin
+- `core/plugins/stage_executor.py` (1036 LOC) -- Wired DependencyResolver via `_resolve_execution_groups()`, wired ProvidesRegistry (register/complete/fail lifecycle), added `_execute_per_job_grouped()`, injected provides data into global_state
+- `core/orchestrator.py` (490 LOC) -- Wired StartupValidator into `_initialize()`, removed legacy `validate_dependencies()` call
+- `core/plugins/resolver.py` -- Fixed `_extract_plugin_from_requires()` to handle `plugin.*.field:success` format (strips value matcher suffix)
+- `plugins/omdb/client.py` -- Fixed category bug (was reading from `input.category`, now reads from `plugins.renamer.category`)
 
-### New Test Files
-- `tests/unit/core/plugins/test_stage_executor.py` -- 45 tests (613 LOC)
-- `tests/unit/core/test_orchestrator.py` -- 24 tests (423 LOC)
+### Manifest Fixes
+- `plugins/omdb/manifest.yml` -- Removed false `state.update` provide
+- `plugins/tvdb/manifest.yml` -- Removed false `state.update` provide
+- `plugins/tvmaze/manifest.yml` -- Removed false `state.update` provide
+- `plugins/tasker/manifest.yml` -- Fixed requires path (`plugin.renamer.data` -> `plugin.renamer.parsed`)
 
-### Configuration
-- `.claude/CLAUDE.md` -- Cleaned up, added Session End Protocol
-- `.claude/settings.json` -- Added Stop hook for uncommitted change detection
-
-### Documentation
-- `memory-bank/sessions/SESSION_30_DEEP_ANALYSIS.md` -- Full analysis + session report
+### New Tests
+- `tests/unit/core/plugins/test_stage_executor.py` -- 11 new tests: DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
 
 ## Next Session Should
 
-1. **Fix 928 ruff whitespace warnings** (cosmetic but noisy)
+1. **Fix ruff whitespace warnings** (40 cosmetic issues in stage_executor)
 2. **Define Plugin Protocol** -- Replace 4 `hasattr()` checks with proper ABC/Protocol
 3. **Consolidate plugin data** -- Single authoritative store instead of 5 locations
 4. **Move deprecated `mongodb.py` to .deleted/** -- 526 LOC dead Motor code
-5. **Wire config validation** -- `config.schema.json` exists but not enforced at startup
+5. **Fix FastAPI output path** -- `process_executor.py` expects old report format
 6. **MongoDB backend** -- pymongo_persistence.py exists but not connected to orchestrator
 
 ## Critical Files to Know
 
 | File | Why It Matters |
 |------|---------------|
-| `core/plugins/stage_executor.py` (918 LOC) | Just decomposed, 45 tests cover it |
-| `core/orchestrator.py` (468 LOC) | 24 tests cover it now |
-| `tests/unit/core/plugins/test_stage_executor.py` | New -- 45 comprehensive tests |
-| `tests/unit/core/test_orchestrator.py` | New -- 24 comprehensive tests |
-| `.claude/CLAUDE.md` | Updated with Session End Protocol |
+| `core/plugins/stage_executor.py` (1036 LOC) | DependencyResolver + ProvidesRegistry wired in Session 31 |
+| `core/orchestrator.py` (490 LOC) | StartupValidator wired in Session 31 |
+| `core/plugins/resolver.py` | Fixed plugin.*.field:success format handling |
+| `core/provides_registry.py` | New: tracks plugin provide completion status |
+| `tests/unit/core/plugins/test_stage_executor.py` | 56 tests covering executor + resolver + provides |
 
 ## Read First
 

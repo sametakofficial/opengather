@@ -40,7 +40,7 @@ codebase/archiverr/
     models/             # Response builder
     utils/              # Config loader, debug, Jinja2 filters
   tests/
-    unit/               # 340+ passing tests
+    unit/               # 420 passing tests (4 MongoDB fail, 17 skipped)
       core/             # Manifest normalizer, plugin agnostic guard
       api/              # Endpoint tests (4 fail without MongoDB)
       state/            # State models, manager
@@ -59,8 +59,8 @@ codebase/archiverr/
 | `core/plugins/loader.py` | Loads and instantiates plugins with config validation |
 | `core/plugins/discovery.py` | Discovers plugins from manifest files |
 | `core/plugins/resolver.py` | Topological dependency resolution |
-| `core/plugins/stage_executor.py` | Per-job plugin execution in stages |
-| `core/orchestrator.py` | Main execution coordinator (903 LOC) |
+| `core/plugins/stage_executor.py` | Per-job plugin execution in stages (1036 LOC, decomposed) |
+| `core/orchestrator.py` | Main execution coordinator (490 LOC) |
 | `state/manager.py` | GlobalStateManager with SRP delegation |
 | `state/models.py` | RunState, JobState, StateEnum (includes PARTIAL) |
 | `infrastructure/database/pymongo_persistence.py` | Active MongoDB driver (sync) |
