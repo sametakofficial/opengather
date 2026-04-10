@@ -20,6 +20,7 @@ Usage:
 
 from .connection import DatabaseConfig, DatabaseConnection
 from .interface import PersistenceInterface
+from .null_persistence import NullPersistence
 
 # PyMongo sync driver (for CLI) - NEW: Clean sync implementation
 try:
@@ -58,4 +59,6 @@ __all__ = [
     # Availability flags
     'PYMONGO_AVAILABLE',
     'ASYNC_PYMONGO_AVAILABLE',
+    # Null backend
+    'NullPersistence',
 ]

@@ -39,13 +39,12 @@ class TMDbPlugin(OutputPlugin):
         # Get extras configuration
         self.extras_config = config.get('extras', {})
 
-    async def setup(self) -> None:
-        """Initialize API clients and fetchers (called once on load)"""
+    def setup(self) -> None:
+        """Initialize API clients and fetchers (called once on load)."""
         self.api = TMDbAPI(self.api_key, self.lang, self.region)
         self.extras_client = TMDbExtras(self.api_key, self.lang)
         self.normalizer = TMDbNormalizer()
 
-        # Initialize fetchers - pass None for debugger, they should use self.log too
         self.movie_fetcher = TMDbMovieFetcher(
             self.api, self.extras_client, self.normalizer,
             self.extras_config, self.include_raw, None
@@ -56,21 +55,6 @@ class TMDbPlugin(OutputPlugin):
         )
         self._initialized = True
         self.info("TMDb plugin initialized", api_key_set=bool(self.api_key))
-
-    def _sync_setup(self) -> None:
-        """Synchronous setup for backwards compatibility"""
-        self.api = TMDbAPI(self.api_key, self.lang, self.region)
-        self.extras_client = TMDbExtras(self.api_key, self.lang)
-        self.normalizer = TMDbNormalizer()
-        self.movie_fetcher = TMDbMovieFetcher(
-            self.api, self.extras_client, self.normalizer,
-            self.extras_config, self.include_raw, None
-        )
-        self.show_fetcher = TMDbShowFetcher(
-            self.api, self.extras_client, self.normalizer,
-            self.extras_config, self.include_raw, None
-        )
-        self._initialized = True
 
     def execute(self, job: Any, services: Any) -> PluginResult:
         """
@@ -86,7 +70,7 @@ class TMDbPlugin(OutputPlugin):
         started_at = datetime.now()
 
         if not self._initialized:
-            self._sync_setup()
+            self.setup()
 
         # Session 17: Get parsed data from plugin.renamer.parsed (flat structure)
         parsed_data = {}

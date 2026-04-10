@@ -138,14 +138,14 @@ class BasePlugin(ABC):
     # Lifecycle Hooks
     # =========================================================================
 
-    async def setup(self) -> None:
+    def setup(self) -> None:
         """
         Called once when plugin is loaded.
         Override to initialize resources (API clients, caches, etc.)
         """
         self._initialized = True
 
-    async def teardown(self) -> None:
+    def teardown(self) -> None:
         """
         Called when plugin is unloaded.
         Override to cleanup resources.

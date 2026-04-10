@@ -4,8 +4,7 @@ from typing import Any
 
 import requests
 
-from archiverr.core.plugins.sdk import OutputPlugin
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 from .normalize.normalizer import OMDbNormalizer
 
@@ -19,46 +18,42 @@ class OMDbPlugin(OutputPlugin):
         self.api_key = config.get('api_key', '')
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
         self.normalizer = OMDbNormalizer()
-        self.debugger = get_debugger()
 
-    def execute(self, match_data: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, job: Any, services: Any) -> PluginResult:
         """
         Fetch metadata from OMDb.
-        
-        Args:
-            match_data: Must contain category in input and renamer parsed data
-            
-        Returns:
-            {status, movie: {...}, show: {...}}
-        """
-        if not self.api_key:
-            return self._not_supported_result()
 
-        # Get renamer data from plugins dict (legacy format: match_data['plugins'])
-        plugins_data = match_data.get('plugins', {})
-        renamer_data = plugins_data.get('renamer', {})
+        Args:
+            job: JobState with plugins.renamer.data.parsed
+            services: PluginServices
+
+        Returns:
+            PluginResult with movie/show data
+        """
+        started_at = datetime.now()
+
+        if not self.api_key:
+            return PluginResult.skipped_result(reason="No API key configured", started_at=started_at)
+
+        # Get renamer data from job.plugins (new protocol)
+        renamer_data = {}
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            renamer_data = job.plugins.get('renamer', {})
+
         category = renamer_data.get('category', 'unknown')
 
         # Check category - OMDb only supports movie and show
         if category not in ['movie', 'show']:
-            self.debugger.debug("omdb", "Category not supported", category=category)
-            return self._not_supported_result()
-
-        start_time = datetime.now()
+            self.debug("Category not supported", category=category)
+            return PluginResult.skipped_result(reason=f"Category '{category}' not supported", started_at=started_at)
 
         parsed = renamer_data.get('parsed', {})
         movie_data = parsed.get('movie')
         show_data = parsed.get('show')
 
-        self.debugger.debug("omdb", "Processing request", category=category)
+        self.debug("Processing request", category=category)
 
-        result = {
-            'status': {
-                'success': False,
-                'started_at': start_time.isoformat(),
-                'finished_at': '',
-                'duration_ms': 0
-            },
+        result_data: dict[str, Any] = {
             'movie': None,
             'show': None
         }
@@ -79,28 +74,26 @@ class OMDbPlugin(OutputPlugin):
                 if data.get('Response') == 'True':
                     # Normalize (DEFAULT OUTPUT)
                     normalized_movie = self.normalizer.normalize_movie(data)
-                    result['movie'] = normalized_movie
+                    result_data['movie'] = normalized_movie
 
                     # Add RAW data ONLY if requested (ALL OMDb fields)
                     if self.include_raw:
-                        result['raw'] = {
+                        result_data['raw'] = {
                             'movie': data  # Complete raw response
                         }
 
-                    result['status']['success'] = True
-
                     # Add validation
-                    result['validation'] = self._perform_validation(match_data, data)
+                    result_data['validation'] = self._perform_validation(job, data)
 
-                    self.debugger.info("omdb", "Movie found", title=data.get('Title'), imdb_rating=data.get('imdbRating'))
-                    self.debugger.debug("omdb", "Movie normalized", imdb_id=data.get('imdbID'), title=normalized_movie['title']['primary'], include_raw=self.include_raw)
+                    self.info("Movie found", title=data.get('Title'), imdb_rating=data.get('imdbRating'))
+                    self.debug("Movie normalized", imdb_id=data.get('imdbID'), title=normalized_movie['title']['primary'], include_raw=self.include_raw)
                 else:
                     # Movie not found in OMDb - this is expected, not an error
-                    result['status']['success'] = True  # Still success, just no data
-                    self.debugger.debug("omdb", "Movie not found in OMDb", title=movie_name)
-            except Exception:
-                # Real error (network, timeout, etc.) - mark as failed
-                result['status']['success'] = False
+                    self.debug("Movie not found in OMDb", title=movie_name)
+            except Exception as e:
+                # Real error (network, timeout, etc.)
+                self.error("Movie fetch failed", error=str(e))
+                return PluginResult.error_result(str(e), started_at=started_at)
 
         # Search show
         elif category == 'show' and show_data and show_data.get('name'):
@@ -115,34 +108,33 @@ class OMDbPlugin(OutputPlugin):
                 if data.get('Response') == 'True':
                     # Normalize (DEFAULT OUTPUT)
                     normalized_show = self.normalizer.normalize_show(data)
-                    result['show'] = normalized_show
+                    result_data['show'] = normalized_show
 
                     # Add RAW data ONLY if requested (ALL OMDb fields)
                     if self.include_raw:
-                        result['raw'] = {
+                        result_data['raw'] = {
                             'show': data  # Complete raw response
                         }
 
-                    result['status']['success'] = True
-                    self.debugger.debug("omdb", "TV show normalized", imdb_id=data.get('imdbID'), title=normalized_show['title']['primary'], include_raw=self.include_raw)
+                    self.debug("TV show normalized", imdb_id=data.get('imdbID'), title=normalized_show['title']['primary'], include_raw=self.include_raw)
                 else:
                     # Show not found in OMDb - this is expected, not an error
-                    result['status']['success'] = True  # Still success, just no data
-            except Exception:
-                # Real error (network, timeout, etc.) - mark as failed
-                result['status']['success'] = False
+                    self.debug("Show not found in OMDb", title=show_name)
+            except Exception as e:
+                # Real error (network, timeout, etc.)
+                self.error("Show fetch failed", error=str(e))
+                return PluginResult.error_result(str(e), started_at=started_at)
 
-        # Set finished time and duration
-        end_time = datetime.now()
-        result['status']['finished_at'] = end_time.isoformat()
-        result['status']['duration_ms'] = int((end_time - start_time).total_seconds() * 1000)
+        return PluginResult.success_result(data=result_data, started_at=started_at)
 
-        return result
-
-    def _perform_validation(self, match_data: dict[str, Any], omdb_data: dict[str, Any]) -> dict[str, Any]:
+    def _perform_validation(self, job: Any, omdb_data: dict[str, Any]) -> dict[str, Any]:
         """
         Perform validation tests (duration matching)
-        
+
+        Args:
+            job: JobState with plugins dict
+            omdb_data: Raw OMDb API response
+
         Returns:
             {tests_passed, tests_total, details}
         """
@@ -150,8 +142,11 @@ class OMDbPlugin(OutputPlugin):
         tests_passed = 0
         tests_total = 0
 
-        # Duration validation
-        ffprobe_data = match_data.get('ffprobe', {})
+        # Duration validation - get ffprobe data from job.plugins
+        ffprobe_data = {}
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            ffprobe_data = job.plugins.get('ffprobe', {})
+
         container = ffprobe_data.get('container', {})
         ffprobe_duration = container.get('duration', 0)
 
@@ -182,19 +177,4 @@ class OMDbPlugin(OutputPlugin):
             'tests_passed': tests_passed,
             'tests_total': tests_total,
             'details': tests
-        }
-
-    def _not_supported_result(self) -> dict[str, Any]:
-        """Return not supported result"""
-        now = datetime.now().isoformat()
-        return {
-            'status': {
-                'success': False,
-                'not_supported': True,
-                'started_at': now,
-                'finished_at': now,
-                'duration_ms': 0
-            },
-            'movie': None,
-            'show': None
         }

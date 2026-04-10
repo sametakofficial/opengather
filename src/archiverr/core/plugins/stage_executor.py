@@ -19,7 +19,7 @@ from enum import Enum
 from typing import Any
 
 from archiverr.core.exceptions import PluginError, StageError
-from archiverr.core.provides_registry import ProvidesRegistry, get_provides_registry
+from archiverr.core.provides_registry import ProvidesRegistry
 from archiverr.core.services.plugin_services import PluginServices
 from archiverr.core.triggers import TriggerRuleManager
 from archiverr.events import EventBus, Events
@@ -97,17 +97,19 @@ class StageExecutor:
         plugin_registry: PluginRegistry,
         event_bus: EventBus,
         config: dict[str, Any],
-        debugger: Debugger | None = None
+        debugger: Debugger | None = None,
+        provides_registry: ProvidesRegistry | None = None
     ):
         """
         Initialize stage executor.
-        
+
         Args:
             state: State manager for job/run state
             plugin_registry: Registry for plugin lookup
             event_bus: Event bus for notifications
             config: Application configuration
             debugger: Optional debugger for logging
+            provides_registry: Per-run provides registry (created if not provided)
         """
         self._state = state
         self._registry = plugin_registry
@@ -118,11 +120,14 @@ class StageExecutor:
         # Plugin data cache: {job_id: {plugin_name: data}}
         self._plugin_data_cache: dict[str, dict[str, dict[str, Any]]] = {}
 
+        # Global state cache per job (invalidated after each plugin completes)
+        self._global_state_cache: dict[str, dict[str, Any]] = {}
+
         # Trigger rule manager for dependency resolution
         self._trigger_manager = TriggerRuleManager()
 
-        # Provides registry -- tracks plugin provide completion status
-        self._provides_registry: ProvidesRegistry = get_provides_registry()
+        # Provides registry -- per-run instance, no shared global state
+        self._provides_registry: ProvidesRegistry = provides_registry or ProvidesRegistry()
         self._register_provides_from_manifests()
 
     def _register_provides_from_manifests(self) -> None:
@@ -282,47 +287,6 @@ class StageExecutor:
                 "stage": stage.value
             })
 
-    def _execute_per_job(self, stage: Stage, plugins: list[Any]) -> None:
-        """
-        Execute plugins for each job (PARSE, DATA stages).
-
-        For each job, groups plugins by requires/provides conflicts
-        and executes conflict-free plugins in parallel.
-        """
-        jobs = self._get_all_jobs()
-
-        if not jobs:
-            self._log("warn", f"No jobs to process for stage: {stage.value}")
-            return
-
-        self._log("debug", f"Executing {len(plugins)} plugins for {len(jobs)} jobs")
-
-        # Group plugins by conflicts for parallel execution
-        plugin_groups = self._group_parallel_plugins(plugins)
-
-        if len(plugin_groups) < len(plugins):
-            self._log("debug", f"Parallel execution: {len(plugins)} plugins in {len(plugin_groups)} groups")
-
-        for job in jobs:
-            # Initialize cache for this job if needed
-            if job.id not in self._plugin_data_cache:
-                self._plugin_data_cache[job.id] = {}
-
-            # Execute each group (groups run sequentially, plugins within group run parallel)
-            for group in plugin_groups:
-                if len(group) > 1:
-                    # Multiple plugins can run in parallel
-                    self._execute_plugin_group_parallel(group, job, stage)
-                else:
-                    # Single plugin, execute normally
-                    self._execute_plugin_for_job(group[0], job, stage)
-
-            # Emit job stage progress
-            self._event_bus.emit(Events.JOB_STAGE_COMPLETED, {
-                "job_id": job.id,
-                "stage": stage.value
-            })
-
     def _execute_plugin_for_job(
         self,
         plugin: Any,
@@ -383,8 +347,12 @@ class StageExecutor:
                 data=result_data, duration_ms=duration_ms
             )
 
-        except (PluginError, Exception) as e:
-            # Mark provides as failed on error
+        except PluginError as e:
+            self._provides_registry.fail_all(plugin_name)
+            return self._handle_plugin_error(
+                e, plugin_name, job, stage, start_time
+            )
+        except Exception as e:
             self._provides_registry.fail_all(plugin_name)
             return self._handle_plugin_error(
                 e, plugin_name, job, stage, start_time
@@ -523,6 +491,8 @@ class StageExecutor:
         }
 
         self._mark_executed(job, plugin_name, success)
+        # Invalidate global state cache for this job (plugin data changed)
+        self._global_state_cache.pop(job.id, None)
 
     def _handle_plugin_error(
         self,
@@ -535,8 +505,8 @@ class StageExecutor:
         """Handle plugin execution error: log, mark failed, emit event, return result."""
         duration_ms = self._calc_duration(start_time)
         error_msg = str(error)
-        level = "error" if isinstance(error, PluginError) else "error"
-        label = "error" if isinstance(error, PluginError) else "unexpected error"
+        level = "warn" if isinstance(error, PluginError) else "error"
+        label = "plugin error" if isinstance(error, PluginError) else "unexpected error"
 
         self._log(level, f"Plugin {plugin_name} {label} for job {job.id}: {error}")
         self._mark_failed(job, plugin_name)
@@ -553,11 +523,11 @@ class StageExecutor:
     def _execute_mixed(self, stage: Stage, plugins: list[Any]) -> None:
         """
         Execute plugins in mixed mode (OUTPUT stage).
-        
+
         Some plugins run per_job (tasker), some per_run (rclone).
         Mode is determined from manifest 'execution_mode' field.
         """
-        per_job_plugins = []
+        per_job_plugins = {}
         per_run_plugins = []
 
         for plugin in plugins:
@@ -568,11 +538,12 @@ class StageExecutor:
             if mode == 'per_run':
                 per_run_plugins.append(plugin)
             else:
-                per_job_plugins.append(plugin)
+                per_job_plugins[plugin_name] = plugin
 
-        # Execute per_job plugins first
+        # Execute per_job plugins first using grouped path
         if per_job_plugins:
-            self._execute_per_job(stage, per_job_plugins)
+            groups = self._resolve_execution_groups(per_job_plugins, stage)
+            self._execute_per_job_grouped(stage, groups)
 
         # Then per_run plugins
         if per_run_plugins:
@@ -633,90 +604,6 @@ class StageExecutor:
                        f"{len(instance_groups)} sequential groups")
 
         return instance_groups
-
-    def _group_parallel_plugins(self, plugins: list[Any]) -> list[list[Any]]:
-        """
-        Group plugins that can run in parallel based on requires/provides conflicts.
-        
-        Two plugins can run in parallel if:
-        - Neither provides something the other requires
-        - They don't write to the same provides path (lockable resources)
-        
-        Returns:
-            List of groups, where each group can run in parallel
-        """
-        if not plugins:
-            return []
-
-        groups = []
-        remaining = list(plugins)
-
-        while remaining:
-            # Start new group with first remaining plugin
-            group = [remaining.pop(0)]
-            group_provides: set[str] = self._get_plugin_provides(group[0])
-            group_requires: set[str] = self._get_plugin_requires(group[0])
-
-            # Try to add more plugins to this group
-            i = 0
-            while i < len(remaining):
-                plugin = remaining[i]
-                plugin_provides = self._get_plugin_provides(plugin)
-                plugin_requires = self._get_plugin_requires(plugin)
-
-                # Check for conflicts
-                has_conflict = False
-
-                # Plugin requires something group provides → must wait
-                if plugin_requires & group_provides:
-                    has_conflict = True
-
-                # Group requires something plugin provides → must wait
-                if group_requires & plugin_provides:
-                    has_conflict = True
-
-                # Both provide same lockable resource → conflict
-                if plugin_provides & group_provides:
-                    # Check if any are lockable (fs.write:path style)
-                    for p in plugin_provides:
-                        if ':' in p and p in group_provides:
-                            has_conflict = True
-                            break
-
-                if not has_conflict:
-                    group.append(remaining.pop(i))
-                    group_provides |= plugin_provides
-                    group_requires |= plugin_requires
-                else:
-                    i += 1
-
-            groups.append(group)
-
-        return groups
-
-    def _get_plugin_provides(self, plugin: Any) -> set[str]:
-        """Get provides declarations from plugin manifest."""
-        name = self._get_plugin_name(plugin)
-        manifest = self._registry.get_manifest(name)
-        if not manifest:
-            return set()
-
-        provides = manifest.get('provides', [])
-        if isinstance(provides, list):
-            return set(provides)
-        return set()
-
-    def _get_plugin_requires(self, plugin: Any) -> set[str]:
-        """Get requires declarations from plugin manifest."""
-        name = self._get_plugin_name(plugin)
-        manifest = self._registry.get_manifest(name)
-        if not manifest:
-            return set()
-
-        requires = manifest.get('requires', [])
-        if isinstance(requires, list):
-            return set(requires)
-        return set()
 
     def _execute_plugin_group_parallel(
         self,
@@ -943,14 +830,13 @@ class StageExecutor:
 
     def _build_global_state(self, job: JobState) -> dict[str, Any]:
         """
-        Build global state dict for trigger evaluation ().
-        
-        Args:
-            job: Current job state
-            
-        Returns:
-            Global state dict with run, config, job, plugin structure
+        Build global state dict for trigger evaluation.
+
+        Cached per-job, invalidated after each plugin completes.
         """
+        if job.id in self._global_state_cache:
+            return self._global_state_cache[job.id]
+
         # Get run state
         run_state = self._state.run
 
@@ -988,4 +874,5 @@ class StageExecutor:
         # This enables requires like: provides.http.request
         global_state['provides'] = self._provides_registry.to_dict()
 
+        self._global_state_cache[job.id] = global_state
         return global_state

@@ -1,74 +1,90 @@
-# Handoff - Session 32
+# Handoff - Session 33
 
 **Date:** April 10, 2026
 **Branch:** `dev/communication-refactoring`
-**Uncommitted changes:** Yes (session 32 work in progress)
 
 ## TL;DR
 
-Session 32: Strategic analysis (6 specialized agents), then execution. Deleted ~909 LOC dead code (StateServiceImpl, Motor/mongodb.py, _topological_sort, check_expects, validate_dependencies). Fixed 2 bugs: complete_job() never called (run stats always wrong), dual RUN_STARTED emission. Removed 4 empty 0-byte test stubs. Created 6 Mermaid architecture diagrams. Created vision-analysis docs (24 forgotten features, 20 decision changes, 5-phase vision evolution). All targeted tests passing (40/40).
+Session 33: Deep 5-agent analysis, then execution across 4 phases. Fixed 2 CRITICAL architecture issues (singleton shared state, mandatory MongoDB). Migrated all 9 plugins to current protocol. Wrote 14 E2E tests. Removed ~100 LOC dead code. Fixed async/sync duplication. All 418 tests pass (24 skipped).
 
 ## State of the Code
 
-- Venv: Working (Python 3.14.2)
-- Tests: 40/40 targeted tests passing (orchestrator + registry). Full suite not run.
-- Lint: Pre-existing whitespace warnings only. No new errors from changes.
-- Architecture: Plugin-agnostic core ENFORCED
+- Venv: .venv (Python 3.14.2)
+- Tests: 418 passed, 24 skipped, 0 failed
+- Lint: Pre-existing warnings only, no new issues
+- Architecture: Plugin-agnostic core ENFORCED, all plugins on current protocol
 
 ## What Was Changed
 
-### Dead Code Removal (~909 LOC)
-- `core/services/state_service.py` -> `.deleted/` (278 LOC, referenced non-existent APIs)
-- `infrastructure/database/mongodb.py` -> `.deleted/` (527 LOC deprecated Motor code)
-- `infrastructure/database/motor.py` -> `.deleted/` (47 LOC deprecation shim)
-- `core/plugins/stage_executor.py`: removed `_topological_sort` (20 LOC dead method)
-- `core/plugins/resolver.py`: removed `check_expects` (15 LOC, never called)
-- `core/plugins/registry.py`: removed `validate_dependencies` (22 LOC, always returned [])
+### Phase 0: Critical Fixes
+- **NullPersistence** created (`infrastructure/database/null_persistence.py`) -- no-op persistence for CLI/CI
+- **build_orchestrator** now falls back to NullPersistence when MongoDB unavailable (was: `raise ImportError`)
+- **ProvidesRegistry singleton removed** -- StageExecutor receives per-run instance via constructor
+- **PluginServices** no longer falls back to global singleton
+- **complete_job() idempotency** -- _finalize() now checks job state before completing
+- **_handle_plugin_error** -- "warn" for PluginError, "error" for unexpected (was: "error" for both)
+- **Renamer** -- silent `except Exception: return None` now logs via `self.warn()`
+- **Dead code removed** -- `_execute_per_job` (40 LOC), `_group_parallel_plugins` (60 LOC), `_get_plugin_provides`, `_get_plugin_requires`
+- **_execute_mixed** fixed to use `_execute_per_job_grouped` (unified execution path)
+- **_build_global_state** cached per-job, invalidated after plugin completes
 
-### Bug Fixes
-- **BUG-1**: Added `complete_job()` calls in `orchestrator._finalize()` for every job before `complete_run()`. Run statistics now correctly report SUCCESS/PARTIAL/FAILED.
-- **BUG-2**: Removed duplicate `RUN_STARTED` emission from `state/manager.py:141`. Event now fires exactly once from orchestrator.
+### Phase 1: Plugin Migration (9/9 current protocol)
+- **tvdb** -- `execute(match_data)` -> `execute(job, services) -> PluginResult`
+- **omdb** -- `execute(match_data)` -> `execute(job, services) -> PluginResult`
+- **tvmaze** -- Added `OutputPlugin` base class + full protocol migration
+- **tasker** -- Added `OutputPlugin` base class, removed duplicate `PluginResult` class
+- **file-reader** -- `execute() -> list` -> `execute_run(services) -> dict`
+- **tmdb** -- `async def setup()` -> `def setup()`, removed `_sync_setup()` duplication
+- **BasePlugin.setup()** -- Changed from `async` to sync
 
-### Import Chain Updates
-- `api/database.py`: Updated to import directly from `async_client` instead of deleted `motor.py`
-- `infrastructure/database/__init__.py`: Removed `MongoDBPersistence`, `MONGODB_AVAILABLE`, `MOTOR_AVAILABLE` exports
-- `infrastructure/__init__.py`: Removed `MONGODB_AVAILABLE` export
-- `core/services/__init__.py`: Removed `StateServiceImpl` export
+### Phase 2: E2E Tests (14 new)
+- `tests/test_e2e_pipeline.py` -- Scanner, Renamer, TMDb (mocked), full pipeline, protocol compliance
 
-### Empty Test Stubs Removed
-- Moved to `tests/.deleted/`: test_plugin_services.py, test_plugin_sdk.py, test_startup_validator.py, test_pymongo_persistence.py
+### Phase 3: Code Quality
+- **JobManager.configure()** -- Added method, GlobalStateManager no longer directly mutates `_event_bus`
 
-### New Tests (2)
-- `test_finalize_completes_all_jobs`: Verifies complete_job called for every job
-- `test_run_started_emitted_exactly_once`: Verifies no dual emission
+### Test Updates
+- `test_orchestrator.py` -- Updated for NullPersistence fallback, idempotent complete_job
+- `test_plugin_discovery.py` -- Skipped `check_expects` test (method removed session 32)
+- `test_stage_executor.py` -- Skipped `_topological_sort` and `_group_parallel_plugins` tests (methods removed)
 
-### Documentation Created
-- `docs/STRATEGIC_PLAN_SESSION32.md`: Full strategic plan from 6 agents
-- `docs/schemes/`: 6 Mermaid SVG diagrams (pipeline, plugin lifecycle, state mgmt, data flow, dependency resolution, event system)
-- `docs/vision-analysis/`: 6 files analyzing 31 sessions of decisions, forgotten features, vision evolution
+### Documentation
+- `docs/SESSION33_DEEP_ANALYSIS.md` -- Full analysis from 5 agents, prioritized action plan
+- `memory-bank/activeContext.md` -- Updated
+
+## Plugin Status (All 9 Working)
+
+| Plugin | Stage | Protocol | Base Class | Status |
+|--------|-------|----------|------------|--------|
+| scanner | input | execute_run(services) | InputPlugin | WORKING |
+| file-reader | input | execute_run(services) | InputPlugin | WORKING |
+| renamer | parse | execute(job, services) | OutputPlugin | WORKING |
+| ffprobe | data | execute(job, services) | OutputPlugin | WORKING |
+| tmdb | data | execute(job, services) | OutputPlugin | WORKING |
+| tvdb | data | execute(job, services) | OutputPlugin | WORKING |
+| omdb | data | execute(job, services) | OutputPlugin | WORKING |
+| tvmaze | data | execute(job, services) | OutputPlugin | WORKING |
+| tasker | output | execute(job, services) | OutputPlugin | WORKING |
 
 ## Next Session Should
 
-1. **Set up CI/CD** -- 5-month dormancy broke tests, proves it's needed (~30 min)
-2. **Cache _build_global_state per-job** -- 5-line perf fix in stage_executor
-3. **Unify _execute_per_job paths** -- Make OUTPUT stage use _execute_per_job_grouped
-4. **Write a novel plugin** -- nfo-writer or similar to exercise the plugin system
-5. **Data consolidation** -- Remove _plugin_data_cache, single source of truth (after tests)
+1. **Set up CI/CD** -- GitHub Actions with pytest + ruff (~30 min)
+2. **Write a novel plugin** -- nfo-writer or similar to exercise the system
+3. **Real API test** -- Run pipeline with real TMDB API key against a known movie/show
+4. **StageExecutor decomposition** -- Extract PluginInvoker, ParallelGroupExecutor (~5 hrs)
 
 ## Critical Files to Know
 
 | File | Why It Matters |
 |------|---------------|
-| `core/orchestrator.py` | complete_job loop added in _finalize (BUG-1 fix) |
-| `state/manager.py` | RUN_STARTED emission removed (BUG-2 fix) |
-| `core/services/__init__.py` | StateServiceImpl export removed |
-| `infrastructure/database/__init__.py` | Motor/MongoDBPersistence exports removed |
-| `docs/STRATEGIC_PLAN_SESSION32.md` | Full strategic analysis and roadmap |
-| `docs/vision-analysis/` | Forgotten features, decision changelog, recommendations |
-| `docs/schemes/` | 6 architecture diagrams |
-
-## Read First
-
-- `docs/STRATEGIC_PLAN_SESSION32.md` -- Strategic plan with agent consensus
-- `docs/vision-analysis/recommendations.md` -- What to revive vs kill
-- `memory-bank/activeContext.md` -- Current state
+| `infrastructure/database/null_persistence.py` | NEW: No-op persistence for CLI |
+| `core/orchestrator.py:480-488` | NullPersistence fallback logic |
+| `core/plugins/stage_executor.py:94-100` | ProvidesRegistry now constructor arg |
+| `core/plugins/sdk/base.py:141` | setup() changed from async to sync |
+| `plugins/tvdb/client.py` | Migrated to current protocol |
+| `plugins/omdb/client.py` | Migrated to current protocol |
+| `plugins/tvmaze/client.py` | Migrated + added OutputPlugin base |
+| `plugins/tasker/plugin.py` | Migrated + added OutputPlugin base |
+| `plugins/file-reader/client.py` | Migrated to execute_run(services) |
+| `tests/test_e2e_pipeline.py` | NEW: 14 E2E tests |
+| `docs/SESSION33_DEEP_ANALYSIS.md` | Full analysis and action plan |

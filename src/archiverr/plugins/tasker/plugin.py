@@ -15,15 +15,18 @@ from typing import Any
 
 from jinja2 import BaseLoader, Environment
 
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult as SDKPluginResult
 
-class TaskerPlugin:
+
+class TaskerPlugin(OutputPlugin):
     """Task execution plugin with full Jinja2 + state access."""
 
     # Template function patterns (from main branch)
     _FUNCTION_PATTERN = re.compile(r'\b(index|count):([a-zA-Z0-9_.\[\]]*)')
 
     def __init__(self, config: dict[str, Any]):
-        self.config = config
+        super().__init__(config)
+        self.name = "tasker"
         self.tasks = config.get('tasks', [])
         self.dry_run = config.get('dry_run', True)
         self.save_output = config.get('save_output', True)
@@ -41,19 +44,6 @@ class TaskerPlugin:
         """Configure with global config."""
         if 'dry_run' not in self.config:
             self.dry_run = global_config.get('options', {}).get('dry_run', True)
-
-    def debug(self, msg: str, **kwargs):
-        """Debug logging."""
-        pass  # Plugin SDK will provide this
-
-    def warn(self, msg: str, **kwargs):
-        """Warning logging."""
-        pass
-
-    def error(self, msg: str, **kwargs):
-        """Error logging - will be overridden by SDK."""
-        import sys
-        sys.stderr.write(f"ERROR: {msg} {kwargs}\n")
 
     def execute(self, job: Any, services: Any) -> dict[str, Any]:
         """
@@ -438,13 +428,3 @@ class TaskerPlugin:
             self.error(f"Failed to save run output: {e}")
             return None
 
-
-# Plugin result helper for Session 12
-class PluginResult:
-    @staticmethod
-    def success_result(data: dict[str, Any], started_at: datetime = None) -> dict[str, Any]:
-        return {
-            'success': True,
-            'data': data,
-            'duration_ms': int((datetime.now() - started_at).total_seconds() * 1000) if started_at else 0
-        }

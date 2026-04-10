@@ -431,76 +431,32 @@ class TestExecuteStage:
 # TestTopologicalSort
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="_topological_sort removed in session 32, replaced by DependencyResolver")
 class TestTopologicalSort:
-    """Tests for _topological_sort method."""
+    """Tests for removed _topological_sort method."""
 
-    def test_sorts_by_requires_count(self, executor, mock_registry):
-        p1 = _make_plugin("no_deps")
-        p2 = _make_plugin("one_dep")
-        p3 = _make_plugin("two_deps")
+    def test_sorts_by_requires_count(self):
+        pass
 
-        plugins = {"no_deps": p1, "one_dep": p2, "two_deps": p3}
-
-        def manifest_for(name):
-            manifests = {
-                "no_deps": {"requires": []},
-                "one_dep": {"requires": ["plugin.renamer.parsed"]},
-                "two_deps": {"requires": ["plugin.renamer.parsed", "plugin.tmdb.data"]},
-            }
-            return manifests.get(name, {"requires": []})
-
-        mock_registry.get_manifest.side_effect = manifest_for
-
-        sorted_plugins = executor._topological_sort(plugins, Stage.DATA)
-        names = [executor._get_plugin_name(p) for p in sorted_plugins]
-        assert names.index("no_deps") < names.index("two_deps")
-
-    def test_handles_list_input(self, executor):
-        plugins = [_make_plugin("a"), _make_plugin("b")]
-        result = executor._topological_sort(plugins, Stage.DATA)
-        assert len(result) == 2
+    def test_handles_list_input(self):
+        pass
 
 
-# ---------------------------------------------------------------------------
-# TestGroupParallelPlugins
-# ---------------------------------------------------------------------------
-
+@pytest.mark.skip(reason="_group_parallel_plugins removed in session 33, unified to DependencyResolver path")
 class TestGroupParallelPlugins:
+    """Tests for removed _group_parallel_plugins method."""
 
-    def test_empty_list(self, executor):
-        assert executor._group_parallel_plugins([]) == []
+    def test_empty_list(self):
+        pass
 
-    def test_single_plugin(self, executor, mock_registry):
-        plugin = _make_plugin("solo")
-        mock_registry.get_manifest.return_value = {"provides": [], "requires": []}
-        groups = executor._group_parallel_plugins([plugin])
-        assert len(groups) == 1
-        assert len(groups[0]) == 1
+    def test_single_plugin(self):
+        pass
 
-    def test_independent_plugins_grouped(self, executor, mock_registry):
-        p1 = _make_plugin("api_a")
-        p2 = _make_plugin("api_b")
+    def test_independent_plugins_grouped(self):
+        pass
 
-        def manifest_for(name):
-            return {"provides": [f"{name}.data"], "requires": []}
-
-        mock_registry.get_manifest.side_effect = manifest_for
-        groups = executor._group_parallel_plugins([p1, p2])
-        assert len(groups) == 1
-        assert len(groups[0]) == 2
-
-    def test_dependent_plugins_separated(self, executor, mock_registry):
-        p1 = _make_plugin("producer")
-        p2 = _make_plugin("consumer")
-
-        def manifest_for(name):
-            if name == "producer":
-                return {"provides": ["state.update"], "requires": []}
-            return {"provides": [], "requires": ["state.update"]}
-
-        mock_registry.get_manifest.side_effect = manifest_for
-        groups = executor._group_parallel_plugins([p1, p2])
-        assert len(groups) == 2
+    def test_dependent_plugins_separated(self):
+        pass
 
 
 # ---------------------------------------------------------------------------

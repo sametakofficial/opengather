@@ -102,7 +102,8 @@ class RenamerPlugin(OutputPlugin):
                 'season': season,
                 'episode': episode
             }
-        except Exception:
+        except Exception as e:
+            self.warn("Show parse failed", filename=filename, error=str(e))
             return None
 
     def _parse_movie(self, filename: str) -> dict[str, Any]:
@@ -116,7 +117,8 @@ class RenamerPlugin(OutputPlugin):
                 'name': movie_name,
                 'year': year
             }
-        except Exception:
+        except Exception as e:
+            self.warn("Movie parse failed", filename=filename, error=str(e))
             return None
 
     def _error_result(self) -> dict[str, Any]:

@@ -2,20 +2,19 @@
 from datetime import datetime
 from typing import Any
 
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 from .extras import TVMazeExtras
 from .normalize.normalizer import TVMazeNormalizer
 from .utils.api import TVMazeAPI
 
 
-class TVMazePlugin:
+class TVMazePlugin(OutputPlugin):
     """TVMaze metadata plugin"""
 
     def __init__(self, config: dict[str, Any]):
-        self.config = config
+        super().__init__(config)
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
-        self.debugger = get_debugger()
 
         # Initialize components
         self.api = TVMazeAPI(timeout=5)
@@ -23,42 +22,63 @@ class TVMazePlugin:
         self.normalizer = TVMazeNormalizer()
         self.extras_config = config.get('extras', {})
 
-    def execute(self, match_data: dict[str, Any]) -> dict[str, Any]:
-        """Fetch metadata from TVMaze"""
-        start_time = datetime.now()
-        renamer_data = match_data.get('renamer', {})
-        parsed_data = renamer_data.get('parsed', {})
+    def execute(self, job: Any, services: Any) -> PluginResult:
+        """
+        Fetch metadata from TVMaze.
+
+        Args:
+            job: JobState with plugins.renamer.data.parsed
+            services: PluginServices
+
+        Returns:
+            PluginResult with show/episode/season data
+        """
+        started_at = datetime.now()
+
+        # Get parsed data from job.plugins.renamer.parsed (flat structure)
+        parsed_data = {}
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            renamer_data = job.plugins.get('renamer', {})
+            parsed_data = renamer_data.get('parsed', {})
+
+        # Fallback: try services.state
+        if not parsed_data and hasattr(services, 'state'):
+            renamer_data = services.state.get_plugin_data(job.id, 'renamer')
+            if renamer_data:
+                parsed_data = renamer_data.get('parsed', {})
 
         if not parsed_data:
-            return self._error_result()
+            return PluginResult.error_result("No parsed data available", started_at=started_at)
 
         # TVMaze only supports TV shows
         show_data = parsed_data.get('show')
         if not show_data or not show_data.get('name'):
-            self.debugger.debug("tvmaze", "Not a TV show, skipping")
-            return self._not_supported_result()
+            self.debug("Not a TV show, skipping")
+            return PluginResult.skipped_result(reason="Not a TV show", started_at=started_at)
 
         try:
-            return self._fetch_show(show_data, start_time)
+            return self._fetch_show(show_data, started_at)
         except Exception as e:
-            self.debugger.error("tvmaze", "Execution failed", error=str(e))
-            return self._error_result()
+            self.error("Execution failed", error=str(e))
+            return PluginResult.error_result(str(e), started_at=started_at)
 
-    def _fetch_show(self, show_data: dict[str, Any], start_time: datetime) -> dict[str, Any]:
+    def _fetch_show(self, show_data: dict[str, Any], started_at: datetime) -> PluginResult:
         """Fetch TV show metadata"""
         show_name = show_data.get('name')
         season_num = show_data.get('season')
         episode_num = show_data.get('episode')
 
         # Search show
+        self.info("Searching TVMaze for show", name=show_name, season=season_num, episode=episode_num)
         search_results = self.api.search_shows(show_name)
 
         if not search_results or len(search_results) == 0:
-            return self._error_result()
+            self.warn("Show not found on TVMaze", name=show_name)
+            return PluginResult.error_result("No search results", started_at=started_at)
 
         show_info = search_results[0]['show']
         show_id = show_info.get('id')
-        self.debugger.info("tvmaze", "TV show found", tvmaze_id=show_id, title=show_info.get('name'))
+        self.info("TV show found", tvmaze_id=show_id, title=show_info.get('name'))
 
         # Get episode if provided
         episode_info = None
@@ -74,15 +94,8 @@ class TVMazePlugin:
         # Normalize (DEFAULT OUTPUT)
         normalized_show = self.normalizer.normalize_show(show_info, raw_extras)
 
-        # Build result
-        end_time = datetime.now()
-        result = {
-            'status': {
-                'success': True,
-                'started_at': start_time.isoformat(),
-                'finished_at': end_time.isoformat(),
-                'duration_ms': int((end_time - start_time).total_seconds() * 1000)
-            },
+        # Build result data
+        data = {
             'show': normalized_show,  # NORMALIZED by default
             'episode': None,
             'season': None,
@@ -91,7 +104,7 @@ class TVMazePlugin:
 
         # Add RAW data ONLY if requested
         if self.include_raw:
-            result['raw'] = {
+            data['raw'] = {
                 'show': {
                     'name': show_info.get('name'),
                     'tvmaze_id': show_info.get('id'),
@@ -116,13 +129,13 @@ class TVMazePlugin:
                 'extras': raw_extras
             }
 
-        self.debugger.debug("tvmaze", "TV show normalized",
-                           tvmaze_id=show_id,
-                           title=normalized_show['title']['primary'],
-                           cast_count=len(normalized_show.get('people', {}).get('cast', [])),
-                           include_raw=self.include_raw)
+        self.debug("TV show normalized",
+                   tvmaze_id=show_id,
+                   title=normalized_show['title']['primary'],
+                   cast_count=len(normalized_show.get('people', {}).get('cast', [])),
+                   include_raw=self.include_raw)
 
-        return result
+        return PluginResult.success_result(data=data, started_at=started_at)
 
     def _fetch_extras(self, show_id: int, episode_info: dict[str, Any] = None) -> dict[str, Any]:
         """Fetch all enabled extras"""
@@ -133,7 +146,7 @@ class TVMazePlugin:
             data = self.extras_client.shows_cast(show_id)
             if data:
                 extras['shows_cast'] = data
-                self.debugger.debug("tvmaze", "Fetched shows_cast",
+                self.debug("Fetched shows_cast",
                                    endpoint="/shows/{id}/cast",
                                    count=len(data))
 
@@ -142,7 +155,7 @@ class TVMazePlugin:
             data = self.extras_client.shows_crew(show_id)
             if data:
                 extras['shows_crew'] = data
-                self.debugger.debug("tvmaze", "Fetched shows_crew",
+                self.debug("Fetched shows_crew",
                                    endpoint="/shows/{id}/crew",
                                    count=len(data))
 
@@ -151,7 +164,7 @@ class TVMazePlugin:
             data = self.extras_client.shows_images(show_id)
             if data:
                 extras['shows_images'] = data
-                self.debugger.debug("tvmaze", "Fetched shows_images",
+                self.debug("Fetched shows_images",
                                    endpoint="/shows/{id}/images",
                                    count=len(data))
 
@@ -163,14 +176,14 @@ class TVMazePlugin:
                 data = self.extras_client.episodes_single(episode_id)
                 if data:
                     extras['episodes_single'] = data
-                    self.debugger.debug("tvmaze", "Fetched episodes_single",
+                    self.debug("Fetched episodes_single",
                                        endpoint="/episodes/{id}")
 
             if self.extras_config.get('episodes_guestcast'):
                 data = self.extras_client.episodes_guestcast(episode_id)
                 if data:
                     extras['episodes_guestcast'] = data
-                    self.debugger.debug("tvmaze", "Fetched episodes_guestcast",
+                    self.debug("Fetched episodes_guestcast",
                                        endpoint="/episodes/{id}/guestcast",
                                        count=len(data))
 
@@ -178,45 +191,11 @@ class TVMazePlugin:
                 data = self.extras_client.episodes_guestcrew(episode_id)
                 if data:
                     extras['episodes_guestcrew'] = data
-                    self.debugger.debug("tvmaze", "Fetched episodes_guestcrew",
+                    self.debug("Fetched episodes_guestcrew",
                                        endpoint="/episodes/{id}/guestcrew",
                                        count=len(data))
 
         return extras
 
-    def _not_supported_result(self) -> dict[str, Any]:
-        """Return not supported result"""
-        now = datetime.now().isoformat()
-        return {
-            'status': {
-                'success': False,
-                'not_supported': True,
-                'started_at': now,
-                'finished_at': now,
-                'duration_ms': 0
-            },
-            'movie': None,
-            'show': None,
-            'season': None,
-            'episode': None,
-            'extras': {},
-            'normalized': {}
-        }
-
-    def _error_result(self) -> dict[str, Any]:
-        """Return error result"""
-        now = datetime.now().isoformat()
-        return {
-            'status': {
-                'success': False,
-                'started_at': now,
-                'finished_at': now,
-                'duration_ms': 0
-            },
-            'movie': None,
-            'show': None,
-            'season': None,
-            'episode': None,
-            'extras': {},
-            'normalized': {}
-        }
+    # _not_supported_result() removed - using PluginResult.skipped_result() instead
+    # _error_result() removed - using PluginResult.error_result() instead

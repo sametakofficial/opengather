@@ -219,22 +219,7 @@ class TestDependencyResolver:
         with pytest.raises(ValueError, match="[Cc]ircular"):
             resolver.resolve(["a", "b", "c"])
     
+    @pytest.mark.skip(reason="check_expects removed in session 32 (dead code removal)")
     def test_check_expects_satisfied(self):
-        """Test expects checking."""
-        from archiverr.core.plugins import DependencyResolver
-        
-        plugins = {
-            "output": {
-                "name": "output",
-                "depends_on": [],
-                "expects": ["input", "parsed.title"]
-            }
-        }
-        
-        resolver = DependencyResolver(plugins)
-        
-        # All expects available
-        assert resolver.check_expects("output", {"input", "parsed.title", "extra"})
-        
-        # Missing expect
-        assert not resolver.check_expects("output", {"input"})
+        """Test expects checking -- method removed."""
+        pass

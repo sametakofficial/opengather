@@ -51,6 +51,13 @@ class JobManager:
         """No-op logger when none provided."""
         pass
 
+    def configure(self, event_bus: 'EventBus' = None, logger=None):
+        """Reconfigure dependencies."""
+        if event_bus is not None:
+            self._event_bus = event_bus
+        if logger is not None:
+            self._log = logger
+
     def _emit(self, event_name: str, data: dict[str, Any] = None, source: str = "job_manager"):
         """Emit event if event bus is configured."""
         if self._event_bus:

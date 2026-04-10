@@ -294,7 +294,7 @@ class PluginServices:
             services.provides.is_completed("http.request")
         """
         if self._provides_registry is None:
-            from archiverr.core.provides_registry import get_provides_registry
-            self._provides_registry = get_provides_registry()
+            from archiverr.core.provides_registry import ProvidesRegistry
+            self._provides_registry = ProvidesRegistry()
         from archiverr.core.services.provides_service import ProvidesServiceImpl
         return ProvidesServiceImpl(self._provides_registry, self._current_plugin_name or "unknown")

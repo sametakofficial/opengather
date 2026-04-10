@@ -332,10 +332,14 @@ class TestOrchestratorFinalize:
         orchestrator._state_dumper = MagicMock()
         orchestrator._state_dumper.dump.return_value = None
 
-        # Simulate 3 jobs
+        # Simulate 3 jobs (RUNNING state -- not yet completed)
+        from archiverr.state.models import StateEnum
         job_a = MagicMock(index=0, id="job_0")
+        job_a.status.state = StateEnum.RUNNING
         job_b = MagicMock(index=1, id="job_1")
+        job_b.status.state = StateEnum.RUNNING
         job_c = MagicMock(index=2, id="job_2")
+        job_c.status.state = StateEnum.RUNNING
         mock_state.get_all_jobs.return_value = [job_a, job_b, job_c]
 
         orchestrator._finalize(success=True)
@@ -432,15 +436,21 @@ class TestOrchestratorHelpers:
 
 class TestBuildOrchestratorFactory:
 
-    def test_raises_without_mongodb(self):
-        """Factory should raise if MongoDB is not available."""
+    def test_uses_null_persistence_without_mongodb(self):
+        """Factory should use NullPersistence when MongoDB is not available."""
         config = {"options": {"debug": False}}
 
         with patch("archiverr.infrastructure.database.DatabaseConnection") as mock_db:
             mock_db.from_env.return_value.connect.return_value = None
 
-            with pytest.raises(ImportError):
-                build_orchestrator(config)
+            with patch("archiverr.state.GlobalStateManager") as mock_gsm:
+                mock_state_instance = MagicMock()
+                mock_gsm.return_value = mock_state_instance
+
+                result = build_orchestrator(config)
+                assert result is not None
+                from archiverr.infrastructure.database.null_persistence import NullPersistence
+                assert isinstance(result._persistence, NullPersistence)
 
     def test_creates_orchestrator_with_persistence(self):
         """Factory should return Orchestrator when all deps available."""

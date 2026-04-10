@@ -16,6 +16,7 @@ from archiverr.core.locking import FSLockManager
 from archiverr.core.per_run_executor import PerRunPluginExecutor
 from archiverr.core.plugins.registry import PluginRegistry, Stage
 from archiverr.core.plugins.stage_executor import StageExecutor
+from archiverr.core.provides_registry import ProvidesRegistry
 from archiverr.core.result_builder import ResultBuilder, RunResult
 from archiverr.core.state_dumper import StateDumper
 from archiverr.events import EventBus, Events
@@ -240,13 +241,14 @@ class Orchestrator:
         self._run_id = self._state.start_run(self._config)
         self._log("debug", f"Run started: {self._run_id}")
 
-        # Create stage executor
+        # Create stage executor with fresh per-run ProvidesRegistry
         self._stage_executor = StageExecutor(
             state=self._state,
             plugin_registry=self._plugin_registry,
             event_bus=self._event_bus,
             config=self._config,
-            debugger=self._debugger
+            debugger=self._debugger,
+            provides_registry=ProvidesRegistry()
         )
 
         # Emit run.started event
@@ -333,12 +335,14 @@ class Orchestrator:
 
         self._dump_global_state()
 
-        # Complete all jobs (updates run stats: completed/failed counts)
+        # Complete all jobs that haven't been completed yet
+        from archiverr.state.models import StateEnum
         for job in self._state.get_all_jobs():
-            try:
-                self._state.complete_job(job.index)
-            except Exception as e:
-                self._log("warn", f"Failed to complete job {job.index}: {e}")
+            if job.status.state in (StateEnum.PENDING, StateEnum.RUNNING):
+                try:
+                    self._state.complete_job(job.index)
+                except Exception as e:
+                    self._log("warn", f"Failed to complete job {job.index}: {e}")
 
         # Complete run in state (uses job counts for SUCCESS/PARTIAL/FAILED)
         self._state.complete_run()
@@ -478,10 +482,17 @@ def build_orchestrator(
 
     # Create persistence if not provided
     if persistence is None:
-        db_connection = DatabaseConnection.from_env()
-        persistence = db_connection.connect()
+        try:
+            db_connection = DatabaseConnection.from_env()
+            persistence = db_connection.connect()
+        except (ImportError, Exception):
+            persistence = None
+
         if persistence is None:
-            raise ImportError("MongoDB not available")
+            from archiverr.infrastructure.database.null_persistence import NullPersistence
+            persistence = NullPersistence()
+            if debugger:
+                debugger.warn("orchestrator", "MongoDB not available, using NullPersistence (no data will be persisted)")
 
     # Configure state with persistence
     state.configure(

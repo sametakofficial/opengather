@@ -2,8 +2,7 @@
 from datetime import datetime
 from typing import Any
 
-from archiverr.core.plugins.sdk import OutputPlugin
-from archiverr.utils.debug import get_debugger
+from archiverr.core.plugins.sdk import OutputPlugin, PluginResult
 
 from .extras import TVDbExtras
 from .normalize.normalizer import TVDbNormalizer
@@ -15,10 +14,10 @@ class TVDbPlugin(OutputPlugin):
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
+        self.name = "tvdb"
         self.api_key = config.get('api_key', '')
         self.timeout = 10
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
-        self.debugger = get_debugger()
 
         # Initialize components
         self.api = TVDbAPI(self.api_key, self.timeout)
@@ -26,42 +25,67 @@ class TVDbPlugin(OutputPlugin):
         self.normalizer = TVDbNormalizer()
         self.extras_config = config.get('extras', {})
 
-    def execute(self, match_data: dict[str, Any]) -> dict[str, Any]:
-        """Fetch metadata from TVDb"""
-        start_time = datetime.now()
-        renamer_data = match_data.get('renamer', {})
-        parsed_data = renamer_data.get('parsed', {})
+    def execute(self, job: Any, services: Any) -> PluginResult:
+        """
+        Fetch metadata from TVDb.
+
+        Args:
+            job: JobState with plugins.renamer.data.parsed
+            services: PluginServices
+
+        Returns:
+            PluginResult with movie/show/season/episode data
+        """
+        started_at = datetime.now()
+
+        # Get parsed data from job.plugins.renamer
+        parsed_data = {}
+        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+            renamer_data = job.plugins.get('renamer', {})
+            parsed_data = renamer_data.get('parsed', {})
 
         if not parsed_data:
-            return self._error_result()
+            return PluginResult.error_result("No parsed data available", started_at=started_at)
 
         movie_data = parsed_data.get('movie')
         show_data = parsed_data.get('show')
 
         try:
             if movie_data and movie_data.get('name'):
-                result = self._fetch_movie(movie_data, start_time)
+                result = self._fetch_movie(movie_data, started_at)
 
                 # Add validation for movies
                 if result.get('status', {}).get('success'):
-                    validation = self._perform_validation(match_data, result)
-                    result['validation'] = validation
+                    # Get ffprobe data from job.plugins
+                    ffprobe_data = {}
+                    if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+                        ffprobe_data = job.plugins.get('ffprobe', {})
+                    result['validation'] = self._perform_validation(ffprobe_data, result)
 
-                return result
+                # Convert dict result to PluginResult
+                data = {k: v for k, v in result.items() if k != 'status'}
+                return PluginResult.success_result(data=data, started_at=started_at)
+
             elif show_data and show_data.get('name'):
-                result = self._fetch_show(show_data, start_time)
+                result = self._fetch_show(show_data, started_at)
 
                 # Add validation for episodes (if episode data available)
                 if result.get('status', {}).get('success') and result.get('episode'):
-                    validation = self._perform_validation(match_data, result)
-                    result['validation'] = validation
+                    # Get ffprobe data from job.plugins
+                    ffprobe_data = {}
+                    if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
+                        ffprobe_data = job.plugins.get('ffprobe', {})
+                    result['validation'] = self._perform_validation(ffprobe_data, result)
 
-                return result
+                # Convert dict result to PluginResult
+                data = {k: v for k, v in result.items() if k != 'status'}
+                return PluginResult.success_result(data=data, started_at=started_at)
+
             else:
-                return self._error_result()
+                return PluginResult.error_result("No movie or show data", started_at=started_at)
         except Exception as e:
-            self.debugger.error("tvdb", "Execution failed", error=str(e))
-            return self._error_result()
+            self.error("Execution failed", error=str(e))
+            return PluginResult.error_result(str(e), started_at=started_at)
 
     def _fetch_movie(self, movie_data: dict[str, Any], start_time: datetime) -> dict[str, Any]:
         """Fetch movie metadata"""
@@ -72,10 +96,10 @@ class TVDbPlugin(OutputPlugin):
         search_results = self.api.search_movie(movie_name)
 
         if not search_results.get('data'):
-            return self._error_result()
+            return {'status': {'success': False}}
 
         movie_id = search_results['data'][0]['tvdb_id']
-        self.debugger.info("tvdb", "Movie found", tvdb_id=movie_id, title=movie_name)
+        self.info("Movie found", tvdb_id=movie_id, title=movie_name)
 
         # Get extended info
         raw_movie_extended = self.api.get_movie_extended(movie_id)
@@ -84,7 +108,7 @@ class TVDbPlugin(OutputPlugin):
         raw_extras = {}
         if self.extras_config.get('movies_extended'):
             raw_extras['movies_extended'] = raw_movie_extended
-            self.debugger.debug("tvdb", "Fetched movies_extended", endpoint="/movies/{id}/extended")
+            self.debug("Fetched movies_extended", endpoint="/movies/{id}/extended")
 
         # Normalize (DEFAULT OUTPUT)
         normalized_movie = self.normalizer.normalize_movie(raw_movie_extended)
@@ -116,17 +140,21 @@ class TVDbPlugin(OutputPlugin):
                 'extras': raw_extras
             }
 
-        self.debugger.debug("tvdb", "Movie normalized",
-                           tvdb_id=movie_id,
-                           title=normalized_movie['title']['primary'],
-                           include_raw=self.include_raw)
+        self.debug("Movie normalized",
+                   tvdb_id=movie_id,
+                   title=normalized_movie['title']['primary'],
+                   include_raw=self.include_raw)
 
         return result
 
-    def _perform_validation(self, match_data: dict[str, Any], tvdb_result: dict[str, Any]) -> dict[str, Any]:
+    def _perform_validation(self, ffprobe_data: dict[str, Any], tvdb_result: dict[str, Any]) -> dict[str, Any]:
         """
         Perform validation tests (duration matching)
-        
+
+        Args:
+            ffprobe_data: FFProbe plugin result data
+            tvdb_result: TVDb fetch result
+
         Returns:
             {tests_passed, tests_total, details}
         """
@@ -135,7 +163,6 @@ class TVDbPlugin(OutputPlugin):
         tests_total = 0
 
         # Get ffprobe duration
-        ffprobe_data = match_data.get('ffprobe', {})
         container = ffprobe_data.get('container', {})
         ffprobe_duration = container.get('duration', 0)
 
@@ -179,10 +206,10 @@ class TVDbPlugin(OutputPlugin):
         search_results = self.api.search_series(show_name)
 
         if not search_results.get('data'):
-            return self._error_result()
+            return {'status': {'success': False}}
 
         series_id = search_results['data'][0]['tvdb_id']
-        self.debugger.info("tvdb", "TV show found", tvdb_id=series_id, title=show_name)
+        self.info("TV show found", tvdb_id=series_id, title=show_name)
 
         # Get extended info
         raw_series_extended = self.api.get_series_extended(series_id)
@@ -191,13 +218,13 @@ class TVDbPlugin(OutputPlugin):
         raw_extras = {}
         if self.extras_config.get('series_extended'):
             raw_extras['series_extended'] = raw_series_extended
-            self.debugger.debug("tvdb", "Fetched series_extended", endpoint="/series/{id}/extended")
+            self.debug("Fetched series_extended", endpoint="/series/{id}/extended")
 
         if self.extras_config.get('series_artworks'):
             artworks = self.extras_client.series_artworks(series_id)
             if artworks:
                 raw_extras['series_artworks'] = artworks
-                self.debugger.debug("tvdb", "Fetched series_artworks", endpoint="/series/{id}/artworks")
+                self.debug("Fetched series_artworks", endpoint="/series/{id}/artworks")
 
         # Normalize (DEFAULT OUTPUT)
         normalized_show = self.normalizer.normalize_show(raw_series_extended)
@@ -229,27 +256,11 @@ class TVDbPlugin(OutputPlugin):
                 'extras': raw_extras
             }
 
-        self.debugger.debug("tvdb", "TV show normalized",
-                           tvdb_id=series_id,
-                           title=normalized_show['title']['primary'],
-                           include_raw=self.include_raw)
+        self.debug("TV show normalized",
+                   tvdb_id=series_id,
+                   title=normalized_show['title']['primary'],
+                   include_raw=self.include_raw)
 
         return result
 
-    def _error_result(self) -> dict[str, Any]:
-        """Return error result"""
-        now = datetime.now().isoformat()
-        return {
-            'status': {
-                'success': False,
-                'started_at': now,
-                'finished_at': now,
-                'duration_ms': 0
-            },
-            'movie': None,
-            'show': None,
-            'season': None,
-            'episode': None,
-            'extras': {},
-            'normalized': {}
-        }
+    # _error_result() removed - using PluginResult.error_result() instead

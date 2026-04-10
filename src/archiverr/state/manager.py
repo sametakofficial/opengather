@@ -65,7 +65,7 @@ class GlobalStateManager:
         if event_bus is not None:
             self._event_bus = event_bus
             self._event_emitter.configure(event_bus=event_bus)
-            self._job_manager._event_bus = event_bus
+            self._job_manager.configure(event_bus=event_bus)
 
     def reset(self):
         """reset state for new run."""
