@@ -89,7 +89,11 @@ class ValueMatcher:
         if is_plugin:
             return True, None
 
-        # Non-plugin paths: success/fail forbidden
+        # Provides paths: completed/pending/failed allowed
+        if path.startswith('provides.') and check_value in ('completed', 'pending', 'failed'):
+            return True, None
+
+        # Non-plugin, non-provides paths: success/fail forbidden
         if check_value in ('success', 'fail'):
             return False, (
                 f"Success/fail semantics only allowed for plugin paths. "
@@ -196,6 +200,59 @@ class ValueMatcher:
         return False, False
 
     @staticmethod
+    def check_provides_status(
+        state: dict[str, Any],
+        path: str,
+        check_value: str
+    ) -> tuple[bool, bool]:
+        """
+        Check provides status from global state.
+
+        Provides data in state: {'provides': {'http.request': {'tmdb': 'completed', ...}}}
+        Path format: provides.{capability} (e.g., provides.http.request)
+        Check value: 'completed', 'pending', or 'failed'
+
+        For :completed -- true if ANY plugin completed this provide.
+        For :pending -- true if ALL plugins are still pending.
+        For :failed -- true if ANY plugin failed this provide.
+
+        Args:
+            state: Global state dict (must contain 'provides' key)
+            path: provides.{capability} path
+            check_value: 'completed', 'pending', or 'failed'
+
+        Returns:
+            (found, matches) tuple
+        """
+        # Extract capability from path: provides.http.request -> http.request
+        capability = path[len('provides.'):]
+        if not capability:
+            return False, False
+
+        # Resolve provides data from state
+        provides_data = state.get('provides', {})
+        if not isinstance(provides_data, dict):
+            return False, False
+
+        plugin_statuses = provides_data.get(capability)
+        if plugin_statuses is None:
+            return True, False  # Capability not registered
+
+        if not isinstance(plugin_statuses, dict) or not plugin_statuses:
+            return True, False
+
+        status_values = list(plugin_statuses.values())
+
+        if check_value == 'completed':
+            return True, any(s == 'completed' for s in status_values)
+        elif check_value == 'pending':
+            return True, all(s == 'pending' for s in status_values)
+        elif check_value == 'failed':
+            return True, any(s == 'failed' for s in status_values)
+
+        return False, False
+
+    @staticmethod
     def match(
         state: dict[str, Any],
         requirement: str
@@ -232,6 +289,11 @@ class ValueMatcher:
         is_plugin = ValueMatcher.is_plugin_path(path)
         if is_plugin and check_value in ('success', 'fail'):
             found, matches = ValueMatcher.check_plugin_status(state, path, check_value)
+            return True, matches, None
+
+        # Provides path: provides.{capability}:completed/pending/failed
+        if path.startswith('provides.') and check_value in ('completed', 'pending', 'failed'):
+            found, matches = ValueMatcher.check_provides_status(state, path, check_value)
             return True, matches, None
 
         # Exact value match

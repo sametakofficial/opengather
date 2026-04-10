@@ -38,11 +38,12 @@ class PluginServices:
         config: dict[str, Any],
         mode: str,  # "per_run" or "per_job"
         current_job_id: str | None = None,
-        current_plugin_name: str | None = None
+        current_plugin_name: str | None = None,
+        provides_registry: 'Any' = None
     ):
         """
         Initialize Plugin Services.
-        
+
         Args:
             state: GlobalStateManager instance
             event_bus: EventBus instance
@@ -51,6 +52,7 @@ class PluginServices:
             mode: "per_run" or "per_job"
             current_job_id: Current job ID (per_job only)
             current_plugin_name: Current plugin name (per_job only)
+            provides_registry: Optional ProvidesRegistry for early completion
         """
         self._state = state
         self._event_bus = event_bus
@@ -59,6 +61,7 @@ class PluginServices:
         self._mode = mode
         self._current_job_id = current_job_id
         self._current_plugin_name = current_plugin_name
+        self._provides_registry = provides_registry
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:
         """
@@ -281,3 +284,17 @@ class PluginServices:
         """Get current run ID."""
         run = self._state.run
         return run.id if run else None
+
+    @property
+    def provides(self):
+        """Get provides service for early completion.
+
+        Allows plugins to mark individual provides as completed during execution:
+            services.provides.complete("http.request")
+            services.provides.is_completed("http.request")
+        """
+        if self._provides_registry is None:
+            from archiverr.core.provides_registry import get_provides_registry
+            self._provides_registry = get_provides_registry()
+        from archiverr.core.services.provides_service import ProvidesServiceImpl
+        return ProvidesServiceImpl(self._provides_registry, self._current_plugin_name or "unknown")

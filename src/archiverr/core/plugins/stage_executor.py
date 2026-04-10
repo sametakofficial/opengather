@@ -810,7 +810,8 @@ class StageExecutor:
             config=self._config,
             mode=mode,
             current_job_id=job_id,
-            current_plugin_name=plugin_name
+            current_plugin_name=plugin_name,
+            provides_registry=self._provides_registry
         )
 
         return services

@@ -809,3 +809,85 @@ class TestProvidesRegistryIntegration:
         assert state["provides"]["http.request"]["tmdb"] == "completed"
 
         reset_provides_registry()
+
+
+# ---------------------------------------------------------------------------
+# Provides-Based Requires Tests (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestProvidesBasedRequires:
+    """Tests for provides.* prefix in trigger rule evaluation."""
+
+    def test_provides_completed_resolves(self):
+        """provides.http.request:completed matches when provide is completed."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        state = {
+            "provides": {
+                "http.request": {"tmdb": "completed", "tvdb": "pending"}
+            }
+        }
+
+        is_valid, matches, error = ValueMatcher.match(state, "provides.http.request:completed")
+        assert is_valid
+        assert matches  # tmdb completed it
+
+    def test_provides_pending_resolves(self):
+        """provides.http.request:pending matches when all are pending."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        state = {
+            "provides": {
+                "http.request": {"tmdb": "pending", "tvdb": "pending"}
+            }
+        }
+
+        is_valid, matches, error = ValueMatcher.match(state, "provides.http.request:pending")
+        assert is_valid
+        assert matches
+
+    def test_provides_failed_resolves(self):
+        """provides.state.update:failed matches when any plugin failed."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        state = {
+            "provides": {
+                "state.update": {"tmdb": "completed", "omdb": "failed"}
+            }
+        }
+
+        is_valid, matches, error = ValueMatcher.match(state, "provides.state.update:failed")
+        assert is_valid
+        assert matches
+
+    def test_provides_not_registered(self):
+        """Unregistered provide returns not matched."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        state = {"provides": {}}
+
+        is_valid, matches, error = ValueMatcher.match(state, "provides.fs.write:completed")
+        assert is_valid
+        assert not matches
+
+    def test_provides_validation_accepts_completed(self):
+        """Validation accepts provides.*:completed syntax."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        is_valid, error = ValueMatcher.validate_requirement("provides.http.request:completed")
+        assert is_valid
+        assert error is None
+
+    def test_provides_partial_completion(self):
+        """provides.http.request:completed is false when none completed."""
+        from archiverr.core.triggers.matcher import ValueMatcher
+
+        state = {
+            "provides": {
+                "http.request": {"tmdb": "pending", "tvdb": "pending"}
+            }
+        }
+
+        is_valid, matches, error = ValueMatcher.match(state, "provides.http.request:completed")
+        assert is_valid
+        assert not matches  # None completed yet

@@ -352,12 +352,18 @@ class Orchestrator:
         """Register event handlers for persistence and logging."""
 
         def on_job_completed(event):
-            """Persist job on completion"""
+            """Persist job state on completion."""
             data = event.data if hasattr(event, 'data') else event
             job_id = data.get("job_id")
             if job_id and self._persistence:
-                # Persist job state
-                pass
+                job = self._state.get_job_by_id(job_id) if hasattr(self._state, 'get_job_by_id') else None
+                if job:
+                    self._persistence.save_job({
+                        "job_id": job_id,
+                        "run_id": self._run_id,
+                        "stage": data.get("stage"),
+                        "status": job.status.to_dict() if hasattr(job.status, 'to_dict') else {},
+                    })
 
         def on_plugin_completed(event):
             """Persist plugin data on completion"""
