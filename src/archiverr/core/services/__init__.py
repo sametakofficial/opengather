@@ -20,9 +20,6 @@ from .protocols import (
 )
 from .provides_service import ProvidesServiceImpl
 
-# Service implementations
-from .state_service import StateServiceImpl
-
 __all__ = [
     # Protocols
     'StateService',
@@ -33,7 +30,6 @@ __all__ = [
     'ProvidesService',
 
     # Implementations
-    'StateServiceImpl',
     'EventServiceImpl',
     'LoggerServiceImpl',
     'ConfigServiceImpl',

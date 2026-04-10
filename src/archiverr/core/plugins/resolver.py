@@ -151,18 +151,3 @@ class DependencyResolver:
 
         return deps
 
-    def check_expects(self, plugin_name: str, available_data: set[str]) -> bool:
-        """
-        Check if plugin's expects are satisfied.
-        
-        Args:
-            plugin_name: Plugin to check
-            available_data: Set of available data keys (e.g., {'input', 'ffprobe.video'})
-            
-        Returns:
-            True if all expects are satisfied
-        """
-        metadata = self.plugin_metadata.get(plugin_name, {})
-        expects = metadata.get('expects', [])
-
-        return all(expect in available_data for expect in expects)

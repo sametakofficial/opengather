@@ -138,12 +138,6 @@ class GlobalStateManager:
 
         self._log("debug", "run", "Started run", id=run_id)
 
-        self._emit(Events.RUN_STARTED, {
-            "run_id": run_id,
-            "config": config,
-            "plugins": list(config.get('plugins', {}).keys()) if isinstance(config.get('plugins'), dict) else []
-        })
-
         return run_id
 
     def complete_run(self) -> RunState:

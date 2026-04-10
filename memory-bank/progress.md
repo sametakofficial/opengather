@@ -1,6 +1,6 @@
 # Progress
 
-**Last Updated:** Session 31 ALL PHASES - April 10, 2026
+**Last Updated:** Session 32 - April 10, 2026
 
 ## What Works
 
@@ -19,19 +19,16 @@
 - [x] PARTIAL state (mixed success/failure runs)
 - [x] Full UUID identifiers (no truncation)
 - [x] Stage executor decomposed (5 SRP methods, independently testable)
-- [x] DependencyResolver wired into StageExecutor (proper topo sort, cycle detection)
-- [x] ProvidesRegistry wired into execution lifecycle (register/complete/fail)
+- [x] DependencyResolver wired into StageExecutor
+- [x] ProvidesRegistry wired into execution lifecycle
 - [x] StartupValidator wired into Orchestrator._initialize()
-- [x] PerRunPlugin/PerJobPlugin protocols (runtime_checkable, type-safe dispatch)
-- [x] hasattr reduced 23->8 in stage_executor (Protocol-based dispatch)
-- [x] Orphaned executor.py moved to .deleted/
-- [x] Dead PluginServices dataclass removed from services/__init__.py
-- [x] provides.*:completed syntax in ValueMatcher (trigger on provides completion)
-- [x] provides_registry exposed via PluginServices.provides
+- [x] PerRunPlugin/PerJobPlugin protocols (runtime_checkable)
+- [x] provides.*:completed syntax in ValueMatcher
 - [x] Early completion support for plugins
-- [x] Event handlers updated to current event names
-- [x] on_job_completed no-op fixed
-- [x] StatisticsHandler modernized
+- [x] Event handlers modernized
+- [x] **complete_job() wired into _finalize** (session 32 fix)
+- [x] **RUN_STARTED emitted exactly once** (session 32 fix)
+- [x] **~909 LOC dead code removed** (session 32)
 
 ### All 9 Plugins Working
 - [x] scanner, file-reader (input)
@@ -41,47 +38,40 @@
 
 ### All 9 Plugins Have manifest.yml
 - [x] Explicit stage, provides, requires, run_mode
-- [x] No legacy plugin.json files remain
-- [x] config_schema with validation rules
 
 ### Template System
 - [x] Jinja2 with 40+ custom filters
 - [x] Per-match and summary task execution
-- [x] Conditional templates
 
-### Testing (425 unit passed, 4 MongoDB fail, 17 skipped)
-- [x] Orchestrator tests (24) -- run lifecycle, init, stages, finalize, errors, factory
-- [x] Stage executor tests (56) -- all 5 decomposed methods, parallel grouping, caching, DependencyResolver integration (7), ProvidesRegistry lifecycle (4)
+### Testing (40 targeted tests passed in session 32)
+- [x] Orchestrator tests (24) -- including new complete_job + single RUN_STARTED tests
+- [x] Stage executor tests (56)
 - [x] Manifest normalizer tests (24)
 - [x] State model tests
 - [x] Config normalizer/YAML loader tests
-- [x] Plugin-agnostic guard (static analysis of core)
-- [x] API endpoint tests (14 fail without MongoDB - expected)
-- [x] Validation tests (requires, dependency, manifest)
+- [x] Plugin-agnostic guard
+- [x] Validation tests
+
+### Documentation (Session 32)
+- [x] Strategic plan (docs/STRATEGIC_PLAN_SESSION32.md)
+- [x] 6 architecture diagrams (docs/schemes/)
 
 ## What Doesn't Work
-
-### Tests Not Written (0-byte files)
-- [ ] `test_plugin_services.py` - Plugin-state interface
-- [ ] `test_startup_validator.py` - Startup validation
-- [ ] `test_pymongo_persistence.py` - MongoDB persistence
-- [ ] `tests/e2e/` - Empty directory
-- [ ] `tests/integration/` - Empty directory
 
 ### Not Implemented
 - [ ] MongoDB backend integration (pymongo_persistence.py exists but not wired)
 - [ ] FastAPI endpoint connection to live orchestrator
-- [ ] Async persistence interface for FastAPI
-- [ ] Config validation enforcement (StartupValidator wired, config.schema.json not yet enforced)
-- [ ] Further hasattr reduction (8 remaining, down from 23; PerRunPlugin/PerJobPlugin protocols defined)
+- [ ] Config validation enforcement
 - [ ] Web UI
 
 ### Technical Debt
-- [ ] Plugin data stored in 5 places (should be single source)
-- [ ] Deprecated Motor code (526 LOC dead code)
-- [ ] 40 ruff whitespace warnings on stage_executor
-- [ ] TVDb/TVMaze debug logging partial
-- [ ] Tasker plugin has renamer coupling (`if 'renamer' in plugins_data`)
+- [ ] Plugin data stored in 5+ places (should be single source)
+- [ ] _plugin_data_cache duplicates job.plugins
+- [ ] _build_global_state called per-plugin (wasteful)
+- [ ] Dual _execute_per_job paths (should unify)
+- [ ] 8 remaining hasattr() calls in stage_executor
+- [ ] Legacy 1-arg plugin detection via inspect.signature()
+- [ ] Tasker has renamer coupling (`if 'renamer' in plugins_data`)
 - [ ] `response.globals` naming used at 3 levels (ambiguous)
 
 ## Session History
@@ -92,11 +82,9 @@
 | 11 | Nov 8, 2025 | Stage-based system | Expects system, debug integration |
 | 12 | Nov 8, 2025 | Manifest migration | manifest.yml format introduced |
 | 13-14 | Nov 2025 | Structure fixes | Input/output metadata, clean folders |
-| 15 | Nov 2025 | (init only) | - |
 | 16-17 | Nov 2025 | Communication refactoring | Trigger system, requires format |
-| 21 | - | (init only) | - |
-| 27 | - | (init only) | - |
 | 28 | Apr 8, 2026 | Full analysis | SESSION_28_REPORT.md, 6 SVG diagrams |
-| 29 | Apr 8, 2026 | Architecture fix | Hardcoded names removed, manifests completed, UUID+PARTIAL |
-| 30 | Apr 8, 2026 | Deep audit + core tests | stage_executor decomposed, 69 tests, 462 total passed, workflow automation |
-| **31** | **Apr 10, 2026** | **Wire infrastructure + Protocol cleanup + Provides + Events** | **Phase 1: DependencyResolver+ProvidesRegistry+StartupValidator wired. Phase 2: PerRunPlugin/PerJobPlugin protocols, hasattr 23->8. Phase 3: provides.*:completed syntax, early completion. Phase 4: Event handlers modernized. 425 tests passing (+17 new)** |
+| 29 | Apr 8, 2026 | Architecture fix | Hardcoded names removed, manifests completed |
+| 30 | Apr 8, 2026 | Deep audit + core tests | stage_executor decomposed, 69 tests |
+| 31 | Apr 10, 2026 | Wire infrastructure + Protocols + Events | 4 phases, 425 tests passing |
+| **32** | **Apr 10, 2026** | **Strategic plan + dead code + bug fixes** | **6-agent analysis, ~909 LOC removed, 2 bugs fixed, 6 diagrams** |

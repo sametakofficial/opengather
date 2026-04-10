@@ -9,10 +9,9 @@ Submodules:
     - repositories: Repository pattern implementations
 """
 
-from .database import MONGODB_AVAILABLE, DatabaseConnection, PersistenceInterface
+from .database import DatabaseConnection, PersistenceInterface
 
 __all__ = [
     'PersistenceInterface',
     'DatabaseConnection',
-    'MONGODB_AVAILABLE'
 ]

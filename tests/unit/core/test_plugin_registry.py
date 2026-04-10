@@ -319,57 +319,6 @@ class TestPluginRegistry:
         provides = registry.get_provides("renamer")
         assert "renamer.parsed" in provides
     
-    @patch('archiverr.core.plugins.registry.PluginDiscovery')
-    @patch('archiverr.core.plugins.registry.PluginLoader')
-    def test_validate_dependencies(
-        self,
-        mock_loader_class,
-        mock_discovery_class,
-        mock_discovery,
-        mock_loader,
-        mock_debugger
-    ):
-        """Test dependency validation"""
-        mock_discovery_class.return_value = mock_discovery
-        mock_loader_class.return_value = mock_loader
-        
-        registry = PluginRegistry({}, debugger=mock_debugger)
-        registry.discover_and_load()
-        
-        errors = registry.validate_dependencies()
-        # renamer provides renamer.parsed, tmdb requires it - should be valid
-        assert errors == []
-    
-    @patch('archiverr.core.plugins.registry.PluginDiscovery')
-    @patch('archiverr.core.plugins.registry.PluginLoader')
-    def test_validate_dependencies_missing(
-        self,
-        mock_loader_class,
-        mock_discovery_class,
-        mock_debugger
-    ):
-        """Test validation catches missing dependencies"""
-        discovery = Mock()
-        discovery.discover.return_value = {
-            "tmdb": {
-                "name": "tmdb",
-                "category": "output",
-                "requires": ["nonexistent.data"]
-            }
-        }
-        mock_discovery_class.return_value = discovery
-        
-        loader = Mock()
-        loader.load_by_category = Mock(side_effect=lambda c: 
-            {"tmdb": Mock()} if c == "output" else {}
-        )
-        mock_loader_class.return_value = loader
-        
-        registry = PluginRegistry({}, debugger=mock_debugger)
-        registry.discover_and_load()
-        
-        errors = registry.validate_dependencies()
-        assert errors == []
 
 
 class TestPluginRegistryStageMapping:

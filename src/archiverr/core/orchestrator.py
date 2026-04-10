@@ -333,7 +333,14 @@ class Orchestrator:
 
         self._dump_global_state()
 
-        # Complete run in state
+        # Complete all jobs (updates run stats: completed/failed counts)
+        for job in self._state.get_all_jobs():
+            try:
+                self._state.complete_job(job.index)
+            except Exception as e:
+                self._log("warn", f"Failed to complete job {job.index}: {e}")
+
+        # Complete run in state (uses job counts for SUCCESS/PARTIAL/FAILED)
         self._state.complete_run()
 
         # Build final statistics

@@ -1,39 +1,33 @@
 # Active Context
 
-**Last Updated:** Session 31 ALL PHASES - April 10, 2026
-**Version:** v2.3.3-dev
+**Last Updated:** Session 32 - April 10, 2026
+**Version:** v2.3.4-dev
 **Branch:** `dev/communication-refactoring`
 
-## What Just Happened (Session 31 -- All 4 Phases)
+## What Just Happened (Session 32)
 
-### Completed (Phase 4 -- Event Handler Modernization)
-1. **Event handlers updated to current event names** - Aligned with EventBus naming conventions
-2. **on_job_completed no-op fixed** - Was silently doing nothing, now properly handles completion
-3. **StatisticsHandler modernized** - Updated to work with current state/event system
+### Strategic Analysis (6 agents)
+1. **Explore agent** -- Deep codebase exploration, found 65+ hasattr calls, 5-7 data storage locations, ~909 LOC dead code
+2. **Architecture Review agent** -- Scored 10 areas GREEN/YELLOW/RED, found 2 critical bugs
+3. **Architecture Research agent** -- Compared with Home Assistant, Airflow, pluggy, FlexGet, Luigi
+4. **Compliance Audit agent** -- All 5 checks PASS (1 minor finding: orphaned manifest_normalizer.py)
+5. **Reality Check agent** -- Brutal market assessment, reordered roadmap to B->F->A
+6. **Simplifier agent** -- Filtered proposals, gave DO IT/SKIP/DEFER/SHRINK verdicts
 
-### Completed (Phase 3 -- Provides-Based Requires)
-1. **provides.*:completed syntax in ValueMatcher** - Trigger system can match on provides completion status
-2. **provides_registry in PluginServices.provides** - Plugins can query provides state via services
-3. **Early completion support** - Plugins can signal completion before full pipeline finishes
+### Dead Code Removal (~909 LOC)
+1. StateServiceImpl (278 LOC) -> .deleted/
+2. mongodb.py Motor code (527 LOC) -> .deleted/
+3. motor.py shim (47 LOC) -> .deleted/
+4. _topological_sort, check_expects, validate_dependencies removed
 
-### Completed (Phase 2 -- Protocol + Cleanup)
-1. **PerRunPlugin/PerJobPlugin protocols defined** - `@runtime_checkable` Protocol classes in `sdk/types.py` for type-safe plugin dispatch
-2. **hasattr reduced 23 to 8** in stage_executor.py
-3. **Orphaned executor.py moved to .deleted/** - Unused async PluginExecutor
-4. **Dead PluginServices dataclass + factory functions removed** from `services/__init__.py`
+### Bug Fixes
+1. **complete_job() never called** -> Added loop in orchestrator._finalize()
+2. **Dual RUN_STARTED** -> Removed emission from state/manager.py
 
-### Completed (Phase 1 -- Infrastructure Wiring)
-1. **DependencyResolver wired into StageExecutor** - Proper topo sort replacing pseudo-sort
-2. **ProvidesRegistry wired into execution lifecycle** - Register/complete/fail from manifests
-3. **StartupValidator wired into Orchestrator._initialize()** - Replaces legacy `validate_dependencies()`
-4. **DependencyResolver fixed** - Handles `plugin.*.field:success` requires format
-5. **OMDb category bug fixed** - Was reading from wrong path
-6. **Manifest accuracy fixes** - Removed false provides, fixed tasker requires
-7. **11 new tests** - DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
-
-### Test Results
-- **425 unit tests passed** (+17 new), 4 failed (MongoDB), 17 skipped
-- Ruff: 40 whitespace warnings on stage_executor (cosmetic, pre-existing)
+### Documentation
+1. Strategic plan (docs/STRATEGIC_PLAN_SESSION32.md)
+2. 6 Mermaid diagrams (docs/schemes/)
+3. Vision analysis (docs/vision-analysis/, 6 files)
 
 ## Active Decisions
 
@@ -41,35 +35,32 @@
 |----------|--------|-----------|
 | Plugin-agnostic core | ENFORCED | Guard test prevents regression |
 | manifest.yml as single source | DONE | All plugins migrated |
-| Stage executor decomposed | DONE | 5 SRP methods, each independently testable |
-| PerRunPlugin/PerJobPlugin protocols | DONE | @runtime_checkable, hasattr 23->8 |
-| PyMongo sync for CLI | ACTIVE | Motor deprecated |
-| Beanie ODM dropped | ACTIVE | Raw pymongo instead |
-| Session End Protocol | ENFORCED | CLAUDE.md mandates commit + report + HANDOFF + audit |
+| PyMongo sync for CLI | ACTIVE | Motor deprecated + deleted |
+| "Playground" vision | CONFIRMED | Reality-check validated this framing |
+| Dead code removal before refactoring | DONE | ~909 LOC removed, zero risk |
+| Bug fixes before new features | DONE | 2 bugs fixed with tests |
 
 ## Known Issues (Current)
 
-### Blocking Nothing
-- 4 tests fail without MongoDB running (expected)
-- 40 ruff whitespace warnings on stage_executor (cosmetic)
+### Fixed This Session
+- ~~complete_job() never called~~ FIXED
+- ~~Dual RUN_STARTED emission~~ FIXED
+- ~~StateServiceImpl dead code~~ REMOVED
+- ~~Motor/mongodb.py dead code~~ REMOVED
 
 ### Needs Attention
-- `tests/unit/core/test_plugin_services.py` - 0 bytes
-- `tests/unit/core/validation/test_startup_validator.py` - 0 bytes
-- `tests/unit/infrastructure/test_pymongo_persistence.py` - 0 bytes
-- `tests/e2e/` and `tests/integration/` - empty directories
+- `_build_global_state()` called per-plugin (wasteful, not critical)
+- `_execute_per_job` and `_execute_per_job_grouped` duplicate paths
+- Plugin data stored in 5+ places (consolidation deferred)
+- 8 remaining hasattr() in stage_executor (down from 23; ~40 total after dead code removal)
 - FastAPI endpoints disconnected from orchestrator
-- Plugin data stored in 5 places (consistency risk)
-- Deprecated Motor code still exists (`mongodb.py`, 526 LOC)
-- Config validation schema exists but not enforced
-- 8 remaining `hasattr()` calls in stage_executor (down from 23; PerRunPlugin/PerJobPlugin protocols now handle dispatch)
+- No CI/CD pipeline
+- Tasker-renamer coupling (`if 'renamer' in plugins_data`)
 
 ## What To Do Next (Priority Order)
 
-1. **Fix ruff whitespace warnings** - 40 cosmetic issues in stage_executor
-2. **Reduce remaining 8 hasattr calls** - Further Protocol adoption for result extraction and state guards
-3. **Consolidate plugin data** - Single authoritative store instead of 5 locations
-4. **Move deprecated Motor code** - `mongodb.py` to `.deleted/`
-5. **Fix FastAPI output path** - `process_executor.py` expects old report format
-6. **MongoDB backend integration** - Connect pymongo_persistence.py to orchestrator
-7. **Write missing tests** - plugin_services, startup_validator, pymongo_persistence (0-byte files)
+1. **Set up CI/CD** -- GitHub Actions for pytest + ruff on push
+2. **Cache _build_global_state per-job** -- 5-line performance fix
+3. **Unify _execute_per_job paths** -- Eliminate duplicate execution logic
+4. **Write a novel plugin** -- Exercise the plugin system's power
+5. **Data consolidation** -- Single source of truth for plugin data

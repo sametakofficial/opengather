@@ -29,14 +29,6 @@ except ImportError:
     PyMongoPersistence = None
     PYMONGO_AVAILABLE = False
 
-# Legacy MongoDB (Motor with run_until_complete) - DEPRECATED
-try:
-    from .mongodb import MongoDBPersistence
-    MONGODB_AVAILABLE = True
-except ImportError:
-    MongoDBPersistence = None
-    MONGODB_AVAILABLE = False
-
 # PyMongo Async driver (for FastAPI) - Replaces Motor (deprecated May 2025)
 try:
     from .async_client import AsyncMongoDB, get_database, mongodb_lifespan
@@ -50,19 +42,14 @@ except ImportError:
     get_database = None
     ASYNC_PYMONGO_AVAILABLE = False
 
-# DEPRECATED: Motor support (for backward compatibility only)
-# Will show deprecation warning on import
-MOTOR_AVAILABLE = ASYNC_PYMONGO_AVAILABLE  # Alias for backward compatibility
-
 __all__ = [
     # Interfaces
     'PersistenceInterface',
     # Sync backends
     'PyMongoPersistence',  # Recommended for CLI
-    'MongoDBPersistence',  # DEPRECATED: Use PyMongoPersistence
     # Async PyMongo (FastAPI)
     'AsyncMongoDB',        # PyMongo AsyncMongoClient wrapper
-    'MongoDB',             # DEPRECATED alias for AsyncMongoDB
+    'MongoDB',             # Alias for AsyncMongoDB
     'mongodb_lifespan',
     'get_database',
     # Connection management
@@ -71,6 +58,4 @@ __all__ = [
     # Availability flags
     'PYMONGO_AVAILABLE',
     'ASYNC_PYMONGO_AVAILABLE',
-    'MONGODB_AVAILABLE',  # DEPRECATED
-    'MOTOR_AVAILABLE',    # DEPRECATED: alias for ASYNC_PYMONGO_AVAILABLE
 ]

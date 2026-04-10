@@ -634,28 +634,6 @@ class StageExecutor:
 
         return instance_groups
 
-    def _topological_sort(self, plugins: dict[str, Any], stage: Stage) -> list[Any]:
-        """
-        Sort plugins by dependency order using topological sort.
-        
-        Simple implementation: plugins with no requires first,
-        then by number of requires.
-        """
-        # Debug check
-        if isinstance(plugins, list):
-            self._log("error", f"_topological_sort received list instead of dict for stage {stage.value}")
-            return plugins  # Return as-is if already a list
-
-        plugin_list = list(plugins.values())
-
-        def sort_key(plugin):
-            name = self._get_plugin_name(plugin)
-            manifest = self._registry.get_manifest(name)
-            requires = manifest.get('requires', []) if manifest else []
-            return len(requires)
-
-        return sorted(plugin_list, key=sort_key)
-
     def _group_parallel_plugins(self, plugins: list[Any]) -> list[list[Any]]:
         """
         Group plugins that can run in parallel based on requires/provides conflicts.

@@ -52,7 +52,6 @@ def mock_registry():
     registry.total_discovered = 3
     registry.enabled_plugins = ["plugin_a", "plugin_b", "plugin_c"]
     registry.get_all_manifests.return_value = {}
-    registry.validate_dependencies.return_value = []
     return registry
 
 
@@ -151,6 +150,23 @@ class TestOrchestratorRun:
         event_names = [e[0] for e in events]
         assert "start" in event_names
         assert "complete" in event_names
+
+    def test_run_started_emitted_exactly_once(self, orchestrator, event_bus, mock_registry):
+        """RUN_STARTED must fire exactly once, not twice (bug fix)."""
+        start_events = []
+        event_bus.subscribe(Events.RUN_STARTED, lambda e: start_events.append(e))
+
+        orchestrator._fs_lock_manager = MagicMock()
+        orchestrator._fs_lock_manager.validate_all_manifests.return_value = (True, [])
+        orchestrator._fs_lock_manager.detect_conflicts.return_value = []
+        orchestrator._state_dumper = MagicMock()
+        orchestrator._state_dumper.dump.return_value = None
+
+        with patch.object(orchestrator, '_execute_stages'):
+            with patch.object(orchestrator, '_execute_per_run_plugins'):
+                orchestrator.run()
+
+        assert len(start_events) == 1, f"Expected 1 RUN_STARTED event, got {len(start_events)}"
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +325,28 @@ class TestOrchestratorFinalize:
         orchestrator._finalize(success=True)
 
         assert len(events) == 1
+
+    def test_finalize_completes_all_jobs(self, orchestrator, mock_state):
+        """complete_job must be called for every job before complete_run."""
+        orchestrator._run_id = "run_test_1"
+        orchestrator._state_dumper = MagicMock()
+        orchestrator._state_dumper.dump.return_value = None
+
+        # Simulate 3 jobs
+        job_a = MagicMock(index=0, id="job_0")
+        job_b = MagicMock(index=1, id="job_1")
+        job_c = MagicMock(index=2, id="job_2")
+        mock_state.get_all_jobs.return_value = [job_a, job_b, job_c]
+
+        orchestrator._finalize(success=True)
+
+        # complete_job called for each job
+        assert mock_state.complete_job.call_count == 3
+        mock_state.complete_job.assert_any_call(0)
+        mock_state.complete_job.assert_any_call(1)
+        mock_state.complete_job.assert_any_call(2)
+        # complete_run called AFTER complete_job
+        mock_state.complete_run.assert_called_once()
 
     def test_finalize_called_on_critical_error(self, orchestrator, mock_state, mock_registry):
         """Finalize should be called even when CriticalError occurs."""

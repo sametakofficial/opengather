@@ -371,29 +371,6 @@ class PluginRegistry:
             self.discover_and_load()
         return list(self._all_plugins.keys())
 
-    def validate_dependencies(self) -> list[str]:
-        """
-        Validate plugin dependencies.
-        
-        DEPRECATED: This is legacy validation with incorrect logic.
-        Use StartupValidator and RequiresValidator instead.
-        
-        Returns:
-            List of error messages (empty if valid)
-        """
-        if not self._loaded:
-            self.discover_and_load()
-
-        # P0.3: Suppress incorrect "not provided" warnings
-        # These requires formats are validated at runtime by RequiresValidator:
-        # - job.plugins.* → checked against actual plugin data
-        # - provides.* → checked against provides completion registry
-        # - events.* → checked against event bus
-        #
-        # This legacy method doesn't understand these prefixes and gives
-        # false warnings. Runtime validation is the correct approach.
-        return []
-
     def get_execution_order(self, stage: Stage = None) -> list[str]:
         """
         Get plugin execution order based on requires/provides.
