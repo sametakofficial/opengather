@@ -1,19 +1,24 @@
 # Active Context
 
-**Last Updated:** Session 31 Phase 2 - April 10, 2026
-**Version:** v2.3.2-dev
+**Last Updated:** Session 31 ALL PHASES - April 10, 2026
+**Version:** v2.3.3-dev
 **Branch:** `dev/communication-refactoring`
 
-## What Just Happened (Session 31 Phase 2)
+## What Just Happened (Session 31 -- All 4 Phases)
+
+### Completed (Phase 4 -- Event Handler Modernization)
+1. **Event handlers updated to current event names** - Aligned with EventBus naming conventions
+2. **on_job_completed no-op fixed** - Was silently doing nothing, now properly handles completion
+3. **StatisticsHandler modernized** - Updated to work with current state/event system
+
+### Completed (Phase 3 -- Provides-Based Requires)
+1. **provides.*:completed syntax in ValueMatcher** - Trigger system can match on provides completion status
+2. **provides_registry in PluginServices.provides** - Plugins can query provides state via services
+3. **Early completion support** - Plugins can signal completion before full pipeline finishes
 
 ### Completed (Phase 2 -- Protocol + Cleanup)
 1. **PerRunPlugin/PerJobPlugin protocols defined** - `@runtime_checkable` Protocol classes in `sdk/types.py` for type-safe plugin dispatch
-2. **hasattr reduced 23 to 8** in stage_executor.py:
-   - Plugin dispatch: `PerRunPlugin isinstance` for execute_run, `inspect.signature` for execute param count
-   - Result extraction: `PluginResult isinstance`, `dict isinstance`, then fallback
-   - JobState guards removed (typed class, attributes always exist)
-   - Extracted `_ensure_status_plugins` helper
-   - Removed dead `process` method fallback
+2. **hasattr reduced 23 to 8** in stage_executor.py
 3. **Orphaned executor.py moved to .deleted/** - Unused async PluginExecutor
 4. **Dead PluginServices dataclass + factory functions removed** from `services/__init__.py`
 
@@ -24,11 +29,10 @@
 4. **DependencyResolver fixed** - Handles `plugin.*.field:success` requires format
 5. **OMDb category bug fixed** - Was reading from wrong path
 6. **Manifest accuracy fixes** - Removed false provides, fixed tasker requires
-7. **`_execute_per_job_grouped()`** - Pre-resolved dependency groups
-8. **11 new tests** - DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
+7. **11 new tests** - DependencyResolver integration (7) + ProvidesRegistry lifecycle (4)
 
 ### Test Results
-- **419 unit tests passed**, 4 failed (MongoDB), 17 skipped
+- **425 unit tests passed** (+17 new), 4 failed (MongoDB), 17 skipped
 - Ruff: 40 whitespace warnings on stage_executor (cosmetic, pre-existing)
 
 ## Active Decisions
@@ -68,3 +72,4 @@
 4. **Move deprecated Motor code** - `mongodb.py` to `.deleted/`
 5. **Fix FastAPI output path** - `process_executor.py` expects old report format
 6. **MongoDB backend integration** - Connect pymongo_persistence.py to orchestrator
+7. **Write missing tests** - plugin_services, startup_validator, pymongo_persistence (0-byte files)

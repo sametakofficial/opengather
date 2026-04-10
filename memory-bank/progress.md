@@ -1,6 +1,6 @@
 # Progress
 
-**Last Updated:** Session 31 Phase 2 - April 10, 2026
+**Last Updated:** Session 31 ALL PHASES - April 10, 2026
 
 ## What Works
 
@@ -26,6 +26,12 @@
 - [x] hasattr reduced 23->8 in stage_executor (Protocol-based dispatch)
 - [x] Orphaned executor.py moved to .deleted/
 - [x] Dead PluginServices dataclass removed from services/__init__.py
+- [x] provides.*:completed syntax in ValueMatcher (trigger on provides completion)
+- [x] provides_registry exposed via PluginServices.provides
+- [x] Early completion support for plugins
+- [x] Event handlers updated to current event names
+- [x] on_job_completed no-op fixed
+- [x] StatisticsHandler modernized
 
 ### All 9 Plugins Working
 - [x] scanner, file-reader (input)
@@ -43,7 +49,7 @@
 - [x] Per-match and summary task execution
 - [x] Conditional templates
 
-### Testing (419 unit passed, 4 MongoDB fail, 17 skipped)
+### Testing (425 unit passed, 4 MongoDB fail, 17 skipped)
 - [x] Orchestrator tests (24) -- run lifecycle, init, stages, finalize, errors, factory
 - [x] Stage executor tests (56) -- all 5 decomposed methods, parallel grouping, caching, DependencyResolver integration (7), ProvidesRegistry lifecycle (4)
 - [x] Manifest normalizer tests (24)
@@ -93,4 +99,4 @@
 | 28 | Apr 8, 2026 | Full analysis | SESSION_28_REPORT.md, 6 SVG diagrams |
 | 29 | Apr 8, 2026 | Architecture fix | Hardcoded names removed, manifests completed, UUID+PARTIAL |
 | 30 | Apr 8, 2026 | Deep audit + core tests | stage_executor decomposed, 69 tests, 462 total passed, workflow automation |
-| **31** | **Apr 10, 2026** | **Wire infrastructure + Protocol cleanup** | **Phase 1: DependencyResolver+ProvidesRegistry+StartupValidator wired, 11 new tests. Phase 2: PerRunPlugin/PerJobPlugin protocols, hasattr 23->8, orphaned code removed, 419 tests passing** |
+| **31** | **Apr 10, 2026** | **Wire infrastructure + Protocol cleanup + Provides + Events** | **Phase 1: DependencyResolver+ProvidesRegistry+StartupValidator wired. Phase 2: PerRunPlugin/PerJobPlugin protocols, hasattr 23->8. Phase 3: provides.*:completed syntax, early completion. Phase 4: Event handlers modernized. 425 tests passing (+17 new)** |
