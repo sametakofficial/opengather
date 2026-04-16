@@ -99,10 +99,11 @@ class Events:
     DB_DISCONNECTED = "db.disconnected"
     DB_SYNCED = "db.synced"
     DB_ERROR = "db.error"
-
-    # ==================== VALIDATION ====================
-    VALIDATION_PASSED = "validation.passed"
-    VALIDATION_FAILED = "validation.failed"
+    # NOTE: validation.passed / validation.failed were removed in
+    # session 35 WP-9.4 (zero emit, zero subscribers, not in
+    # datasets/05-events.yml). The 13 enums above are kept because
+    # they ARE documented in datasets/05-events.yml even when no code
+    # currently emits them — they are a published contract.
 
 
 # Type alias for event handlers
