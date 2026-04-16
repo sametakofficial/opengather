@@ -88,20 +88,6 @@ class AsyncPersistenceWrapper:
         return result.deleted_count > 0
 
     # ========================================================================
-    # MATCHES
-    # ========================================================================
-
-    def get_matches(self, execution_id: str) -> list[dict]:
-        """Sync stub - returns empty list."""
-        return []
-
-    async def get_matches_async(self, execution_id: str) -> list[dict]:
-        """Get matches for execution asynchronously."""
-        exec_id = self._normalize_exec_id(execution_id)
-        cursor = self._db["matches"].find({"execution_id": exec_id})
-        return await cursor.to_list(length=None)
-
-    # ========================================================================
     # HELPERS
     # ========================================================================
 

@@ -130,10 +130,54 @@ class PersistenceInterface(ABC):
         """
         pass
 
+    # ------------------------------------------------------------------
+    # Plugin execution records (recovery surface)
+    # ------------------------------------------------------------------
+    # Per dataset `11-recovery.yml`, we persist each plugin's terminal (or
+    # non-terminal, if interrupted) state so a later startup scan can
+    # identify crashed attempts. Implementations may be no-op.
+
+    def save_plugin_execution(
+        self,
+        run_id: str,
+        job_id: str,
+        plugin_name: str,
+        state: str,
+        attempt: int = 1,
+        error: str | None = None,
+        timestamp: Any = None,
+    ) -> None:
+        """
+        Record a plugin execution state transition.
+
+        States: ``started``, ``completed``, ``failed``, ``skipped``, ``crashed``.
+
+        Default implementation is a no-op; implementations that care about
+        recovery override this.
+        """
+        return None
+
+    def get_unfinished_plugin_executions(
+        self, run_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Return plugin execution records whose state is non-terminal
+        (``started`` / ``running``). Used by the startup recovery scan in
+        ``mode=full``.
+
+        Args:
+            run_id: Optional run filter; all runs if None.
+
+        Returns:
+            List of execution dicts. Empty list if the backend does not
+            track executions.
+        """
+        return []
+
     def get_statistics(self) -> dict[str, Any]:
         """
         Get database statistics.
-        
+
         Returns:
             Dict with collection counts and metadata
         """

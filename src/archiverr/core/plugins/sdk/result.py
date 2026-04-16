@@ -40,28 +40,6 @@ class PluginResult(BaseModel):
         """Calculate execution duration in milliseconds"""
         return int((self.finished_at - self.started_at).total_seconds() * 1000)
 
-    def to_status_dict(self) -> dict[str, Any]:
-        """Convert to status dict format used in API response"""
-        return {
-            "success": self.success,
-            "error": self.error,
-            "started_at": self.started_at.isoformat(),
-            "finished_at": self.finished_at.isoformat(),
-            "duration_ms": self.duration_ms
-        }
-
-    def to_response_dict(self) -> dict[str, Any]:
-        """
-        Convert to full API response format.
-        
-        Returns:
-            Dict with 'status' key and all data fields flattened
-        """
-        return {
-            "status": self.to_status_dict(),
-            **self.data
-        }
-
     @classmethod
     def success_result(
         cls,

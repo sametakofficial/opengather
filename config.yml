@@ -1,15 +1,7 @@
-# Archiverr Configuration - Session 12
-# Full featured config with aliases, conditions, and metadata extraction
-
-# Aliases - Shortcuts for templates
-aliases:
-  e: "execution"
-  m: "match"
-  g: "globals"
-  movie: "renamer.parsed.movie"
-  show: "renamer.parsed.show"
-  tmdb_movie: "tmdb.movie"
-  tmdb_show: "tmdb.show"
+# Archiverr Configuration
+# Templates use canonical ``plugin.<name>.data.*`` paths.
+# Use ``${alias:name}`` in manifests for scoped interpolation — see
+# ``core/config/interpolator.py``.
 
 options:
   # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL

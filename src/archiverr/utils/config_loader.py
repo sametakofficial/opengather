@@ -277,97 +277,32 @@ def load_config_simple(path: str = "config.yml") -> dict[str, Any]:
 _original_config: dict[str, Any] = {}
 
 
-def resolve_aliases(config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Resolve all aliases in config.
-    
-    Aliases allow shorthand notation in templates:
-    - m.title → plugin.tmdb.movie.title
-    - movie.name → renamer.parsed.movie.name
-    
-    This runs during config merge, before any plugin execution.
-    After this, no part of the system needs to know about aliases.
-    
-    Args:
-        config: Config with potential alias usage
-        
-    Returns:
-        Config with all aliases resolved to full paths
-    """
-    aliases = config.get('aliases', {})
-    if not aliases:
-        return config
-
-    # Build replacement map: alias_prefix → full_path
-    # Sort by length descending to match longest first
-    replacements = sorted(aliases.items(), key=lambda x: len(x[0]), reverse=True)
-
-    def resolve_value(value: Any) -> Any:
-        """Recursively resolve aliases in any value"""
-        if isinstance(value, str):
-            # Replace aliases in string (templates, paths, etc.)
-            result = value
-            for alias, target in replacements:
-                # Match alias patterns:
-                # 1. {{ alias.field }} or {{ alias }}
-                # 2. At start of line or after whitespace: alias.field
-                # But NOT: something.alias.field (don't match in middle of path)
-
-                # Pattern 1: alias.field → target.field
-                # Use negative lookbehind to avoid matching .alias (in middle of path)
-                pattern_with_dot = r'(?<![.\w])' + re.escape(alias) + r'\.'
-                result = re.sub(pattern_with_dot, target + '.', result)
-
-                # Pattern 2: Standalone alias ({{ alias }} or {% if alias %})
-                # Replace only if it's a whole word, not part of larger identifier
-                standalone_pattern = r'(?<![.\w])' + re.escape(alias) + r'(?![.\w])'
-                result = re.sub(standalone_pattern, target, result)
-            return result
-        elif isinstance(value, dict):
-            return {k: resolve_value(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [resolve_value(v) for v in value]
-        return value
-
-    # Resolve aliases in entire config (except aliases section itself)
-    resolved = {}
-    for key, value in config.items():
-        if key == 'aliases':
-            # Keep aliases section for reference but it won't be used by system
-            resolved[key] = value
-        else:
-            resolved[key] = resolve_value(value)
-
-    return resolved
-
-
 def load_config_with_tracking(
     path: str = "config.yml",
     normalize: bool = True
 ) -> dict[str, Any]:
     """
     Load config and track original for later snapshotting.
-    
-    This is the recommended way to load config for the application.
-    It:
-    - Processes !include directives
-    - Expands environment variables
-    - Normalizes config (FlexGet style detection)
-    - Resolves aliases (m.title → plugin.tmdb.movie.title)
-    - Tracks original for snapshot creation
-    
+
+    Pipeline:
+    1. !include directive processing
+    2. Environment variable expansion
+    3. FlexGet-style normalization
+    4. Original tracked for snapshot
+
+    Alias / ``${...}`` interpolation is applied by
+    ``archiverr.core.config.interpolator.compile_config`` — invoked by
+    ``PluginRegistry.discover_and_load`` after manifests are merged.
+
     Args:
         path: Path to config file
         normalize: Whether to normalize (detect FlexGet style)
-    
+
     Returns:
         Expanded and normalized config for runtime use
     """
     global _original_config
     expanded, original = load_config(path, expand=True, use_includes=True, normalize=normalize)
-
-    # Resolve aliases after expand/normalize
-    expanded = resolve_aliases(expanded)
 
     _original_config = original
     return expanded

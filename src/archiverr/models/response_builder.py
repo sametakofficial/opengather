@@ -222,27 +222,6 @@ class APIResponseBuilder:
             'total_duration_seconds': round(total_duration_seconds, 2)
         }
 
-    def merge_plugin_result(
-        self,
-        match_data: dict[str, Any],
-        plugin_name: str,
-        plugin_result: dict[str, Any]
-    ) -> dict[str, Any]:
-        """
-        Merge a single plugin result into match data.
-        
-        Args:
-            match_data: Current match data
-            plugin_name: Name of plugin
-            plugin_result: Result from plugin
-            
-        Returns:
-            Updated match data
-        """
-        updated = dict(match_data)
-        updated[plugin_name] = plugin_result
-        return updated
-
     def extract_success_plugins(self, match: dict[str, Any]) -> list[str]:
         """Extract list of successful plugin names from match"""
         return match.get('status', {}).get('success_plugins', [])

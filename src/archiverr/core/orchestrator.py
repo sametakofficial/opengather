@@ -90,6 +90,10 @@ class Orchestrator:
         self._result_builder = ResultBuilder()
         self._per_run_executor: PerRunPluginExecutor | None = None
         self._stage_executor: StageExecutor | None = None
+        self._provides_registry: ProvidesRegistry | None = None
+        # ``full`` / ``degraded`` / ``off`` — populated by build_orchestrator.
+        # Direct construction defaults to ``degraded``.
+        self._persistence_mode: str = "degraded"
 
         # Runtime state
         self._run_id: str | None = None
@@ -160,7 +164,8 @@ class Orchestrator:
                 plugin_registry=self._plugin_registry,
                 event_bus=self._event_bus,
                 config=self._config,
-                debugger=self._debugger
+                debugger=self._debugger,
+                provides_registry=self._provides_registry,
             )
         self._per_run_executor.execute()
 
@@ -241,14 +246,23 @@ class Orchestrator:
         self._run_id = self._state.start_run(self._config)
         self._log("debug", f"Run started: {self._run_id}")
 
-        # Create stage executor with fresh per-run ProvidesRegistry
+        # Startup recovery scan — only in mode=full.
+        # Marks any non-terminal plugin_executions from previous runs as
+        # ``crashed`` so operators can see what died mid-plugin.
+        if self._persistence_mode == "full":
+            self._recover_crashed()
+
+        # Shared per-run ProvidesRegistry (per_run_executor + stage_executor use the same)
+        self._provides_registry = ProvidesRegistry()
+
+        # Create stage executor with shared per-run ProvidesRegistry
         self._stage_executor = StageExecutor(
             state=self._state,
             plugin_registry=self._plugin_registry,
             event_bus=self._event_bus,
             config=self._config,
             debugger=self._debugger,
-            provides_registry=ProvidesRegistry()
+            provides_registry=self._provides_registry
         )
 
         # Emit run.started event
@@ -436,34 +450,96 @@ class Orchestrator:
         if filepath:
             self._log("info", f"Global state dumped: {filepath}")
 
+    def _recover_crashed(self) -> None:
+        """Startup scan: mark non-terminal plugin_executions as ``crashed``.
+
+        Only invoked in ``persistence_mode=full`` — the slim recovery
+        contract (no lease, no heartbeat, no claim). Anything still
+        ``started`` / ``running`` from a previous process is considered a
+        crash and transitioned so operators have a durable signal.
+        """
+        if self._persistence is None:
+            return
+        try:
+            orphans = self._persistence.get_unfinished_plugin_executions()
+        except Exception as e:  # noqa: BLE001
+            self._log("warn", f"Crashed scan: unable to query executions: {e}")
+            return
+
+        if not orphans:
+            return
+
+        from datetime import datetime
+
+        now = datetime.utcnow()
+        for doc in orphans:
+            self._persistence.save_plugin_execution(
+                run_id=doc.get("run_id", ""),
+                job_id=doc.get("job_id", ""),
+                plugin_name=doc.get("plugin_name", ""),
+                state="crashed",
+                attempt=int(doc.get("attempt", 1)),
+                error="detected by startup recovery scan",
+                timestamp=now,
+            )
+        self._log(
+            "warn",
+            f"Crashed scan: {len(orphans)} plugin execution(s) marked crashed",
+        )
+
+
+VALID_PERSISTENCE_MODES = {"full", "degraded", "off"}
+
+
+def _resolve_persistence_mode(config: dict[str, Any]) -> str:
+    """Resolve options.persistence_mode, defaulting to ``degraded``.
+
+    Raises:
+        CriticalError: if the configured mode is not in
+            ``{full, degraded, off}``.
+    """
+    raw = (config.get("options") or {}).get("persistence_mode", "degraded")
+    mode = str(raw).lower()
+    if mode not in VALID_PERSISTENCE_MODES:
+        raise CriticalError(
+            f"Invalid persistence_mode '{raw}'. "
+            f"Expected one of: {sorted(VALID_PERSISTENCE_MODES)}",
+            {"mode": raw},
+        )
+    return mode
+
 
 def build_orchestrator(
     config: dict[str, Any],
     debugger: Debugger | None = None,
     persistence: Any = None,
-    event_bus: EventBus | None = None
+    event_bus: EventBus | None = None,
 ) -> Orchestrator:
     """
     Factory function to build Orchestrator with all dependencies.
-    
+
     This is the recommended way to create an Orchestrator.
     It handles all dependency wiring automatically.
-    
+
+    Persistence mode contract (``options.persistence_mode``):
+        - ``off``: NullPersistence, recovery disabled, no warning.
+        - ``degraded`` (default): try Mongo; on failure fall back to
+          NullPersistence with an explicit warning. Recovery disabled.
+        - ``full``: Mongo REQUIRED; on failure raise ``CriticalError``.
+          Startup recovery scan runs.
+
     Args:
         config: Application configuration dict
         debugger: Optional debugger (created if not provided)
-        persistence: Optional persistence layer (from env if not provided)
+        persistence: Optional persistence layer (forces mode=full if
+            explicit)
         event_bus: Optional event bus (created if not provided)
-        
+
     Returns:
         Configured Orchestrator instance
-        
-    Usage:
-        config = load_config_with_tracking("config.yml")
-        orchestrator = build_orchestrator(config)
-        result = orchestrator.run()
     """
     from archiverr.infrastructure.database import DatabaseConnection
+    from archiverr.infrastructure.database.null_persistence import NullPersistence
     from archiverr.state import GlobalStateManager
     from archiverr.utils.debug import init_debugger
 
@@ -480,35 +556,65 @@ def build_orchestrator(
     state = GlobalStateManager()
     state.reset()
 
-    # Create persistence if not provided
-    if persistence is None:
-        try:
-            db_connection = DatabaseConnection.from_env()
-            persistence = db_connection.connect()
-        except (ImportError, Exception):
-            persistence = None
+    mode = _resolve_persistence_mode(config)
 
-        if persistence is None:
-            from archiverr.infrastructure.database.null_persistence import NullPersistence
+    # Resolve persistence per mode contract.
+    if persistence is None:
+        if mode == "off":
             persistence = NullPersistence()
-            if debugger:
-                debugger.warn("orchestrator", "MongoDB not available, using NullPersistence (no data will be persisted)")
+        elif mode == "full":
+            # Required — any failure is fatal.
+            try:
+                persistence = DatabaseConnection.from_env().connect()
+            except Exception as e:  # noqa: BLE001 — surface the cause
+                raise CriticalError(
+                    "persistence_mode=full requires a working Mongo connection",
+                    {"error": str(e), "type": type(e).__name__},
+                ) from e
+            if persistence is None:
+                raise CriticalError(
+                    "persistence_mode=full: MongoDB connection returned no "
+                    "persistence backend",
+                    {},
+                )
+        else:  # degraded
+            try:
+                persistence = DatabaseConnection.from_env().connect()
+            except Exception as e:  # noqa: BLE001
+                persistence = None
+                if debugger:
+                    debugger.warn(
+                        "orchestrator",
+                        "persistence_mode=degraded: MongoDB unavailable, "
+                        "continuing with NullPersistence (recovery disabled)",
+                        error=str(e),
+                    )
+            if persistence is None:
+                persistence = NullPersistence()
+                if debugger:
+                    debugger.warn(
+                        "orchestrator",
+                        "persistence_mode=degraded: using NullPersistence "
+                        "(no data will be persisted, recovery disabled)",
+                    )
 
     # Configure state with persistence
     state.configure(
         persistence=persistence,
         debugger=debugger,
-        event_bus=event_bus
+        event_bus=event_bus,
     )
 
     # Create plugin registry
     plugin_registry = PluginRegistry(config, debugger=debugger)
 
-    return Orchestrator(
+    orch = Orchestrator(
         event_bus=event_bus,
         state=state,
         persistence=persistence,
         plugin_registry=plugin_registry,
         config=config,
-        debugger=debugger
+        debugger=debugger,
     )
+    orch._persistence_mode = mode
+    return orch

@@ -199,54 +199,40 @@ class DependencyValidator:
     def get_execution_order(self, manifests: dict[str, dict]) -> list[str]:
         """
         Get topological execution order.
-        
-        Uses Kahn's algorithm for topological sort.
-        Plugins with no dependencies come first.
-        
-        Note: This assumes no circular dependencies exist.
-        Call validate() first to check.
-        
+
+        Delegates to :class:`archiverr.core.plugins.resolver.DependencyResolver`
+        — the single canonical ordering engine. The resolver returns
+        dependency-grouped lists; we flatten into a stable topological order
+        here.
+
+        Note: Assumes no circular dependencies. Call :meth:`validate` first.
+
         Args:
             manifests: Dict of {plugin_name: manifest}
-            
+
         Returns:
-            List of plugin names in execution order
+            Flat list of plugin names in execution order.
         """
-        graph = self._build_dependency_graph(manifests)
-        available = set(manifests.keys())
+        from archiverr.core.plugins.resolver import DependencyResolver
 
-        # Calculate in-degrees
-        # in_degree[X] = number of dependencies X must wait for
-        # If A requires B, then in_degree[A] += 1 (A must wait for B)
-        in_degree: dict[str, int] = dict.fromkeys(available, 0)
+        available = sorted(manifests.keys())
+        if not available:
+            return []
 
-        for node, deps in graph.items():
-            # node requires each dep, so node must wait for len(deps) plugins
-            in_degree[node] = len([d for d in deps if d in available])
+        resolver = DependencyResolver(manifests)
+        try:
+            groups = resolver.resolve(available)
+        except ValueError:
+            # Circular dep — fallback to deterministic alpha order so validate()
+            # can still report the cycle without this helper crashing.
+            return available
 
-        # Start with nodes that have no dependencies (in_degree == 0)
-        # These are the "root" plugins that can run first
-        queue = [n for n in available if in_degree[n] == 0]
         order: list[str] = []
+        for group in groups:
+            order.extend(group)
 
-        while queue:
-            # Sort for deterministic ordering
-            queue.sort()
-            node = queue.pop(0)
-            order.append(node)
-
-            # Reduce in-degree for nodes that depend on this node
-            for dependent, deps in graph.items():
-                if node in deps:
-                    in_degree[dependent] -= 1
-                    if in_degree[dependent] == 0:
-                        queue.append(dependent)
-
-        # Nodes not in order are part of cycles (shouldn't happen if validate passed)
-        remaining = available - set(order)
-        if remaining:
-            order.extend(sorted(remaining))
-
+        remaining = [n for n in available if n not in order]
+        order.extend(remaining)
         return order
 
     def get_dependencies(self, manifests: dict[str, dict], plugin_name: str) -> set[str]:

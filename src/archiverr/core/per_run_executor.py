@@ -10,6 +10,7 @@ from archiverr.core.exceptions import PluginError
 
 if TYPE_CHECKING:
     from archiverr.core.plugins.registry import PluginRegistry
+    from archiverr.core.provides_registry import ProvidesRegistry
     from archiverr.events import EventBus
     from archiverr.state.manager import GlobalStateManager
     from archiverr.utils.debug import Debugger
@@ -24,13 +25,15 @@ class PerRunPluginExecutor:
         plugin_registry: 'PluginRegistry',
         event_bus: 'EventBus',
         config: dict[str, Any],
-        debugger: 'Debugger' = None
+        debugger: 'Debugger' = None,
+        provides_registry: 'ProvidesRegistry | None' = None,
     ):
         self._state = state
         self._plugin_registry = plugin_registry
         self._event_bus = event_bus
         self._config = config
         self._debugger = debugger
+        self._provides_registry = provides_registry
 
     def execute(self) -> dict[str, Any]:
         """
@@ -66,7 +69,9 @@ class PerRunPluginExecutor:
                     event_bus=self._event_bus,
                     logger=self._debugger,
                     config=self._config,
-                    mode="per_run"
+                    mode="per_run",
+                    current_plugin_name=plugin_name,
+                    provides_registry=self._provides_registry,
                 )
 
                 result = plugin_instance.execute_run(services)

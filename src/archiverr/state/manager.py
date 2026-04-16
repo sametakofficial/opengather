@@ -74,6 +74,15 @@ class GlobalStateManager:
         self._context.reset()
 
     @property
+    def persistence(self):
+        """Persistence backend (``PersistenceInterface``).
+
+        Exposed for executor-level recovery writes. May be ``None`` until
+        ``configure()`` has been called.
+        """
+        return self._persistence
+
+    @property
     def run(self) -> RunState | None:
         """Current run state (read-only for plugins)."""
         return self._run

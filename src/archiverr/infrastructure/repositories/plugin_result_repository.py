@@ -138,51 +138,15 @@ class PluginResultRepository(BaseRepository):
         # Not implemented for current backends
         return False
 
-    def get_for_match(
-        self,
-        execution_id: str,
-        match_index: int
-    ) -> dict[str, dict[str, Any]]:
-        """
-        Get all plugin results for a match.
-        
-        Args:
-            execution_id: Execution ID
-            match_index: Match index
-            
-        Returns:
-            Dict of plugin_name -> data
-        """
-        raise NotImplementedError("Use job-based plugin queries instead")
-
     def get_by_plugin(self, plugin_name: str) -> list[dict[str, Any]]:
         """
         Get all results for a specific plugin.
-        
+
         Args:
             plugin_name: Plugin name
-            
+
         Returns:
             List of plugin result dicts
         """
         all_results = self.get_all()
         return [r for r in all_results if r.get("plugin_name") == plugin_name]
-
-    def get_plugin_data(
-        self,
-        execution_id: str,
-        match_index: int,
-        plugin_name: str
-    ) -> dict[str, Any] | None:
-        """
-        Get specific plugin data for a match.
-        
-        Args:
-            execution_id: Execution ID
-            match_index: Match index
-            plugin_name: Plugin name
-            
-        Returns:
-            Plugin data dict or None
-        """
-        raise NotImplementedError("Use job-based plugin queries instead")

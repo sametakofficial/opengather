@@ -65,6 +65,9 @@ class PyMongoPersistence(PersistenceInterface):
     JOBS = "jobs"
     PLUGINS = "plugins"
     PLUGIN_DOCS = "plugin_docs"
+    PLUGIN_EXECUTIONS = "plugin_executions"
+
+    TERMINAL_STATES = {"completed", "failed", "skipped", "crashed"}
 
     # Configuration defaults
     DEFAULT_TTL_DAYS = 90
@@ -327,8 +330,74 @@ class PyMongoPersistence(PersistenceInterface):
             self._db[self.PLUGINS].create_index([("job_id", 1), ("plugin_name", 1)], unique=True)
             self._db[self.PLUGINS].create_index("run_id")
             self._db[self.PLUGINS].create_index("job_id")
+
+            # plugin_executions indexes (recovery surface)
+            self._db[self.PLUGIN_EXECUTIONS].create_index(
+                [("job_id", 1), ("plugin_name", 1), ("attempt", 1)],
+                unique=True,
+            )
+            self._db[self.PLUGIN_EXECUTIONS].create_index("run_id")
+            self._db[self.PLUGIN_EXECUTIONS].create_index("state")
+            self._db[self.PLUGIN_EXECUTIONS].create_index(
+                [("run_id", 1), ("state", 1)]
+            )
         except Exception as e:
             logger.warning(f"Index creation warning (non-critical): {e}")
+
+    def save_plugin_execution(
+        self,
+        run_id: str,
+        job_id: str,
+        plugin_name: str,
+        state: str,
+        attempt: int = 1,
+        error: str | None = None,
+        timestamp: Any = None,
+    ) -> None:
+        """
+        Record a plugin execution state transition.
+
+        Upserts a document keyed by (job_id, plugin_name, attempt). Non-terminal
+        states (``started``, ``running``) are intentionally kept so a later
+        startup scan can detect crashes.
+        """
+        if not self._connected or self._db is None:
+            return
+        now = timestamp or datetime.utcnow()
+        update_doc: dict[str, Any] = {
+            "$set": {
+                "run_id": run_id,
+                "job_id": job_id,
+                "plugin_name": plugin_name,
+                "state": state,
+                "attempt": attempt,
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        }
+        if error is not None:
+            update_doc["$set"]["error"] = error
+        if state in self.TERMINAL_STATES:
+            update_doc["$set"]["finished_at"] = now
+        try:
+            self._db[self.PLUGIN_EXECUTIONS].update_one(
+                {"job_id": job_id, "plugin_name": plugin_name, "attempt": attempt},
+                update_doc,
+                upsert=True,
+            )
+        except OperationFailure as e:
+            logger.error(f"Failed to save plugin_execution: {e}")
+
+    def get_unfinished_plugin_executions(
+        self, run_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        if not self._connected or self._db is None:
+            return []
+        query: dict[str, Any] = {"state": {"$nin": list(self.TERMINAL_STATES)}}
+        if run_id:
+            query["run_id"] = run_id
+        cursor = self._db[self.PLUGIN_EXECUTIONS].find(query)
+        return list(cursor)
 
     # ==================== STATISTICS ====================
 

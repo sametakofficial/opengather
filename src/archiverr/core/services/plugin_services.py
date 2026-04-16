@@ -10,21 +10,10 @@ Methods:
 
 from typing import TYPE_CHECKING, Any
 
-from archiverr.events import Events
-
 if TYPE_CHECKING:
     from archiverr.events import EventBus
     from archiverr.state.manager import GlobalStateManager
     from archiverr.utils.debug import Debugger
-
-# Map plugin state names to Events constants
-_PLUGIN_STATE_EVENTS = {
-    "started": Events.PLUGIN_STARTED,
-    "completed": Events.PLUGIN_COMPLETED,
-    "failed": Events.PLUGIN_FAILED,
-    "skipped": Events.PLUGIN_SKIPPED,
-    "progress": Events.PLUGIN_PROGRESS,
-}
 
 
 class PluginServices:
@@ -198,72 +187,6 @@ class PluginServices:
             mode=self._mode
         )
 
-    def update_status(
-        self,
-        state: str,
-        success: bool,
-        message: str = "",
-        error: str | None = None
-    ) -> None:
-        """
-        plugin reports its own status (session 14 - plugin autonomy).
-        
-        args:
-            state: plugin state (pending | running | completed | failed | skipped)
-            success: whether plugin succeeded
-            message: human-readable status message
-            error: error message if failed
-        
-        example:
-            services.update_status(
-                state="completed",
-                success=True,
-                message="fetched 10 movies from tmdb"
-            )
-        """
-        if not self._current_plugin_name:
-            raise RuntimeError("update_status() requires plugin context")
-
-        from datetime import datetime
-
-        status_data = {
-            "state": state,
-            "success": success,
-            "message": message,
-            "error": error,
-            "updated_at": datetime.utcnow().isoformat()
-        }
-
-        # update plugin status in state
-        if self._current_job_id:
-            # per_job plugin - update job's plugin status
-            job = self._state.get_job_by_id(self._current_job_id)
-            if job:
-                # Update job.status.plugins dict
-                job.status.plugins[self._current_plugin_name] = status_data
-        elif self._state.run:
-            # per_run plugin - update run's plugin status
-            # Update run.status.plugins dict
-            self._state.run.status.plugins[self._current_plugin_name] = status_data
-
-        # emit status event using Events constant
-        event_name = _PLUGIN_STATE_EVENTS.get(state, f"plugin.{state}")
-        self._event_bus.emit(event_name, {
-            "plugin": self._current_plugin_name,
-            "job_id": self._current_job_id,
-            "success": success,
-            "message": message,
-            "error": error
-        }, source="plugin")
-
-        self._logger.info(
-            "plugin_services",
-            f"plugin status updated: {state}",
-            plugin=self._current_plugin_name,
-            success=success,
-            message=message
-        )
-
     @property
     def mode(self) -> str:
         """Get plugin mode (per_run or per_job)."""
@@ -292,9 +215,16 @@ class PluginServices:
         Allows plugins to mark individual provides as completed during execution:
             services.provides.complete("http.request")
             services.provides.is_completed("http.request")
+
+        Raises:
+            PluginError: If provides_registry was not wired at construction.
         """
         if self._provides_registry is None:
-            from archiverr.core.provides_registry import ProvidesRegistry
-            self._provides_registry = ProvidesRegistry()
+            from archiverr.core.exceptions import PluginError
+            raise PluginError(
+                "services.provides accessed without provides_registry wiring. "
+                "Executor must construct PluginServices with provides_registry=... "
+                f"(plugin={self._current_plugin_name or 'unknown'}, mode={self._mode})"
+            )
         from archiverr.core.services.provides_service import ProvidesServiceImpl
         return ProvidesServiceImpl(self._provides_registry, self._current_plugin_name or "unknown")

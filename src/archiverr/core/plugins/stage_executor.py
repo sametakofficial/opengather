@@ -298,6 +298,7 @@ class StageExecutor:
         the caller applies all side effects via _commit_invocation.
         """
         start_time = datetime.now()
+        self._save_exec_state(job, plugin_name, "started", timestamp=start_time)
         try:
             self._log("debug", f"Executing {plugin_name} for job {job.id}")
             services = self._create_services(plugin_name, job_id=job.id)
@@ -335,9 +336,10 @@ class StageExecutor:
 
         Updates plugin data cache, job state, provides registry and emits events.
         """
-        if exec_result.skipped:
-            return
         plugin_name = exec_result.plugin_name
+        if exec_result.skipped:
+            self._save_exec_state(job, plugin_name, "skipped")
+            return
         if exec_result.success:
             if exec_result.data:
                 self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = exec_result.data
@@ -350,6 +352,7 @@ class StageExecutor:
                 success=True, data=exec_result.data,
                 duration_ms=exec_result.duration_ms, job_id=job.id
             )
+            self._save_exec_state(job, plugin_name, "completed")
         else:
             level = "warn" if exec_result.error else "error"
             label = "plugin error" if exec_result.error else "unexpected error"
@@ -361,6 +364,44 @@ class StageExecutor:
                 plugin_name=plugin_name, stage=stage,
                 error=exec_result.error or "unknown",
                 duration_ms=exec_result.duration_ms, job_id=job.id
+            )
+            self._save_exec_state(
+                job, plugin_name, "failed", error=exec_result.error
+            )
+
+    def _save_exec_state(
+        self,
+        job: JobState,
+        plugin_name: str,
+        state: str,
+        *,
+        error: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Write a plugin_execution state transition via persistence.
+
+        No-op for NullPersistence. All failures are swallowed (debug log)
+        because execution state is auxiliary — never crash the pipeline to
+        keep recovery bookkeeping intact.
+        """
+        persistence = getattr(self._state, "persistence", None)
+        if persistence is None:
+            return
+        try:
+            run = self._state.run
+            persistence.save_plugin_execution(
+                run_id=run.id if run else "",
+                job_id=job.id,
+                plugin_name=plugin_name,
+                state=state,
+                attempt=1,
+                error=error,
+                timestamp=timestamp,
+            )
+        except Exception as e:  # noqa: BLE001
+            self._log(
+                "debug",
+                f"save_plugin_execution({plugin_name}, {state}) skipped: {e}",
             )
 
     def _invoke_plugin(
