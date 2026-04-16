@@ -29,7 +29,6 @@ from archiverr.utils.debug import Debugger, get_debugger
 from .registry import PluginRegistry, Stage
 from .resolver import DependencyResolver
 from .sdk.result import PluginResult
-from .sdk.types import PerRunPlugin
 
 
 class ExecutionMode(Enum):
@@ -168,12 +167,9 @@ class StageExecutor:
 
         try:
             if stage == Stage.OUTPUT:
-                # OUTPUT stage uses mixed mode -- flatten groups for mixed dispatch
+                # OUTPUT stage flattens groups; all plugins run per_job
                 all_plugins = [p for group in execution_groups for p in group]
                 self._execute_mixed(stage, all_plugins)
-            elif mode == ExecutionMode.PER_RUN:
-                all_plugins = [p for group in execution_groups for p in group]
-                self._execute_per_run(stage, all_plugins)
             else:
                 self._execute_per_job_grouped(stage, execution_groups)
 
@@ -187,73 +183,6 @@ class StageExecutor:
             self._log("error", f"Stage {stage.value} unexpected error: {e}")
             self._log("error", f"Traceback: {traceback.format_exc()}")
             raise StageError("Stage execution failed", stage=stage.value, context={"error": str(e)})
-
-    def _execute_per_run(self, stage: Stage, plugins: list[Any]) -> None:
-        """
-        Execute plugins once per run (INPUT stage).
-        
-        Input plugins typically:
-        - Discover files from filesystem
-        - Create jobs via state.create_job()
-        """
-        self._log("debug", f"Executing {len(plugins)} plugins (per_run)")
-
-        for plugin in plugins:
-            plugin_name = self._get_plugin_name(plugin)
-            start_time = datetime.now()
-
-            try:
-                self._log("debug", f"Executing plugin: {plugin_name}")
-
-                # Create services for this plugin
-                services = self._create_services(plugin_name)
-
-                # Execute plugin (per_run mode uses execute_run)
-                if isinstance(plugin, PerRunPlugin):
-                    result = plugin.execute_run(services)
-                elif hasattr(plugin, 'get_matches'):
-                    # Legacy fallback: old input plugins use get_matches
-                    self._log("warn", f"Plugin {plugin_name} uses legacy get_matches() -- migrate to execute_run()")
-                    matches = plugin.get_matches()
-                    result = self._create_jobs_from_matches(matches)
-                else:
-                    self._log("warn", f"Plugin {plugin_name} has no execute_run method")
-                    continue
-
-                duration_ms = self._calc_duration(start_time)
-
-                # Emit success event
-                self._emit_plugin_completed(
-                    plugin_name=plugin_name,
-                    stage=stage,
-                    mode="per_run",
-                    success=True,
-                    data=getattr(result, 'data', {}) if result else {},
-                    duration_ms=duration_ms
-                )
-
-            except PluginError as e:
-                duration_ms = self._calc_duration(start_time)
-                self._log("error", f"Plugin {plugin_name} error: {e}")
-
-                self._emit_plugin_failed(
-                    plugin_name=plugin_name,
-                    stage=stage,
-                    error=str(e),
-                    duration_ms=duration_ms
-                )
-                # Continue with next plugin (best effort)
-            except Exception as e:
-                duration_ms = self._calc_duration(start_time)
-                self._log("error", f"Plugin {plugin_name} unexpected error: {e}")
-
-                self._emit_plugin_failed(
-                    plugin_name=plugin_name,
-                    stage=stage,
-                    error=str(e),
-                    duration_ms=duration_ms
-                )
-                # Continue with next plugin (best effort)
 
     def _execute_per_job_grouped(self, stage: Stage, groups: list[list[Any]]) -> None:
         """
@@ -294,87 +223,38 @@ class StageExecutor:
         stage: Stage
     ) -> PluginExecutionResult:
         """
-        Execute a single plugin for a job.
+        Execute a single plugin for a job (sequential path).
 
-        Coordinates: requires check -> invoke -> extract -> update state -> emit.
-        Each step is delegated to a focused method.
+        Decide -> invoke -> commit, all on the caller thread. For parallel
+        execution within a group, _execute_plugin_group_parallel splits these
+        so that only _invoke_safely runs in workers and commit is serial.
         """
         plugin_name = self._get_plugin_name(plugin)
-        start_time = datetime.now()
         manifest = self._registry.get_manifest(plugin_name)
 
-        # Step 1: Check if plugin should run (requires + trigger rules)
-        skip_result = self._check_plugin_requires(plugin_name, manifest, job)
-        if skip_result:
-            return skip_result
+        skip_decision = self._decide_skip(plugin_name, manifest, job)
+        if skip_decision:
+            self._apply_skip(job, plugin_name, skip_decision)
+            return skip_decision
 
-        try:
-            self._log("debug", f"Executing {plugin_name} for job {job.id}")
+        exec_result = self._invoke_safely(plugin, job, plugin_name)
+        self._commit_invocation(job, stage, exec_result)
+        return exec_result
 
-            # Step 2: Invoke plugin (handles signature detection)
-            services = self._create_services(plugin_name, job_id=job.id)
-            result = self._invoke_plugin(plugin, job, services, plugin_name)
-            if result is None:
-                return PluginExecutionResult(
-                    plugin_name=plugin_name, success=False, data={},
-                    error="No execute method"
-                )
-
-            duration_ms = self._calc_duration(start_time)
-
-            # Step 3: Extract result data and success status
-            result_data, success = self._extract_plugin_result(result)
-
-            # Step 4: Cache + update job state
-            if result_data:
-                self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = result_data
-            self._update_job_plugin_state(job, plugin_name, result_data, success, duration_ms)
-
-            # Step 4.5: Update provides registry
-            if success:
-                self._provides_registry.complete_all(plugin_name)
-            else:
-                self._provides_registry.fail_all(plugin_name)
-
-            # Step 5: Emit event and return
-            self._emit_plugin_completed(
-                plugin_name=plugin_name, stage=stage, mode="per_job",
-                success=success, data=result_data, duration_ms=duration_ms,
-                job_id=job.id
-            )
-            return PluginExecutionResult(
-                plugin_name=plugin_name, success=success,
-                data=result_data, duration_ms=duration_ms
-            )
-
-        except PluginError as e:
-            self._provides_registry.fail_all(plugin_name)
-            return self._handle_plugin_error(
-                e, plugin_name, job, stage, start_time
-            )
-        except Exception as e:
-            self._provides_registry.fail_all(plugin_name)
-            return self._handle_plugin_error(
-                e, plugin_name, job, stage, start_time
-            )
-
-    def _check_plugin_requires(
+    def _decide_skip(
         self,
         plugin_name: str,
         manifest: dict[str, Any] | None,
         job: JobState
     ) -> PluginExecutionResult | None:
         """
-        Check if plugin's requires/trigger_rule are satisfied.
+        Decide whether a plugin should be skipped based on requires/trigger_rule.
 
-        Returns PluginExecutionResult (skipped) if plugin should NOT run, None if OK.
+        Pure read; does NOT mutate shared state. Callers apply the skip separately
+        via _apply_skip on the main thread.
         """
         requires = manifest.get('requires', []) if manifest else []
         trigger_rule = manifest.get('trigger_rule', 'all_success') if manifest else 'all_success'
-
-        # Legacy expects fallback
-        if not requires:
-            requires = manifest.get('expects', []) if manifest else []
 
         if not requires:
             return None
@@ -389,15 +269,99 @@ class StageExecutor:
         if should_run:
             return None
 
-        self._log("debug",
-                  f"Skipping {plugin_name} for job {job.id}: "
-                  f"trigger_rule={trigger_rule} - {reason}")
-        self._mark_skipped(job, plugin_name)
-
         return PluginExecutionResult(
             plugin_name=plugin_name, success=True, data={},
             skipped=True, skip_reason=f"Trigger rule '{trigger_rule}': {reason}"
         )
+
+    def _apply_skip(
+        self,
+        job: JobState,
+        plugin_name: str,
+        skip_result: PluginExecutionResult
+    ) -> None:
+        """Apply skip side effects. MAIN THREAD ONLY."""
+        self._log("debug",
+                  f"Skipping {plugin_name} for job {job.id}: {skip_result.skip_reason}")
+        self._mark_skipped(job, plugin_name)
+
+    def _invoke_safely(
+        self,
+        plugin: Any,
+        job: JobState,
+        plugin_name: str
+    ) -> PluginExecutionResult:
+        """
+        Invoke plugin.execute and build a PluginExecutionResult.
+
+        Does NOT mutate shared executor/job state. Safe to run in worker threads;
+        the caller applies all side effects via _commit_invocation.
+        """
+        start_time = datetime.now()
+        try:
+            self._log("debug", f"Executing {plugin_name} for job {job.id}")
+            services = self._create_services(plugin_name, job_id=job.id)
+            result = self._invoke_plugin(plugin, job, services, plugin_name)
+            duration_ms = self._calc_duration(start_time)
+            if result is None:
+                return PluginExecutionResult(
+                    plugin_name=plugin_name, success=False, data={},
+                    error="No execute method", duration_ms=duration_ms
+                )
+            result_data, success = self._extract_plugin_result(result)
+            return PluginExecutionResult(
+                plugin_name=plugin_name, success=success,
+                data=result_data, duration_ms=duration_ms
+            )
+        except PluginError as e:
+            return PluginExecutionResult(
+                plugin_name=plugin_name, success=False, data={},
+                error=str(e), duration_ms=self._calc_duration(start_time)
+            )
+        except Exception as e:
+            return PluginExecutionResult(
+                plugin_name=plugin_name, success=False, data={},
+                error=str(e), duration_ms=self._calc_duration(start_time)
+            )
+
+    def _commit_invocation(
+        self,
+        job: JobState,
+        stage: Stage,
+        exec_result: PluginExecutionResult
+    ) -> None:
+        """
+        Apply all side effects of a plugin invocation. MAIN THREAD ONLY.
+
+        Updates plugin data cache, job state, provides registry and emits events.
+        """
+        if exec_result.skipped:
+            return
+        plugin_name = exec_result.plugin_name
+        if exec_result.success:
+            if exec_result.data:
+                self._plugin_data_cache.setdefault(job.id, {})[plugin_name] = exec_result.data
+            self._update_job_plugin_state(
+                job, plugin_name, exec_result.data, True, exec_result.duration_ms
+            )
+            self._provides_registry.complete_all(plugin_name)
+            self._emit_plugin_completed(
+                plugin_name=plugin_name, stage=stage, mode="per_job",
+                success=True, data=exec_result.data,
+                duration_ms=exec_result.duration_ms, job_id=job.id
+            )
+        else:
+            level = "warn" if exec_result.error else "error"
+            label = "plugin error" if exec_result.error else "unexpected error"
+            if exec_result.error:
+                self._log(level, f"Plugin {plugin_name} {label} for job {job.id}: {exec_result.error}")
+            self._mark_failed(job, plugin_name)
+            self._provides_registry.fail_all(plugin_name)
+            self._emit_plugin_failed(
+                plugin_name=plugin_name, stage=stage,
+                error=exec_result.error or "unknown",
+                duration_ms=exec_result.duration_ms, job_id=job.id
+            )
 
     def _invoke_plugin(
         self,
@@ -406,60 +370,24 @@ class StageExecutor:
         services: PluginServices,
         plugin_name: str
     ) -> Any | None:
-        """
-        Invoke plugin's execute method with signature detection.
-
-        New-style (2+ params): plugin.execute(job, services) -> PluginResult
-        Legacy (1 param): plugin.execute(match_data) -> dict
-        Returns None if plugin has no execute method.
-        """
+        """Invoke modern per_job plugin: execute(job, services) -> PluginResult."""
         if not hasattr(plugin, 'execute'):
-            self._log("warn", f"Plugin {plugin_name} has no execute method")
-            return None
-
-        import inspect
-        try:
-            sig = inspect.signature(plugin.execute)
-            param_count = len(sig.parameters)
-        except (ValueError, TypeError):
-            param_count = 1  # Assume legacy on introspection failure
-
-        if param_count >= 2:
-            return plugin.execute(job, services)
-        else:
-            return plugin.execute(self._job_to_legacy_data(job))
+            raise PluginError(
+                f"Plugin {plugin_name} has no execute() method",
+                plugin_name=plugin_name,
+            )
+        return plugin.execute(job, services)
 
     def _extract_plugin_result(self, result: Any) -> tuple[dict[str, Any], bool]:
-        """
-        Extract data dict and success bool from a plugin result.
+        """Extract (data, success) from a plugin's return value.
 
-        Handles PluginResult objects, plain dicts, and other return types.
+        Per the modern contract, per_job plugins return a PluginResult.
         """
-        # PluginResult (from sdk) -- preferred return type
         if isinstance(result, PluginResult):
             return result.data or {}, result.success
-
-        # Plain dict -- legacy plugins return these directly
-        if isinstance(result, dict):
-            # Check for embedded status dict (legacy format: {status: {success: bool}, ...data})
-            status = result.get('status')
-            if isinstance(status, dict):
-                success = status.get('success', True)
-                # Data is everything except the status key
-                result_data = {k: v for k, v in result.items() if k != 'status'}
-                return result_data, success
-            return result, True
-
-        # Unknown return type -- try attribute access as fallback
-        result_data: dict[str, Any] = {}
-        if hasattr(result, 'data') and result.data:
-            result_data = result.data
-
-        success = True
-        if hasattr(result, 'success'):
-            success = bool(result.success)
-
-        return result_data, success
+        raise PluginError(
+            f"Plugin returned unsupported type {type(result).__name__}; expected PluginResult"
+        )
 
     def _update_job_plugin_state(
         self,
@@ -494,60 +422,13 @@ class StageExecutor:
         # Invalidate global state cache for this job (plugin data changed)
         self._global_state_cache.pop(job.id, None)
 
-    def _handle_plugin_error(
-        self,
-        error: Exception,
-        plugin_name: str,
-        job: JobState,
-        stage: Stage,
-        start_time: datetime
-    ) -> PluginExecutionResult:
-        """Handle plugin execution error: log, mark failed, emit event, return result."""
-        duration_ms = self._calc_duration(start_time)
-        error_msg = str(error)
-        level = "warn" if isinstance(error, PluginError) else "error"
-        label = "plugin error" if isinstance(error, PluginError) else "unexpected error"
-
-        self._log(level, f"Plugin {plugin_name} {label} for job {job.id}: {error}")
-        self._mark_failed(job, plugin_name)
-        self._emit_plugin_failed(
-            plugin_name=plugin_name, stage=stage, error=error_msg,
-            duration_ms=duration_ms, job_id=job.id
-        )
-
-        return PluginExecutionResult(
-            plugin_name=plugin_name, success=False, data={},
-            error=error_msg, duration_ms=duration_ms
-        )
-
     def _execute_mixed(self, stage: Stage, plugins: list[Any]) -> None:
-        """
-        Execute plugins in mixed mode (OUTPUT stage).
-
-        Some plugins run per_job (tasker), some per_run (rclone).
-        Mode is determined from manifest 'execution_mode' field.
-        """
-        per_job_plugins = {}
-        per_run_plugins = []
-
-        for plugin in plugins:
-            plugin_name = self._get_plugin_name(plugin)
-            manifest = self._registry.get_manifest(plugin_name)
-            mode = manifest.get('execution_mode', 'per_job') if manifest else 'per_job'
-
-            if mode == 'per_run':
-                per_run_plugins.append(plugin)
-            else:
-                per_job_plugins[plugin_name] = plugin
-
-        # Execute per_job plugins first using grouped path
-        if per_job_plugins:
-            groups = self._resolve_execution_groups(per_job_plugins, stage)
-            self._execute_per_job_grouped(stage, groups)
-
-        # Then per_run plugins
-        if per_run_plugins:
-            self._execute_per_run(stage, per_run_plugins)
+        """Execute OUTPUT stage plugins (all per_job under the modern contract)."""
+        per_job_plugins = {self._get_plugin_name(p): p for p in plugins}
+        if not per_job_plugins:
+            return
+        groups = self._resolve_execution_groups(per_job_plugins, stage)
+        self._execute_per_job_grouped(stage, groups)
 
     def _resolve_execution_groups(self, plugins: dict[str, Any], stage: Stage) -> list[list[Any]]:
         """
@@ -613,43 +494,56 @@ class StageExecutor:
     ) -> list[PluginExecutionResult]:
         """
         Execute a group of plugins in parallel for a single job.
-        
-        Uses ThreadPoolExecutor for parallel execution.
+
+        Phase 1 (main thread): decide skips, emit skip side effects.
+        Phase 2 (workers): _invoke_safely runs plugin.execute, returns a result only.
+        Phase 3 (main thread): commit results in deterministic group order.
+
+        This guarantees all mutations of _plugin_data_cache, job.plugins,
+        job.status.plugins, _provides_registry and the event bus happen on the
+        main thread, eliminating the race the previous design had.
         """
         if len(plugins) == 1:
-            # Single plugin, no need for threading overhead
             return [self._execute_plugin_for_job(plugins[0], job, stage)]
 
-        results = []
-        with ThreadPoolExecutor(max_workers=min(len(plugins), 4)) as executor:
-            futures = {
-                executor.submit(self._execute_plugin_for_job, plugin, job, stage): plugin
-                for plugin in plugins
-            }
+        decisions: dict[str, PluginExecutionResult] = {}
+        pending: list[tuple[str, Any]] = []
+        for plugin in plugins:
+            plugin_name = self._get_plugin_name(plugin)
+            manifest = self._registry.get_manifest(plugin_name)
+            decision = self._decide_skip(plugin_name, manifest, job)
+            if decision:
+                self._apply_skip(job, plugin_name, decision)
+                decisions[plugin_name] = decision
+            else:
+                pending.append((plugin_name, plugin))
 
-            for future in as_completed(futures):
-                plugin = futures[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                except PluginError as e:
-                    plugin_name = self._get_plugin_name(plugin)
-                    self._log("error", f"Parallel execution plugin error for {plugin_name}: {e}")
-                    results.append(PluginExecutionResult(
-                        plugin_name=plugin_name,
-                        success=False,
-                        data={},
-                        error=str(e)
-                    ))
-                except Exception as e:
-                    plugin_name = self._get_plugin_name(plugin)
-                    self._log("error", f"Parallel execution unexpected error for {plugin_name}: {e}")
-                    results.append(PluginExecutionResult(
-                        plugin_name=plugin_name,
-                        success=False,
-                        data={},
-                        error=str(e)
-                    ))
+        invocations: dict[str, PluginExecutionResult] = {}
+        if pending:
+            with ThreadPoolExecutor(max_workers=min(len(pending), 4)) as executor:
+                futures = {
+                    executor.submit(self._invoke_safely, plugin, job, name): name
+                    for name, plugin in pending
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        invocations[name] = future.result()
+                    except Exception as e:
+                        self._log("error", f"Parallel execution unexpected error for {name}: {e}")
+                        invocations[name] = PluginExecutionResult(
+                            plugin_name=name, success=False, data={}, error=str(e)
+                        )
+
+        results: list[PluginExecutionResult] = []
+        for plugin in plugins:
+            plugin_name = self._get_plugin_name(plugin)
+            if plugin_name in decisions:
+                results.append(decisions[plugin_name])
+                continue
+            exec_result = invocations[plugin_name]
+            self._commit_invocation(job, stage, exec_result)
+            results.append(exec_result)
 
         return results
 
@@ -681,64 +575,13 @@ class StageExecutor:
 
         return services
 
-    def _create_jobs_from_matches(self, matches: list[dict]) -> Any:
-        """
-        Create jobs from legacy match format.
-        
-        Called when input plugin uses get_matches() instead of execute_run().
-        """
-        for i, match in enumerate(matches):
-            # Extract input path
-            input_path = ""
-            if isinstance(match.get('input'), dict):
-                input_path = match['input'].get('path', '')
-            else:
-                input_path = str(match.get('input', ''))
-
-            # Create job via state manager
-            if hasattr(self._state, 'register_match'):
-                self._state.register_match(i, input_path)
-            elif hasattr(self._state, 'create_job'):
-                self._state.create_job(input_path)
-
-        return matches
-
     def _get_all_jobs(self) -> list[JobState]:
         """Get all jobs from state"""
-        if hasattr(self._state, 'get_all_jobs'):
-            return self._state.get_all_jobs()
-        elif hasattr(self._state, '_matches'):
-            # Fallback for older state manager implementations
-            return list(self._state._matches.values())
-        return []
+        return self._state.get_all_jobs()
 
     def _get_plugin_name(self, plugin: Any) -> str:
         """Get plugin name from plugin instance."""
         return getattr(plugin, 'name', None) or getattr(plugin, '_name', None) or type(plugin).__name__
-
-    def _job_to_legacy_data(self, job: JobState) -> dict[str, Any]:
-        """Convert JobState to legacy data format for old plugins"""
-        # Get input value (job.input.value, Legacy: job.input_path)
-        input_value = ""
-        input_data = {}
-
-        # JobState has typed input field with value and data attributes
-        input_value = job.input.value
-        input_data = job.input.data
-
-        # Get existing plugin data for downstream plugins
-        plugin_data = job.plugins
-
-        return {
-            "input": {
-                "path": input_value,    # Legacy key
-                "value": input_value,   # key
-                "data": input_data      # input.data
-            },
-            "plugins": plugin_data,     # For downstream plugins
-            "index": job.index,
-            "run_id": job.run_id
-        }
 
     def _ensure_status_plugins(self, job: JobState) -> None:
         """Ensure job.status.plugins is a dict."""

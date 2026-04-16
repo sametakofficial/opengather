@@ -149,10 +149,7 @@ class TMDbPlugin(OutputPlugin):
                         movie_year = release.get('year', '')
                     else:
                         movie_year = str(movie.get('release_date', ''))[:4]
-                    self.emit_task({
-                        "type": "print",
-                        "template": f"  ✓ TMDb: {movie_title} ({movie_year})"
-                    })
+                    self.info(f"TMDb: {movie_title} ({movie_year})")
                 elif result.get('show'):
                     show = result['show']
                     # Handle both dict names (normalized) and string names (raw)
@@ -161,10 +158,7 @@ class TMDbPlugin(OutputPlugin):
                         show_name = name.get('primary') or name.get('original') or 'Unknown'
                     else:
                         show_name = name or 'Unknown'
-                    self.emit_task({
-                        "type": "print",
-                        "template": f"  ✓ TMDb: {show_name}"
-                    })
+                    self.info(f"TMDb: {show_name}")
 
             # Convert dict result to PluginResult
             # Remove status from data (PluginResult handles it)

@@ -1,0 +1,78 @@
+run:
+  id: run_{uuid8}
+  status:
+    state: pending | running | success | failed | partial | cancelled
+    success: bool
+    total_jobs: int
+    completed: int
+    failed: int
+    plugins: {}
+    started_at: ISO8601
+    finished_at: ISO8601
+    duration_ms: int
+  config:
+    options: {}
+    aliases: {}
+  plugins: {}
+
+job:
+  id: job_{run_id}_{index}
+  index: int
+  run_id: run_{uuid8}
+  input:
+    value: string
+    data: {}
+  output:
+    values:
+      - string
+    data: {}
+  status:
+    state: pending | running | success | failed
+    success: bool
+    plugins:
+      <plugin_name>:
+        state: pending | running | completed | failed | skipped
+        success: bool
+        started_at: ISO8601
+        finished_at: ISO8601
+        duration_ms: int
+        error: string | null
+    started_at: ISO8601
+    finished_at: ISO8601
+    duration_ms: int
+  plugins:
+    <plugin_name>: {}
+
+jobs:
+  - <job>
+
+plugin:
+  job_id: job_{run_id}_{index}
+  run_id: run_{uuid8}
+  <plugin_name>:
+    status:
+      state: completed | failed | skipped
+      success: bool
+      started_at: ISO8601
+      finished_at: ISO8601
+      duration_ms: int
+      error: string | null
+    data: {}
+
+plugins:
+  - job_id: job_{run_id}_{index}
+    job_index: int
+    run_id: run_{uuid8}
+    <plugin_name>:
+      status: {}
+      data: {}
+
+plugin_result:
+  success: bool
+  data: {}
+  error: string | null
+  started_at: ISO8601
+  finished_at: ISO8601
+  metadata:
+    skipped: bool
+    skip_reason: string

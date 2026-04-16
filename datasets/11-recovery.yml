@@ -1,0 +1,105 @@
+collections_additions:
+  plugin_executions:
+    _id: ObjectId
+    run_id: run_{uuid8}
+    job_id: job_{run_id}_{index}
+    plugin_name: string
+    attempt: int
+    state: pending | claimed | running | completed | failed | crashed | skipped
+    claimed_at: ISODate
+    lease_expires_at: ISODate
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: int
+    error: string | null
+    idempotency_key: string
+    output_fingerprint: string | null
+  checkpoints:
+    _id: ObjectId
+    run_id: run_{uuid8}
+    job_id: job_{run_id}_{index}
+    plugin_name: string
+    attempt: int
+    marker: string
+    side_effects:
+      - type: fs.write | http.request | db.write
+        target: string
+        hash: string | null
+        timestamp: ISODate
+    created_at: ISODate
+
+indexes_additions:
+  plugin_executions:
+    - {run_id: 1, job_id: 1, plugin_name: 1, attempt: 1}
+    - {state: 1, lease_expires_at: 1}
+    - {idempotency_key: 1}
+  checkpoints:
+    - {run_id: 1, job_id: 1, plugin_name: 1}
+
+plugin_state_machine:
+  pending:
+    enters_from: []
+    exits_to: [claimed, skipped]
+  claimed:
+    enters_from: [pending]
+    exits_to: [running, crashed]
+    guard: atomic claim with lease
+  running:
+    enters_from: [claimed]
+    exits_to: [completed, failed, crashed]
+    guard: heartbeat updates lease
+  completed:
+    enters_from: [running]
+    terminal: true
+  failed:
+    enters_from: [running]
+    terminal: true
+  crashed:
+    enters_from: [claimed, running]
+    terminal_for_attempt: true
+    recoverable_via: new attempt with attempt+1
+  skipped:
+    enters_from: [pending]
+    terminal: true
+
+recovery_rules:
+  - on orchestrator start, scan plugin_executions where state in (claimed, running) and lease_expires_at < now -> crashed
+  - for each crashed record, check trigger_rule before creating attempt+1
+  - completed attempts are never re-run unless explicitly re-executed
+  - output plugins must write a checkpoint row before externalizing side effects
+  - output plugins must record idempotency_key and skip if a prior attempt already wrote the same fingerprint
+
+persistence_mode_contract:
+  full:
+    backend: pymongo
+    null_fallback: false
+    on_connect_fail: raise
+  degraded:
+    backend: pymongo
+    null_fallback: true
+    on_connect_fail: log.warn
+    recovery: disabled
+  off:
+    backend: null_persistence
+    null_fallback: true
+    recovery: disabled
+
+orchestrator_contract:
+  - no silent NullPersistence downgrade; mode must be explicit
+  - if recovery is configured and backend connect fails, fail-fast
+
+failure_domains:
+  business_failure:
+    marker: state=failed
+    recoverable: respects trigger_rule
+  worker_crash:
+    marker: state=crashed via lease expiry
+    recoverable: new attempt
+  infrastructure_unavailable:
+    marker: persistence.connect fail
+    handled_by: persistence_mode_contract
+
+heartbeat:
+  interval_ms: 5000
+  lease_ms: 30000
+  on_miss: lease expires; becomes crashed on next scan

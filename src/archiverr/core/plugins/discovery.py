@@ -1,7 +1,7 @@
-"""Plugin Discovery - Scan and load plugin metadata
+"""Plugin Discovery - Scan and load plugin metadata.
 
-Added Jinja2 template support in manifest files.
-Allows {{ config.parser_plugin }} style references in requires/provides.
+Manifest interpolation is centralised in ``core.config.interpolator``
+so this module only discovers and validates raw manifest data.
 """
 import json
 from pathlib import Path
@@ -18,80 +18,6 @@ try:
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
-
-# Jinja2 support for manifest templates
-try:
-    from jinja2 import BaseLoader, Environment
-    JINJA2_AVAILABLE = True
-except ImportError:
-    JINJA2_AVAILABLE = False
-
-
-def render_manifest_templates(
-    manifest: dict[str, Any],
-    config: dict[str, Any] = None
-) -> dict[str, Any]:
-    """
-    Render Jinja2 templates in manifest fields.
-    
-    Supports:
-    - manifest.aliases: local aliases for use within manifest
-    - {{ alias }} syntax in requires, provides
-    - {{ config.* }} for config access
-    
-    Args:
-        manifest: Raw manifest dict
-        config: Optional config dict for {{ config.* }} access
-        
-    Returns:
-        Manifest with templates rendered
-    """
-    if not JINJA2_AVAILABLE:
-        return manifest
-
-    # Build context
-    context = {
-        'config': config or {},
-    }
-
-    # Add manifest-level aliases to context
-    manifest_aliases = manifest.get('aliases', {})
-    context.update(manifest_aliases)
-
-    env = Environment(loader=BaseLoader())
-
-    # Fields that support Jinja2 templates
-    template_fields = ['requires', 'provides']
-
-    result = manifest.copy()
-
-    for field in template_fields:
-        if field not in result:
-            continue
-
-        value = result[field]
-
-        if isinstance(value, list):
-            rendered_list = []
-            for item in value:
-                if isinstance(item, str) and '{{' in item:
-                    try:
-                        template = env.from_string(item)
-                        rendered = template.render(**context).strip()
-                        rendered_list.append(rendered)
-                    except Exception:
-                        rendered_list.append(item)  # Keep original on error
-                else:
-                    rendered_list.append(item)
-            result[field] = rendered_list
-        elif isinstance(value, str) and '{{' in value:
-            try:
-                template = env.from_string(value)
-                result[field] = template.render(**context).strip()
-            except Exception:
-                pass  # Keep original on error
-
-    return result
 
 
 class PluginDiscovery:
@@ -223,10 +149,6 @@ class PluginDiscovery:
             self.debugger.debug("discovery", "Skipping directory (no plugin manifest)",
                               dir=plugin_dir.name)
             return None
-
-        # Render Jinja2 templates in manifest ()
-        # Allows {{ config.* }} and manifest-level aliases
-        raw_data = render_manifest_templates(raw_data, self.config)
 
         # Validate with Pydantic
         try:

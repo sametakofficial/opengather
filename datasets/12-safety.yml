@@ -1,0 +1,64 @@
+safety_contract:
+  owned_by: core.safety service
+  consumed_by:
+    - all plugins that touch filesystem
+    - all plugins that call external mutating APIs
+  not_consumed_by:
+    - pure data-fetch plugins (tmdb, tvdb, omdb, tvmaze)
+
+dry_run:
+  scope: run
+  source: config.options.dry_run
+  override_per_plugin: not allowed
+  plugins_must:
+    - skip side-effectful operation
+    - still produce a planned_operation record in plugin data
+    - log the skip at info level
+
+no_delete:
+  scope: run
+  source: config.options.no_delete
+  default: true
+  forbidden_ops:
+    - os.remove
+    - os.rmdir
+    - shutil.rmtree
+    - pathlib.Path.unlink
+    - pathlib.Path.rmdir
+  allowed_alternative: move to .deleted/
+
+hardlink:
+  scope: run
+  source: config.options.hardlink
+  default: false
+  fallback_if_unsupported:
+    same_filesystem_unknown: copy
+    cross_filesystem: copy
+    readonly_source: copy
+  when_true:
+    - prefer os.link; fallback to copy with warning
+  when_false:
+    - always copy
+
+planned_operation_record:
+  op: copy | link | move | write | skip
+  source: path | null
+  target: path | null
+  reason: string
+  dry_run_only: bool
+
+central_api:
+  safe_copy: (src, dst, *, hardlink: bool, dry_run: bool) -> PlannedOperation
+  safe_write: (dst, content, *, dry_run: bool) -> PlannedOperation
+  safe_move: (src, dst, *, dry_run: bool) -> PlannedOperation
+  safe_delete: not exposed; callers must safe_move to .deleted/
+
+audit:
+  events_emitted:
+    - plugin.side_effect (planned | executed | skipped)
+  mongodb_trace: plugin_executions.side_effects + checkpoints.side_effects
+
+current_violations_to_fix:
+  - tasker uses shutil.copy2 directly; must route via safe_copy
+  - hardlink option in config never consumed by tasker
+  - dry_run exists both globally and per-plugin with ad-hoc inheritance

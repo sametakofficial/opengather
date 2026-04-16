@@ -2,9 +2,7 @@
 from .discovery import PluginDiscovery
 from .loader import PluginLoader
 
-# additions
 from .registry import PluginInfo, PluginRegistry, Stage
-from .requires_validator import RequiresResult, RequiresValidator
 from .resolver import DependencyResolver
 
 # SDK exports (for convenience: from archiverr.core.plugins import BasePlugin)
@@ -35,8 +33,6 @@ __all__ = [
     'StageExecutor',
     'ExecutionMode',
     'STAGE_MODES',
-    'RequiresValidator',
-    'RequiresResult',
 
     # SDK
     'PluginManifest',

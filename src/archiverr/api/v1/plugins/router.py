@@ -46,7 +46,7 @@ async def list_plugins(db: DatabaseDep):
                 PluginInfo(
                     name=name,
                     version=manifest.get("version", "1.0.0"),
-                    stage=manifest.get("stage", manifest.get("category", "output")),
+                    stage=manifest.get("stage", "output"),
                     requires=manifest.get("requires", []),
                     provides=manifest.get("provides", []),
                     trigger_rule=manifest.get("trigger_rule", "all_success"),
@@ -179,7 +179,7 @@ async def get_plugin_info(plugin_name: str, db: DatabaseDep):
         return PluginInfo(
             name=plugin_name,
             version=manifest.get("version", "1.0.0"),
-            stage=manifest.get("stage", manifest.get("category", "output")),
+            stage=manifest.get("stage", "output"),
             requires=manifest.get("requires", []),
             provides=manifest.get("provides", []),
             trigger_rule=manifest.get("trigger_rule", "all_success"),

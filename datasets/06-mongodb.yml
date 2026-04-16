@@ -1,0 +1,104 @@
+runs:
+  _id: ObjectId
+  id: run_{uuid8}
+  status:
+    state: string
+    success: bool
+    total_jobs: int
+    completed: int
+    failed: int
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: int
+    plugins: {}
+  config:
+    options: {}
+    plugins: {}
+    aliases: {}
+    tasks: []
+  plugins: {}
+  created_at: ISODate
+  updated_at: ISODate
+  persistence_mode: full | degraded | off
+
+jobs:
+  _id: ObjectId
+  id: job_{run_id}_{index}
+  run_id: run_{uuid8}
+  index: int
+  input:
+    value: string
+    data: {}
+  output:
+    values: [string]
+    data: {}
+  status:
+    state: string
+    success: bool
+    plugins: {}
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: int
+  plugins: {}
+  created_at: ISODate
+  updated_at: ISODate
+
+plugins:
+  _id: ObjectId
+  run_id: run_{uuid8}
+  job_id: job_{run_id}_{index}
+  job_index: int
+  plugin_name: string
+  stage: input | parse | data | output
+  status:
+    state: completed | failed | skipped
+    success: bool
+    started_at: ISODate
+    finished_at: ISODate
+    duration_ms: int
+    error: string | null
+  data: {}
+  created_at: ISODate
+
+recovery_collections:
+  see: 11-recovery.yml
+  adds:
+    - plugin_executions
+    - checkpoints
+
+indexes:
+  runs:
+    - {id: 1}
+    - {created_at: -1}
+  jobs:
+    - {id: 1}
+    - {run_id: 1, index: 1}
+  plugins:
+    - {run_id: 1, job_id: 1, plugin_name: 1}
+    - {job_id: 1}
+
+backends:
+  pymongo_persistence: PersistenceInterface
+  null_persistence: PersistenceInterface
+
+mode_contract:
+  see: 11-recovery.yml#persistence_mode_contract
+
+interface:
+  - connect
+  - disconnect
+  - save_run
+  - save_job
+  - save_plugin
+  - save_plugin_execution   # new
+  - save_checkpoint         # new
+  - get_run
+  - get_jobs
+  - get_job
+  - get_plugins
+  - get_plugin
+  - get_plugin_executions   # new
+  - get_checkpoints         # new
+  - claim_plugin_execution  # new (atomic)
+  - heartbeat_plugin_execution  # new
+  - get_statistics

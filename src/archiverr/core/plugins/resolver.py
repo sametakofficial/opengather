@@ -26,7 +26,7 @@ class DependencyResolver:
 
             # Use 'requires' instead of 'depends_on'
             # Support both for backward compatibility
-            requires = metadata.get('requires', []) or metadata.get('depends_on', [])
+            requires = metadata.get('requires', [])
 
             # Extract plugin names from requires paths
             # Examples:
@@ -141,7 +141,7 @@ class DependencyResolver:
     def get_dependencies(self, plugin_name: str) -> list[str]:
         """Get direct dependencies of a plugin"""
         metadata = self.plugin_metadata.get(plugin_name, {})
-        requires = metadata.get('requires', []) or metadata.get('depends_on', [])
+        requires = metadata.get('requires', [])
 
         deps = []
         for req in requires:

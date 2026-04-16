@@ -7,22 +7,19 @@ Combines:
 """
 
 import json
-import re
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from jinja2 import BaseLoader, Environment
 
-from archiverr.core.plugins.sdk import OutputPlugin, PluginResult as SDKPluginResult
+from archiverr.core.plugins.sdk import OutputPlugin
+from archiverr.core.plugins.sdk import PluginResult as SDKPluginResult
+from archiverr.core.safety import safe_copy
 
 
 class TaskerPlugin(OutputPlugin):
     """Task execution plugin with full Jinja2 + state access."""
-
-    # Template function patterns (from main branch)
-    _FUNCTION_PATTERN = re.compile(r'\b(index|count):([a-zA-Z0-9_.\[\]]*)')
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
@@ -32,10 +29,13 @@ class TaskerPlugin(OutputPlugin):
         self.save_output = config.get('save_output', True)
         self.output_dir = config.get('output_dir', 'output')
 
-        # Jinja2 environment
+        # Jinja2 environment. ``count`` is Jinja's built-in alias for
+        # ``length``; we register it explicitly so the dependency is
+        # visible and cannot be shadowed by a future env reset.
         self.env = Environment(loader=BaseLoader())
         self.env.filters['truncate'] = self._filter_truncate
         self.env.filters['format'] = lambda fmt, *args: fmt % args
+        self.env.filters['count'] = self._filter_count
 
         # Run output tracking
         self._run_output: dict[str, Any] = {}
@@ -45,27 +45,17 @@ class TaskerPlugin(OutputPlugin):
         if 'dry_run' not in self.config:
             self.dry_run = global_config.get('options', {}).get('dry_run', True)
 
-    def execute(self, job: Any, services: Any) -> dict[str, Any]:
-        """
-        Execute tasks for job (Session 12 interface).
-        
-        Args:
-            job: JobState with input, plugins
-            services: PluginServices with state access
-            
-        Returns:
-            PluginResult compatible dict
-        """
+    def execute(self, job: Any, services: Any) -> SDKPluginResult:
+        """Execute tasks for job, returning a modern PluginResult."""
+        from archiverr.state.template_context import TemplateContextBuilder
+
         started_at = datetime.now()
 
-        # Get plugin data from job
         plugins_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
             plugins_data = dict(job.plugins)
 
-        # Fallback: services.state - get ALL plugin data dynamically
         if hasattr(services, 'state'):
-            # Get all plugins that have data for this job (NO HARDCODING)
             available_plugins = services.state.get_job_plugin_names(job.id)
             for plugin_name in available_plugins:
                 if plugin_name not in plugins_data:
@@ -76,15 +66,23 @@ class TaskerPlugin(OutputPlugin):
                     except Exception:
                         pass
 
-        # Build template context (Main branch style)
-        context = self._build_context(job, plugins_data, services)
+        run = services.get_run() if hasattr(services, "get_run") else None
+        all_jobs = list(services.get_all_jobs()) if hasattr(services, "get_all_jobs") else []
+
+        context = TemplateContextBuilder().build_job_context(job, run=run, all_jobs=all_jobs)
+        context["plugin"] = {
+            name: {"data": info if isinstance(info, dict) else {}}
+            for name, info in plugins_data.items()
+        }
+        context["index"] = getattr(job, "index", 0)
+        context["total"] = len(all_jobs) if all_jobs else 1
 
         # Execute tasks
         task_results = {}
         output_values = []
 
         for task in self.tasks:
-            result = self._execute_task(task, context, job)
+            result = self._execute_task(task, context)
             if result:
                 task_name = result.get('name', 'unnamed')
                 task_results[task_name] = result
@@ -110,94 +108,18 @@ class TaskerPlugin(OutputPlugin):
         # Track for JSON output
         self._track_run_output(job, task_results, plugins_data)
 
-        return {
-            'success': True,
-            'tasks': task_results,
-            'values': output_values,
-            'duration_ms': int((datetime.now() - started_at).total_seconds() * 1000)
-        }
-
-    def _build_context(self, job: Any, plugins_data: dict[str, Any], services: Any) -> dict[str, Any]:
-        """
-        Build Jinja2 context (Main branch pattern adapted to Session 12).
-        
-        Context includes:
-        - plugin.{name}.data.* - Plugin data (Session 12 format)
-        - job.* - Job data
-        - config.* - Global config (via services.state)
-        - index, total - Job index and total
-        """
-        # Get job index
-        job_index = getattr(job, 'index', 0)
-
-        # Build context
-        context = {
-            'job': {
-                'id': getattr(job, 'id', 'unknown'),
-                'index': job_index,
-                'input': {
-                    'value': getattr(job.input, 'value', '') if hasattr(job, 'input') else '',
-                    'data': getattr(job.input, 'data', {}) if hasattr(job, 'input') else {}
-                }
+        return SDKPluginResult(
+            success=True,
+            data={
+                'tasks': task_results,
+                'values': output_values,
             },
-            'index': job_index,
-            'total': 1,  # Single job execution
-        }
+            started_at=started_at,
+            finished_at=datetime.now(),
+        )
 
-        # Session 17: Flat plugin data structure
-        # - plugin.{name}.* (direct access, no 'data' wrapper)
-        # - Also add plugin.{name}.data.* for backward compat with templates
-        context['plugin'] = {}
-        for plugin_name, plugin_info in plugins_data.items():
-            if isinstance(plugin_info, dict):
-                # Session 17: Flat structure - data is directly in plugin_info
-                # Skip 'status' key if present (legacy cleanup)
-                flat_data = {k: v for k, v in plugin_info.items() if k != 'status'}
-
-                # Store in plugin.{name} for direct access
-                context['plugin'][plugin_name] = flat_data
-
-                # Also add plugin.{name}.data.* wrapper for backward compat with old templates
-                context['plugin'][plugin_name]['data'] = flat_data
-
-                # Add direct access at top level for convenience
-                context[plugin_name] = flat_data
-
-        # Add config access (if services has state)
-        if hasattr(services, 'state'):
-            try:
-                config_state = services.state.get_config() if hasattr(services.state, 'get_config') else {}
-                context['config'] = config_state
-            except Exception:
-                context['config'] = {}
-
-        # Add renamer shortcuts for template compatibility
-        if 'renamer' in plugins_data:
-            # Session 17: Flat structure - parsed is directly in renamer data
-            renamer_data = plugins_data['renamer'] if isinstance(plugins_data['renamer'], dict) else {}
-            parsed = renamer_data.get('parsed', {})
-            category = renamer_data.get('category', 'unknown')
-
-            context['renamer'] = renamer_data
-            if category == 'movie' and 'movie' in parsed:
-                context['movie'] = parsed['movie']
-            elif category == 'show' and 'show' in parsed:
-                context['show'] = parsed['show']
-
-        return context
-
-    def _execute_task(self, task: dict[str, Any], context: dict[str, Any], job: Any) -> dict[str, Any] | None:
-        """
-        Execute single task (Main branch pattern).
-        
-        Args:
-            task: Task config
-            context: Template context
-            job: Job data
-            
-        Returns:
-            Task result or None
-        """
+    def _execute_task(self, task: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
+        """Execute single task (print/save) against the rendered context."""
         task_name = task.get('name', 'unnamed')
         task_type = task.get('type', 'print')
         condition = task.get('condition')
@@ -211,7 +133,7 @@ class TaskerPlugin(OutputPlugin):
             if task_type == 'print':
                 return self._execute_print(task, context, task_name)
             elif task_type == 'save':
-                return self._execute_save(task, context, job, task_name)
+                return self._execute_save(task, context, task_name)
             else:
                 return None
         except Exception as e:
@@ -239,7 +161,7 @@ class TaskerPlugin(OutputPlugin):
             'rendered': rendered
         }
 
-    def _execute_save(self, task: dict[str, Any], context: dict[str, Any], job: Any, task_name: str) -> dict[str, Any] | None:
+    def _execute_save(self, task: dict[str, Any], context: dict[str, Any], task_name: str) -> dict[str, Any] | None:
         """Execute save task."""
         destination_template = task.get('destination', '')
         if not destination_template:
@@ -254,18 +176,14 @@ class TaskerPlugin(OutputPlugin):
         if not destination:
             return None
 
-        success = False
-        if not self.dry_run:
-            try:
-                dest_path = Path(destination)
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, destination)
-                success = True
-            except (OSError, PermissionError, FileNotFoundError) as e:
-                self.error(f"Save task failed: {e}")
-                success = False
-        else:
-            success = True
+        hardlink = bool(self.config.get('hardlink', False))
+        planned = safe_copy(
+            source, destination,
+            hardlink=hardlink, dry_run=self.dry_run, overwrite=False,
+        )
+        success = planned.op not in {"error"}
+        if planned.op == "error":
+            self.error(f"Save task failed: {planned.reason}")
 
         return {
             'name': task_name,
@@ -273,82 +191,24 @@ class TaskerPlugin(OutputPlugin):
             'success': success,
             'source': source,
             'destination': destination,
-            'dry_run': self.dry_run
+            'dry_run': self.dry_run,
+            'planned_operation': planned.to_dict(),
         }
 
     def _render_template(self, template: str, context: dict[str, Any]) -> str:
-        """
-        Render Jinja2 template (Main branch logic).
-        
-        Supports:
-        - {{ plugin.tmdb.data.movie.title }}
-        - {{ renamer.parsed.movie.name }}
-        - {% if movie %}...{% endif %}
-        - Template functions: index:, count:
-        - Error handling: Returns template error message on failure
+        """Render Jinja2 template.
+
+        Uses canonical Jinja syntax: ``{{ plugin.<name>.data.<field> }}``,
+        ``{{ plugin.<name>.data.items | count }}``, ``{{ index }}``.
         """
         try:
-            # Process template functions (index:, count:)
-            processed = self._process_functions(template, context)
-
-            # Render with Jinja2
-            tmpl = self.env.from_string(processed)
-            result = tmpl.render(**context)
-            return result
+            tmpl = self.env.from_string(template)
+            return tmpl.render(**context)
         except Exception as e:
-            # Main branch pattern: Return error message but don't crash
             error_msg = str(e)
-            # Extract meaningful part of error
             if "has no attribute" in error_msg:
-                return ""  # Silent fail for missing attributes (like main branch)
+                return ""
             return f"Template error: {error_msg}"
-
-    def _process_functions(self, template: str, context: dict[str, Any]) -> str:
-        """
-        Process template functions (Main branch).
-        
-        - index: → current index
-        - count:matches → not applicable in Session 12 (single job)
-        - count:plugin.tmdb.data.movie.genres → count list items
-        """
-        def replacer(match):
-            func_name = match.group(1)
-            func_arg = match.group(2) if match.lastindex >= 2 else ''
-
-            if func_name == 'index':
-                return str(context.get('index', 0))
-
-            elif func_name == 'count':
-                if not func_arg:
-                    return '0'
-
-                # Resolve path and count
-                try:
-                    value = self._resolve_path(func_arg, context)
-                    if isinstance(value, (list, dict)):
-                        return str(len(value))
-                    return '0'
-                except Exception:
-                    return '0'
-
-            return match.group(0)
-
-        return self._FUNCTION_PATTERN.sub(replacer, template)
-
-    def _resolve_path(self, path: str, context: dict[str, Any]) -> Any:
-        """Resolve dot-notation path in context."""
-        parts = path.split('.')
-        current = context
-
-        for part in parts:
-            if isinstance(current, dict):
-                current = current.get(part)
-                if current is None:
-                    return None
-            else:
-                return None
-
-        return current
 
     def _evaluate_condition(self, condition: str, context: dict[str, Any]) -> bool:
         """Evaluate Jinja2 condition."""
@@ -367,10 +227,20 @@ class TaskerPlugin(OutputPlugin):
             return value
         return value[:length - len(end)] + end
 
+    @staticmethod
+    def _filter_count(value: Any) -> int:
+        """Count filter: number of items in a list/dict/string, else 0."""
+        if value is None:
+            return 0
+        try:
+            return len(value)
+        except TypeError:
+            return 0
+
     def _track_run_output(self, job: Any, task_results: dict[str, Any], plugins_data: dict[str, Any]) -> None:
         """
         Track run output for JSON save.
-        
+
         Session 14 structure:
         - input: value + data (plugin sets)
         - output: values + data (plugin sets)
@@ -424,7 +294,7 @@ class TaskerPlugin(OutputPlugin):
 
             return str(filepath)
 
-        except (OSError, IOError) as e:
+        except OSError as e:
             self.error(f"Failed to save run output: {e}")
             return None
 

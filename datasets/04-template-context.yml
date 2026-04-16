@@ -1,0 +1,83 @@
+render_time_context:
+  source: TemplateContextBuilder only
+  forbidden_sources:
+    - tasker local _build_context
+    - plugin-specific context mutation
+
+context_shape:
+  run: run_state_projection
+  job: job_state_projection
+  jobs: [job_summary]
+  plugin:
+    <plugin_name>:
+      status: plugin_status
+      data: plugin_data
+  plugins:
+    - per_job: {<plugin_name>: {status, data}}
+  config: frozen_config
+  options: config.options
+  provides: provides_registry_snapshot
+  events: event_bus_snapshot
+  index: int
+  <resolved_alias>: value
+
+canonical_access_path:
+  current_plugin_data: plugin.<name>.data
+  current_plugin_status: plugin.<name>.status
+  deprecated_shortcuts:
+    - plugin.<name>            # (missing .data / .status)
+    - context[<plugin_name>]   # top-level plugin-name shortcut
+
+run_state_projection:
+  id: string
+  status:
+    state: string
+    success: bool
+    total_jobs: int
+    completed: int
+    failed: int
+
+job_state_projection:
+  index: int
+  id: string
+  input:
+    value: string
+    data: {}
+  output:
+    values: [string]
+    data: {}
+  status:
+    state: string
+    success: bool
+    executed: [string]
+    failed: [string]
+    skipped: [string]
+
+alias_resolution:
+  phase: config-load-time (see 10-aliases.yml)
+  at_render_time: none
+  rationale: aliases are pre-compiled into the config tree; jinja only sees final values
+
+jinja_features_allowed:
+  - expressions
+  - if / elif / else
+  - for loops
+  - filters (built-in + whitelisted archiverr filters)
+  - {% set %}
+jinja_features_forbidden:
+  - {% include %}
+  - {% import %}
+  - custom globals at render time (must be pre-compiled aliases)
+
+custom_filters:
+  - truncate
+  - tojson
+  - format
+  - archiverr-specific:
+    - count
+    - index
+
+pipeline:
+  1_build_context: TemplateContextBuilder(job, run, all_jobs)
+  2_inject_resolved_aliases: already in config, copied into context root
+  3_jinja_render: Jinja2.Environment.from_string(template).render(context)

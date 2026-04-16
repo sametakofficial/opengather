@@ -65,15 +65,10 @@ class PerRunPlugin(Protocol):
 
 @runtime_checkable
 class PerJobPlugin(Protocol):
-    """Protocol for per_job plugins (renamer, tmdb, ffprobe, tasker).
+    """Protocol for per_job plugins.
 
-    These run once per job within a stage (PARSE, DATA, OUTPUT).
-    Method: execute(job, services) -> PluginResult | dict
-
-    Note: Legacy plugins (tvdb, tvmaze, omdb) also have execute() but with
-    a single argument: execute(match_data). The executor distinguishes them
-    by checking parameter count via inspect.signature(). Legacy plugins should
-    be migrated to this 2-argument interface over time.
+    Run once per job within a stage (PARSE, DATA, OUTPUT).
+    Method: execute(job, services) -> PluginResult
     """
     name: str
 

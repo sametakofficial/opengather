@@ -13,7 +13,6 @@ from archiverr.utils.config_normalizer import (
     is_plugin_enabled,
     get_enabled_plugins,
     get_all_plugins,
-    denormalize_config,
 )
 
 
@@ -236,50 +235,6 @@ class TestPluginConfigAccessors:
         
         assert "tmdb" in all_plugins
         assert "tvdb" in all_plugins
-
-
-class TestDenormalizeConfig:
-    """Tests for converting normalized config back to original format."""
-    
-    def test_denormalize_to_legacy(self):
-        """Should convert back to legacy format."""
-        config = normalize_config({
-            "options": {"debug": True},
-            "plugins": {
-                "tmdb": {"enabled": True, "api_key": "xxx"}
-            }
-        })
-        
-        denorm = denormalize_config(config, format="legacy")
-        
-        assert "plugins" in denorm
-        assert denorm["plugins"]["tmdb"]["api_key"] == "xxx"
-    
-    def test_denormalize_to_flexget(self):
-        """Should convert to FlexGet format."""
-        config = normalize_config({
-            "plugins": {
-                "tmdb": {"enabled": True, "api_key": "xxx"},
-                "tvdb": {"enabled": False}
-            }
-        })
-        
-        denorm = denormalize_config(config, format="flexget")
-        
-        assert "plugins" not in denorm
-        assert denorm["tmdb"]["api_key"] == "xxx"
-        assert denorm["tvdb"] is False
-    
-    def test_denormalize_auto_format(self):
-        """Should use original format when auto."""
-        config = normalize_config({
-            "plugins": {"tmdb": {"enabled": True}}
-        })
-        
-        denorm = denormalize_config(config, format="auto")
-        
-        # Original was legacy, should stay legacy
-        assert "plugins" in denorm
 
 
 class TestConfigFormatMetadata:

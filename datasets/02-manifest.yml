@@ -1,0 +1,97 @@
+manifest:
+  name: string
+  version: string
+  description: string
+  class_name: string
+  entry_point: client.py
+
+  stage: input | parse | data | output
+  run_mode: per_run | per_job
+
+  requires:
+    - plugin.<name>.<field>:success
+    - plugin.<name>.<field>:any
+    - job.<field>
+  provides:
+    - <capability>
+  trigger_rule: all_success | one_success | all_done | all_fail | none_fail
+
+  categories:
+    - movie
+    - show
+
+  capabilities:
+    - <name>
+  hooks:
+    - <event>
+  listens_to:
+    - <event>
+  reactive: bool
+
+  fs_lock:
+    - <absolute_path>
+
+  aliases:
+    <name>: <dotted.path_or_interpolation>
+
+  defaults:
+    <config_field>: <value>
+
+  config_schema:
+    <field>:
+      type: string | integer | boolean | array | dict | object
+      required: bool
+      default: any
+      min_length: int
+      max_length: int
+      pattern: regex
+      not_contains: [string]
+      secret: bool
+      description: string
+
+three_layer_merge:
+  key_scheme:
+    _manifest: meta+schema read from manifest.yml
+    _defaults: manifest.defaults block
+    user: config.yml plugin branch (authoritative)
+    _resolved: final compiled config
+  precedence:
+    - user > _defaults > _manifest.config_schema.default
+  merge_rules:
+    - user values win; defaults never override user
+    - _manifest is read-only; never overridden; consumable via ${plugin.<name>._manifest.*}
+    - _resolved is computed once per run, then frozen
+
+required_fields:
+  - name
+  - stage
+  - run_mode
+  - class_name
+  - entry_point
+
+forbidden_defaults:
+  - stage         # must be explicit
+  - run_mode      # must be explicit
+  - trigger_rule  # default all_success only if intended
+
+template_support:
+  deprecated_fields:
+    - requires_only_jinja_render
+  new_model:
+    see: 10-aliases.yml
+  allowed_expressions:
+    - "${env:VAR}"
+    - "${config.<path>}"
+    - "${alias:<name>}"
+    - "${..field}"
+
+discovery_extras:
+  _path: string
+  _manifest_type: string
+  _validated: bool
+  _resolved_at: ISO8601
+
+requires_path_prefix_rule:
+  - "<name>.<field>  -> plugin.<name>.<field>"
+  - "job.<field>     -> job.<field>"
+  - "plugin.<name>   -> plugin.<name>"

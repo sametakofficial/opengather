@@ -120,13 +120,20 @@ class PluginLoader:
             return None
 
     def _store_validated_config(self, plugin_name: str, validated_config: dict[str, Any]) -> None:
-        if '_plugins' in self.config and isinstance(self.config.get('_plugins'), dict):
-            existing = self.config['_plugins'].get(plugin_name, {})
-            if not isinstance(existing, dict):
-                existing = {}
-            internal = {k: v for k, v in existing.items() if isinstance(k, str) and k.startswith('_')}
-            merged = {**internal, **{k: v for k, v in validated_config.items() if not str(k).startswith('_')}}
-            self.config['_plugins'][plugin_name] = merged
+        if not ('_plugins' in self.config and isinstance(self.config.get('_plugins'), dict)):
+            return
+        existing = self.config['_plugins'].get(plugin_name, {})
+        if not isinstance(existing, dict):
+            existing = {}
+        clean_validated = {k: v for k, v in validated_config.items() if not str(k).startswith('_')}
+        # 3-layer structure (WP-2): write validated config into _resolved only,
+        # preserving _manifest/_defaults/user as immutable references.
+        if '_resolved' in existing:
+            existing['_resolved'] = clean_validated
+            self.config['_plugins'][plugin_name] = existing
+            return
+        internal = {k: v for k, v in existing.items() if isinstance(k, str) and k.startswith('_')}
+        self.config['_plugins'][plugin_name] = {**internal, **clean_validated}
 
     def load_all(self) -> dict[str, Any]:
         """Load all enabled plugins"""
@@ -200,7 +207,10 @@ class PluginLoader:
         # 1. Check normalized format
         if '_plugins' in self.config:
             plugin_conf = self.config['_plugins'].get(plugin_name, {})
-            # Return config without internal keys
+            # 3-layer structure (WP-2): return _resolved (final compiled config)
+            if isinstance(plugin_conf, dict) and '_resolved' in plugin_conf:
+                return plugin_conf['_resolved']
+            # Legacy normalized format: strip internal keys
             return {k: v for k, v in plugin_conf.items() if not k.startswith('_')}
 
         # 2. Check legacy format

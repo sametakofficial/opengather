@@ -1,0 +1,83 @@
+plugin_services:
+  state: StateService
+  events: EventService
+  logger: LoggerService
+  config: ConfigService
+  template: TemplateService
+  provides: ProvidesService
+
+StateService:
+  get_current_job: () -> JobState
+  get_job: (job_id: str) -> JobState | None
+  get_job_by_index: (index: int) -> JobState | None
+  get_all_jobs: () -> [JobState]
+  get_run: () -> RunState
+  get_plugin_data: (job_id, plugin_name) -> dict
+  save_plugin_data: (job_id, plugin_name, stage, data, status) -> None
+
+EventService:
+  emit: (event: str, data: dict | None) -> None
+  subscribe: (event: str, handler: Callable) -> None
+
+LoggerService:
+  debug: (message: str, **kwargs) -> None
+  info: (message: str, **kwargs) -> None
+  warn: (message: str, **kwargs) -> None
+  error: (message: str, **kwargs) -> None
+
+ConfigService:
+  get: (key: str, default: any) -> any
+  get_plugin: (plugin_name: str) -> dict
+  get_option: (option: str, default: any) -> any
+
+TemplateService:
+  render: (template: str, context: dict) -> str
+  build_context: (job_id: str) -> dict
+
+ProvidesService:
+  complete: (provide: str) -> None
+  is_completed: (provide: str) -> bool
+  get_status: (provide: str) -> dict
+
+execution_modes:
+  per_run:
+    stage: null
+    access:
+      - run
+      - config
+    cannot_access:
+      - job
+      - jobs
+      - plugin
+      - plugins
+    api:
+      - createJob(input_value, input_data)
+  per_job:
+    stage: parse | data | output
+    access:
+      - run
+      - config
+      - job
+      - jobs
+      - plugin
+      - plugins
+    api:
+      - createJob(input_value, input_data)
+      - updateJob(job_id, key, value)
+      - updatePlugin(plugin_name, data)
+
+plugin_contracts:
+  per_run: "execute_run(services) -> dict"
+  per_job: "execute(job, services) -> PluginResult | dict"
+  legacy_per_job: "execute(match_data) -> dict"
+
+base_classes:
+  - BasePlugin (abstract)
+  - InputPlugin (per_run)
+  - OutputPlugin (per_job)
+
+lifecycle:
+  - __init__(config)
+  - setup()
+  - execute(...)
+  - teardown()

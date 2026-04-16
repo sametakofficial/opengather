@@ -23,10 +23,10 @@ class TestPluginDiscovery:
         (plugin1_dir / "plugin.json").write_text(json.dumps({
             "name": "fake_input",
             "version": "1.0.0",
-            "category": "input",
+            "stage": "input",
+            "run_mode": "per_run",
             "class_name": "FakeInputPlugin",
-            "depends_on": [],
-            "expects": []
+            "requires": []
         }))
         (plugin1_dir / "client.py").write_text('''
 class FakeInputPlugin:
@@ -40,10 +40,10 @@ class FakeInputPlugin:
         (plugin2_dir / "plugin.json").write_text(json.dumps({
             "name": "fake_output",
             "version": "1.0.0",
-            "category": "output",
+            "stage": "data",
+            "run_mode": "per_job",
             "class_name": "FakeOutputPlugin",
-            "depends_on": ["fake_input"],
-            "expects": ["fake_input.matches"]
+            "requires": ["plugin.fake_input.matches"]
         }))
         (plugin2_dir / "client.py").write_text('''
 class FakeOutputPlugin:
@@ -72,8 +72,8 @@ class FakeOutputPlugin:
         
         assert "fake_input" in plugins
         assert "fake_output" in plugins
-        assert plugins["fake_input"]["category"] == "input"
-        assert plugins["fake_output"]["category"] == "output"
+        assert plugins["fake_input"]["stage"] == "input"
+        assert plugins["fake_output"]["stage"] == "data"
     
     def test_plugin_metadata_parsed_correctly(self, mock_plugin_dir):
         """Test plugin.json metadata is parsed correctly."""
@@ -85,11 +85,10 @@ class FakeOutputPlugin:
         input_plugin = plugins["fake_input"]
         assert input_plugin["version"] == "1.0.0"
         assert input_plugin["class_name"] == "FakeInputPlugin"
-        assert input_plugin["depends_on"] == []
-        
+        assert input_plugin["requires"] == []
+
         output_plugin = plugins["fake_output"]
-        assert output_plugin["depends_on"] == ["fake_input"]
-        assert output_plugin["expects"] == ["fake_input.matches"]
+        assert output_plugin["requires"] == ["plugin.fake_input.matches"]
     
     def test_skips_directories_without_plugin_json(self, mock_invalid_plugin_dir):
         """Test discovery skips invalid plugins."""
@@ -116,9 +115,9 @@ class FakeOutputPlugin:
         discovery = PluginDiscovery(plugins_dir=str(mock_plugin_dir))
         plugins = discovery.discover()
         
-        categories = [p["category"] for p in plugins.values()]
-        assert "input" in categories
-        assert "output" in categories
+        stages = [p["stage"] for p in plugins.values()]
+        assert "input" in stages
+        assert "data" in stages
 
 
 class TestPluginLoader:
@@ -131,10 +130,10 @@ class TestPluginLoader:
             "sample_plugin": {
                 "name": "sample_plugin",
                 "version": "1.0.0",
-                "category": "output",
+                "stage": "data",
+                "run_mode": "per_job",
                 "class_name": "SamplePlugin",
-                "depends_on": [],
-                "expects": []
+                "requires": []
             }
         }
     
@@ -173,9 +172,9 @@ class TestDependencyResolver:
         from archiverr.core.plugins import DependencyResolver
         
         plugins = {
-            "a": {"name": "a", "depends_on": []},
-            "b": {"name": "b", "depends_on": []},
-            "c": {"name": "c", "depends_on": []}
+            "a": {"name": "a", "requires": []},
+            "b": {"name": "b", "requires": []},
+            "c": {"name": "c", "requires": []}
         }
         
         resolver = DependencyResolver(plugins)
@@ -190,9 +189,9 @@ class TestDependencyResolver:
         from archiverr.core.plugins import DependencyResolver
         
         plugins = {
-            "scanner": {"name": "scanner", "depends_on": []},
-            "renamer": {"name": "renamer", "depends_on": ["scanner"]},
-            "output": {"name": "output", "depends_on": ["renamer"]}
+            "scanner": {"name": "scanner", "requires": []},
+            "renamer": {"name": "renamer", "requires": ["plugin.scanner.matches:success"]},
+            "output": {"name": "output", "requires": ["plugin.renamer.parsed:success"]}
         }
         
         resolver = DependencyResolver(plugins)
@@ -209,9 +208,9 @@ class TestDependencyResolver:
         from archiverr.core.plugins import DependencyResolver
         
         plugins = {
-            "a": {"name": "a", "depends_on": ["b"]},
-            "b": {"name": "b", "depends_on": ["c"]},
-            "c": {"name": "c", "depends_on": ["a"]}  # Circular!
+            "a": {"name": "a", "requires": ["plugin.b.out:success"]},
+            "b": {"name": "b", "requires": ["plugin.c.out:success"]},
+            "c": {"name": "c", "requires": ["plugin.a.out:success"]}  # Circular!
         }
         
         resolver = DependencyResolver(plugins)

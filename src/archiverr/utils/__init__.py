@@ -20,13 +20,11 @@ from .config_normalizer import (
 )
 from .debug import DebugSystem, get_debugger, init_debugger
 from .filters import apply_filter
-from .templates import render_template
 from .yaml_loader import load_yaml_with_includes
 
 __all__ = [
     # Filters & Templates
     'apply_filter',
-    'render_template',
     # Debug
     'init_debugger',
     'get_debugger',

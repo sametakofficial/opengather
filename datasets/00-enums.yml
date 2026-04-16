@@ -1,0 +1,47 @@
+state:
+  - pending
+  - running
+  - success
+  - failed
+  - partial
+  - cancelled
+
+plugin_status:
+  - pending
+  - running
+  - completed
+  - failed
+  - skipped
+
+stage:
+  - input
+  - parse
+  - data
+  - output
+
+run_mode:
+  - per_run
+  - per_job
+
+trigger_rule:
+  - all_success
+  - one_success
+  - all_done
+  - all_fail
+  - none_fail
+
+media_category:
+  - movie
+  - show
+  - episode
+  - season
+
+plugin_category:
+  - input
+  - output
+
+id_format:
+  run: run_{uuid8}
+  job: job_{run_id}_{index}
+  example_run: run_abc12345
+  example_job: job_run_abc12345_0

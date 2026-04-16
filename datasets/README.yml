@@ -1,0 +1,50 @@
+index:
+  00-enums.yml:              enum values - state, stage, run_mode, trigger_rule, media_category
+  01-config.yml:             config.yml top-level structure and plugin configs
+  02-manifest.yml:           plugin manifest.yml structure and 3-layer merge (user/defaults/meta/resolved)
+  03-run-state.yml:          runtime state - run, job, jobs, plugin, plugins, plugin_result
+  04-template-context.yml:   jinja2 template context and alias resolution (render-time)
+  05-events.yml:             event bus events and payloads
+  06-mongodb.yml:             mongodb collections and indexes
+  07-plugin-io.yml:          per-plugin inputs and outputs
+  08-services.yml:           plugin services contracts (state, events, logger, config, template, provides)
+  09-api-fastapi.yml:        fastapi request/response shapes
+  10-aliases.yml:            inline alias/interpolation model (v1 target)
+  11-recovery.yml:           plugin_executions and checkpoints for run recovery (v1 target)
+  12-safety.yml:             dry_run, no-delete, hardlink central semantics (v1 target)
+
+status: v1-draft (post reality-check)
+
+canonical_sources_of_truth:
+  enums: src/archiverr/state/models.py
+  run_job: src/archiverr/state/models.py
+  manifest: src/archiverr/core/plugins/sdk/manifest.py
+  plugin_result: src/archiverr/core/plugins/sdk/result.py
+  persistence: src/archiverr/infrastructure/database/interface.py
+  events: src/archiverr/events/bus.py
+  template_context: src/archiverr/state/template_context.py
+  alias_resolver: src/archiverr/core/config/alias_resolver.py
+  config_loader: src/archiverr/utils/config_loader.py
+
+contract_freeze_rules:
+  - one shape per concept; divergent shapes in legacy code must be adapted, not persisted here
+  - no comments in *.yml; reference code via canonical_sources_of_truth
+  - examples live in AI/DATASETS.yml and FINAL_DATASETS.yml
+  - when code disagrees with a dataset file, code is the bug, not the dataset
+
+known_divergences_today:
+  - JobState plugins dict vs job.status.plugins dict - two parallel plugin-status views
+  - plugin.{name} vs plugin.{name}.data double-surface in tasker template context
+  - ExecutionContext carries legacy fields (match_index, total_matches, api_response)
+  - get_execution_order returns stage-ordered list (misleading)
+  - stage defaults to PARSE when missing in manifest (dangerous)
+  - provides_registry silent fallback in PluginServices
+  - NullPersistence silent downgrade in build_orchestrator
+  - aliases: top-level only; manifest Jinja limited to requires/provides
+
+v1_direction:
+  - single path-based interpolation model (see 10-aliases.yml)
+  - plugin 3-layer merge: _manifest / _defaults / user -> resolved (see 02-manifest.yml)
+  - plugin_executions + checkpoints for recovery (see 11-recovery.yml)
+  - central dry_run / no-delete / hardlink contract (see 12-safety.yml)
+  - canonical template context only; drop tasker local context builder

@@ -89,72 +89,11 @@ class BasePlugin(ABC):
     # Data Access Methods
     # =========================================================================
 
-    def get_previous_result(self, plugin_name: str) -> dict[str, Any] | None:
-        """
-        Get result from a previous plugin.
-        
-        Args:
-            plugin_name: Name of the plugin to get result from
-            
-        Returns:
-            Plugin result dict or None if not available
-        """
-        if self._context:
-            return self._context.get_plugin_result(plugin_name)
-        return None
-
-    # =========================================================================
-    # Task & Progress Emission
-    # =========================================================================
-
-    def emit_task(self, task_config: dict[str, Any]) -> dict[str, Any] | None:
-        """
-        Convenience method for task emission.
-        
-        Allows plugins to emit tasks during execution.
-        
-        Args:
-            task_config: Task configuration dict
-            
-        Returns:
-            Task result or None if context not available
-        """
-        if self._context:
-            return self._context.emit_task(task_config)
-        return None
-
-    def emit_progress(self, percent: float, message: str = ""):
-        """
-        Convenience method for progress emission.
-        
-        Args:
-            percent: Progress percentage (0-100)
-            message: Optional progress message
-        """
-        if self._context:
-            self._context.emit_progress(percent, message)
-
-    # =========================================================================
-    # Lifecycle Hooks
-    # =========================================================================
-
     def setup(self) -> None:
-        """
-        Called once when plugin is loaded.
-        Override to initialize resources (API clients, caches, etc.)
-        """
         self._initialized = True
-
-    def teardown(self) -> None:
-        """
-        Called when plugin is unloaded.
-        Override to cleanup resources.
-        """
-        pass
 
     @abstractmethod
     def execute(self, *args, **kwargs):
-        """Execute plugin logic - must be implemented by subclasses"""
         pass
 
     def _validate_duration(
@@ -202,39 +141,17 @@ class BasePlugin(ABC):
 
 
 class InputPlugin(BasePlugin):
-    """Base class for input plugins (per_run mode)."""
-
-    def __init__(self, config: dict[str, Any]):
-        super().__init__(config)
-        self.category = "input"
-
     @abstractmethod
-    def execute(self) -> list[dict[str, Any]]:
-        """
-        Execute input plugin.
-        
-        Returns:
-            List of matches: [{status: {...}, input: {...}, ...}]
-        """
+    def execute_run(self, services: Any) -> dict[str, Any]:
         pass
+
+    def execute(self, *args, **kwargs):
+        raise NotImplementedError(
+            f"{self.__class__.__name__}: input plugins implement execute_run(services), not execute()"
+        )
 
 
 class OutputPlugin(BasePlugin):
-    """Base class for output plugins (per_job mode)."""
-
-    def __init__(self, config: dict[str, Any]):
-        super().__init__(config)
-        self.category = "output"
-
     @abstractmethod
-    def execute(self, match_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute output plugin.
-        
-        Args:
-            match_data: Current match data with results from previous plugins
-            
-        Returns:
-            Plugin result: {status: {...}, ...data}
-        """
+    def execute(self, job: Any, services: Any) -> Any:
         pass

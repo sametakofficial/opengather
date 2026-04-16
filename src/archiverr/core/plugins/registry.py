@@ -23,12 +23,12 @@ from .loader import PluginLoader
 class Stage(Enum):
     """
     Plugin execution stages (3 stages only).
-    
+
     Order matters - stages execute in this sequence:
     1. PARSE: Filename parsing (renamer)
     2. DATA: External data fetching (tmdb, tvdb)
     3. OUTPUT: Output generation (tasker, reporter)
-    
+
     Note: INPUT stage removed in .
     Input plugins (scanner) now run as per_run mode outside stages.
     """
@@ -40,23 +40,23 @@ class Stage(Enum):
     def from_string(cls, stage_str: str) -> 'Stage':
         """
         Get Stage from string.
-        
+
         Args:
             stage_str: Stage name ("parse", "data", or "output")
-            
+
         Returns:
             Stage enum
-            
+
         Raises:
             ValueError: If stage_str is invalid
         """
         try:
             return cls(stage_str.lower())
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
                 f"Invalid stage: {stage_str}. "
                 f"Valid stages: parse, data, output"
-            )
+            ) from e
 
 
 @dataclass
@@ -73,15 +73,15 @@ class PluginInfo:
 class PluginRegistry:
     """
     Central registry for plugin discovery, loading, and lookup.
-    
+
     Usage:
         registry = PluginRegistry(config)
         registry.discover_and_load()
-        
+
         input_plugins = registry.get_plugins_by_stage(Stage.INPUT)
         tmdb = registry.get_plugin("tmdb")
         manifest = registry.get_manifest("tmdb")
-    
+
     Note: This class uses mevcut PluginDiscovery and PluginLoader.
     It's a facade that adds stage-based organization.
     """
@@ -94,7 +94,7 @@ class PluginRegistry:
     ):
         """
         Initialize plugin registry.
-        
+
         Args:
             config: Application configuration dict
             plugins_dir: Optional custom plugins directory
@@ -121,7 +121,7 @@ class PluginRegistry:
     def discover_and_load(self) -> None:
         """
         Discover all plugins and load enabled ones.
-        
+
         This is the main initialization method.
         Call once at startup, results are cached.
         """
@@ -145,6 +145,24 @@ class PluginRegistry:
             self._loaded = True
             return
 
+        # WP-2: enrich config['_plugins'] with the 3-layer structure
+        # (_manifest / _defaults / user / _resolved) so downstream components
+        # read a single canonical shape.
+        from archiverr.core.config.manifest_merge import apply_to_config
+        apply_to_config(self._config, self._all_manifests)
+
+        # WP-3: resolve ${...} interpolation tokens across the merged tree.
+        # On by default in session 34+.  ``options._use_legacy_alias = true``
+        # is an escape hatch for users who haven't migrated yet; it skips
+        # the new engine but leaves the regex alias path in config_loader
+        # untouched either way.
+        options = self._config.get("options") or {}
+        if not bool(options.get("_use_legacy_alias", False)):
+            from archiverr.core.config.interpolator import compile_config
+            compiled = compile_config(self._config)
+            self._config.clear()
+            self._config.update(compiled)
+
         # Initialize loader with config
         self._loader = PluginLoader(self._all_manifests, self._config)
 
@@ -159,7 +177,7 @@ class PluginRegistry:
         # Input plugins are per_run mode, not assigned to a stage
         for name, instance in input_plugins.items():
             manifest = self._all_manifests.get(name, {})
-            # Input plugins don't have a stage in 
+            # Input plugins don't have a stage in
             # They run as per_run before stages
             self._build_plugin_info(name, None, manifest, instance)
 
@@ -182,36 +200,20 @@ class PluginRegistry:
         )
 
     def _determine_stage(self, manifest: dict[str, Any]) -> Stage | None:
-        """
-        Determine plugin stage from manifest.
-        
-        Priority:
-        1. Explicit 'stage' field (new format)
-        2. Infer from 'category' field (legacy)
-        3. Default to PARSE
-        
-        Returns None for input stage plugins (they run as per_run, not in stages).
-        """
-        # New format: explicit stage
         stage_str = manifest.get('stage')
-        if stage_str:
-            # Input stage plugins don't belong in _plugins_by_stage
-            # They run via orchestrator._execute_per_run_plugins()
-            if stage_str == 'input':
-                return None
-            try:
-                return Stage(stage_str)
-            except ValueError:
-                pass
-
-        # Check category for input plugins
-        category = manifest.get('category')
-        if category == 'input':
+        if not stage_str:
+            raise ValueError(
+                f"Plugin '{manifest.get('name', '?')}': manifest.stage is required "
+                f"(one of input, parse, data, output)"
+            )
+        if stage_str == 'input':
             return None
-
-        # Legacy: Default to PARSE if not specified
-        # All plugins should have explicit stage in manifest
-        return Stage.PARSE
+        try:
+            return Stage(stage_str)
+        except ValueError as e:
+            raise ValueError(
+                f"Plugin '{manifest.get('name', '?')}': invalid stage '{stage_str}'"
+            ) from e
 
     def _build_plugin_info(
         self,
@@ -221,14 +223,7 @@ class PluginRegistry:
         instance: Any | None
     ) -> None:
         """Build and cache PluginInfo for a plugin ()."""
-        # Extract requires (supports both old and new formats)
         requires = manifest.get('requires', [])
-        if not requires:
-            requires = manifest.get('depends_on', [])  # Legacy field
-            if not requires:
-                requires = manifest.get('expects', [])  # Another legacy field
-
-        # Ensure requires is a list
         if isinstance(requires, str):
             requires = [requires]
 
@@ -249,10 +244,10 @@ class PluginRegistry:
     def get_plugins_by_stage(self, stage: Stage) -> dict[str, Any]:
         """
         Get all loaded plugins for a stage.
-        
+
         Args:
             stage: Stage enum value
-            
+
         Returns:
             Dict of plugin_name -> plugin_instance
         """
@@ -263,10 +258,10 @@ class PluginRegistry:
     def get_plugin(self, name: str) -> Any | None:
         """
         Get a loaded plugin by name.
-        
+
         Args:
             name: Plugin name
-            
+
         Returns:
             Plugin instance or None if not loaded
         """
@@ -277,10 +272,10 @@ class PluginRegistry:
     def get_manifest(self, name: str) -> dict[str, Any] | None:
         """
         Get plugin manifest by name.
-        
+
         Args:
             name: Plugin name
-            
+
         Returns:
             Manifest dict or None if not found
         """
@@ -291,10 +286,10 @@ class PluginRegistry:
     def get_plugin_info(self, name: str) -> PluginInfo | None:
         """
         Get full plugin info by name.
-        
+
         Args:
             name: Plugin name
-            
+
         Returns:
             PluginInfo or None if not found
         """
@@ -305,7 +300,7 @@ class PluginRegistry:
     def get_all_plugins(self) -> dict[str, Any]:
         """
         Get all loaded plugin instances ().
-        
+
         Returns:
             Dict of plugin_name -> plugin_instance
         """
@@ -316,10 +311,10 @@ class PluginRegistry:
     def get_input_plugin_names(self) -> list[str]:
         """
         Get names of all input plugins (per_run mode, no stage).
-        
+
         Returns list of plugin names that are input plugins.
         Replaces hardcoded ['scanner', 'file-reader', ...] lists.
-        
+
         Returns:
             List of input plugin names
         """
@@ -371,26 +366,3 @@ class PluginRegistry:
             self.discover_and_load()
         return list(self._all_plugins.keys())
 
-    def get_execution_order(self, stage: Stage = None) -> list[str]:
-        """
-        Get plugin execution order based on requires/provides.
-        
-        Uses topological sort within each stage.
-        
-        Args:
-            stage: Optional stage to get order for (all if None)
-            
-        Returns:
-            List of plugin names in execution order
-        """
-        if not self._loaded:
-            self.discover_and_load()
-
-        # For now, return simple order (proper topo sort in Phase 5)
-        if stage:
-            return list(self._plugins_by_stage.get(stage, {}).keys())
-
-        order = []
-        for s in Stage:
-            order.extend(self._plugins_by_stage.get(s, {}).keys())
-        return order

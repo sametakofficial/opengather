@@ -1,0 +1,32 @@
+RunResponse:
+  id: run_{uuid8}
+  status:
+    state: pending | running | success | failed | partial | cancelled
+    success: bool
+    total_jobs: int
+    completed: int
+    failed: int
+    duration_ms: int
+    error: string | null
+  input:
+    value: string
+    data: {}
+  output:
+    values: [string]
+    data: {}
+  jobs:
+    - job_id
+  config: {}
+  options: {}
+  created_at: ISO8601
+  completed_at: ISO8601
+
+RunListResponse:
+  items: [RunResponse]
+  total: int
+  page: int
+  page_size: int
+
+RunCreate:
+  config: {}
+  dry_run: bool

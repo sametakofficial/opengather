@@ -1,0 +1,227 @@
+scanner:
+  stage: input
+  run_mode: per_run
+  output_per_job_input:
+    value: path
+    data:
+      filename: string
+      extension: string
+      size_bytes: int
+      modified_at: ISO8601
+      source: filesystem
+
+file_reader:
+  stage: input
+  run_mode: per_run
+  output_per_job_input:
+    value: path
+    data:
+      filename: string
+      extension: string
+      size_bytes: int
+      source: filesystem
+
+renamer:
+  stage: parse
+  run_mode: per_job
+  requires:
+    - job.input.value
+  data:
+    parsed:
+      movie:
+        name: string
+        year: int
+        resolution: string
+        source: string
+        codec: string
+      show:
+        name: string
+        season: int
+        episode: int
+        title: string
+        resolution: string
+    category: movie | show
+    confidence: float
+
+ffprobe:
+  stage: data
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    format:
+      filename: string
+      format_name: string
+      format_long_name: string
+      duration: string
+      size: string
+      bit_rate: string
+    streams:
+      - index: int
+        codec_type: video | audio | subtitle
+        codec_name: string
+        width: int
+        height: int
+        channels: int
+        language: string
+
+tmdb:
+  stage: data
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    movie:
+      media_type: movie
+      identifiers:
+        tmdb_id: string
+        imdb_id: string
+      title:
+        primary: string
+        original: string
+        localized: string
+      release:
+        date: YYYY-MM-DD
+        year: int
+        status: string
+      runtime: int
+      ratings:
+        tmdb:
+          score: float
+          votes: int
+      overview: string
+      genres: [string]
+      financial:
+        budget: int
+        revenue: int
+      images:
+        poster: path
+        backdrop: path
+        posters: [path]
+        backdrops: [path]
+      people:
+        cast:
+          - name: string
+            character: string
+            profile_path: path
+            order: int
+        crew:
+          - name: string
+            job: string
+            department: string
+      videos:
+        - name: string
+          key: string
+          site: YouTube | Vimeo
+          type: Trailer | Teaser | Clip
+      keywords: [string]
+    show:
+      media_type: show
+      identifiers:
+        tmdb_id: string
+      title:
+        primary: string
+        original: string
+        localized: string
+      air_dates:
+        first: YYYY-MM-DD
+        last: YYYY-MM-DD
+        year: int
+      status: string
+      runtime: int
+      ratings:
+        tmdb:
+          score: float
+          votes: int
+      overview: string
+      genres: [string]
+      network:
+        name: string
+        id: string
+      seasons:
+        total: int
+      episodes:
+        total: int
+      images:
+        poster: path
+        backdrop: path
+      people:
+        cast: []
+        crew: []
+    episode:
+      media_type: episode
+      identifiers:
+        tmdb_id: string
+      title:
+        primary: string
+      season_number: int
+      episode_number: int
+      air_date: YYYY-MM-DD
+      runtime: int
+      overview: string
+      images:
+        still: path
+      people:
+        guest_stars: []
+
+tvdb:
+  stage: data
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    show:
+      identifiers:
+        tvdb_id: string
+      title:
+        primary: string
+      overview: string
+      genres: [string]
+      status: string
+
+omdb:
+  stage: data
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    movie:
+      identifiers:
+        imdb_id: string
+      title:
+        primary: string
+      ratings:
+        imdb:
+          score: float
+          votes: int
+
+tvmaze:
+  stage: data
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    show:
+      identifiers:
+        tvmaze_id: string
+      title:
+        primary: string
+      network:
+        name: string
+
+tasker:
+  stage: output
+  run_mode: per_job
+  requires:
+    - plugin.tmdb.data:success
+    - plugin.renamer.parsed:success
+  data:
+    tasks:
+      <task_name>:
+        type: print | save
+        success: bool
+        rendered: string
+        output: path | null
+    tasks_executed: int
+    tasks_skipped: int
+    output_files: [path]

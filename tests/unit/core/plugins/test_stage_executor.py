@@ -1,14 +1,13 @@
 """Tests for StageExecutor - 3-stage plugin execution engine.
 
 Tests the decomposed execution pipeline:
-- _check_plugin_requires
-- _invoke_plugin
+- _decide_skip / _apply_skip
+- _invoke_plugin / _invoke_safely
 - _extract_plugin_result
 - _update_job_plugin_state
-- _handle_plugin_error
-- execute_stage (integration of above)
-- _topological_sort
-- _group_parallel_plugins
+- _commit_invocation (failure path emits events, marks job failed)
+- execute_stage (integration)
+- parallel group execution (main-thread commits, worker-thread invokes)
 """
 
 import pytest
@@ -16,6 +15,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
 from archiverr.core.exceptions import PluginError, StageError
+from archiverr.core.plugins.sdk.result import PluginResult
 from archiverr.core.plugins.stage_executor import (
     ExecutionMode,
     PluginExecutionResult,
@@ -95,25 +95,35 @@ def _make_plugin(name="test_plugin", execute_result=None):
     return plugin
 
 
+def _ok_result(data: dict | None = None) -> PluginResult:
+    now = datetime.now()
+    return PluginResult(success=True, data=data or {}, started_at=now, finished_at=now)
+
+
+def _fail_result(data: dict | None = None, error: str = "fail") -> PluginResult:
+    now = datetime.now()
+    return PluginResult(success=False, data=data or {}, error=error, started_at=now, finished_at=now)
+
+
 # ---------------------------------------------------------------------------
 # TestCheckPluginRequires
 # ---------------------------------------------------------------------------
 
-class TestCheckPluginRequires:
-    """Tests for _check_plugin_requires method."""
+class TestDecideSkip:
+    """Tests for _decide_skip (pure decision) and _apply_skip (main-thread side effect)."""
 
     def test_no_requires_returns_none(self, executor, sample_job):
         manifest = {"stage": "data", "provides": ["http.request"]}
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
+        result = executor._decide_skip("tmdb_mock", manifest, sample_job)
         assert result is None
 
     def test_empty_requires_returns_none(self, executor, sample_job):
         manifest = {"requires": [], "trigger_rule": "all_success"}
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
+        result = executor._decide_skip("tmdb_mock", manifest, sample_job)
         assert result is None
 
     def test_none_manifest_returns_none(self, executor, sample_job):
-        result = executor._check_plugin_requires("tmdb_mock", None, sample_job)
+        result = executor._decide_skip("tmdb_mock", None, sample_job)
         assert result is None
 
     def test_requires_not_satisfied_returns_skip(self, executor, sample_job):
@@ -121,40 +131,30 @@ class TestCheckPluginRequires:
             "requires": ["plugin.renamer.parsed:success"],
             "trigger_rule": "all_success",
         }
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
+        result = executor._decide_skip("tmdb_mock", manifest, sample_job)
         assert result is not None
         assert result.skipped is True
         assert result.plugin_name == "tmdb_mock"
         assert result.success is True
 
-    def test_requires_satisfied_returns_none(self, executor, sample_job):
-        manifest = {
-            "requires": ["plugin.renamer.parsed:success"],
-            "trigger_rule": "all_success",
-        }
-        sample_job.plugins["renamer"] = {"parsed": {"title": "Movie", "year": 2024}}
-        sample_job.status.plugins["renamer"] = {"state": "completed", "success": True}
-
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
-        assert result is None or isinstance(result, PluginExecutionResult)
-
-    def test_legacy_expects_fallback(self, executor, sample_job):
-        manifest = {
-            "expects": ["plugin.renamer.parsed:success"],
-            "trigger_rule": "all_success",
-        }
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
-        assert result is None or isinstance(result, PluginExecutionResult)
-
-    def test_skipped_plugin_marked_in_job_status(self, executor, sample_job):
+    def test_decide_skip_does_not_mutate_job(self, executor, sample_job):
+        """_decide_skip must be pure — no writes to job.status.plugins."""
         manifest = {
             "requires": ["plugin.nonexistent.data:success"],
             "trigger_rule": "all_success",
         }
-        result = executor._check_plugin_requires("tmdb_mock", manifest, sample_job)
-        if result and result.skipped:
-            assert "tmdb_mock" in sample_job.status.plugins
-            assert sample_job.status.plugins["tmdb_mock"]["state"] == "skipped"
+        executor._decide_skip("tmdb_mock", manifest, sample_job)
+        # Skip decision returned, but no side effects yet
+        assert "tmdb_mock" not in sample_job.status.plugins
+
+    def test_apply_skip_marks_job_status(self, executor, sample_job):
+        skip_result = PluginExecutionResult(
+            plugin_name="tmdb_mock", success=True, data={},
+            skipped=True, skip_reason="test"
+        )
+        executor._apply_skip(sample_job, "tmdb_mock", skip_result)
+        assert "tmdb_mock" in sample_job.status.plugins
+        assert sample_job.status.plugins["tmdb_mock"]["state"] == "skipped"
 
 
 # ---------------------------------------------------------------------------
@@ -162,51 +162,27 @@ class TestCheckPluginRequires:
 # ---------------------------------------------------------------------------
 
 class TestInvokePlugin:
-    """Tests for _invoke_plugin method."""
+    """Tests for _invoke_plugin method (modern contract only)."""
 
-    def test_new_signature_execute(self, executor, sample_job):
+    def test_modern_signature_execute(self, executor, sample_job):
         plugin = MagicMock()
         plugin.name = "test_plugin"
-        mock_result = MagicMock()
-        mock_result.data = {"title": "Movie"}
-        plugin.execute.return_value = mock_result
+        plugin.execute.return_value = _ok_result({"title": "Movie"})
 
         services = MagicMock()
         result = executor._invoke_plugin(plugin, sample_job, services, "test_plugin")
 
-        assert result is not None
-        plugin.execute.assert_called()
+        assert isinstance(result, PluginResult)
+        plugin.execute.assert_called_once_with(sample_job, services)
 
-    def test_no_execute_method_returns_none(self, executor, sample_job):
-        plugin = MagicMock(spec=[])
-        plugin.name = "bad_plugin"
-
-        services = MagicMock()
-        result = executor._invoke_plugin(plugin, sample_job, services, "bad_plugin")
-
-        assert result is None
-
-    def test_no_execute_method_returns_none(self, executor, sample_job):
-        """Plugin with no execute method returns None."""
+    def test_missing_execute_raises(self, executor, sample_job):
+        """Plugin without execute() must raise under hard cut-off."""
         plugin = MagicMock(spec=["name"])
         plugin.name = "empty_plugin"
 
         services = MagicMock()
-        result = executor._invoke_plugin(plugin, sample_job, services, "empty_plugin")
-
-        assert result is None
-
-    def test_introspection_failure_uses_legacy(self, executor, sample_job):
-        """When signature introspection fails, assume legacy single-arg."""
-        plugin = MagicMock()
-        plugin.name = "tricky_plugin"
-        plugin.execute.return_value = {"fallback": True}
-        # Make inspect.signature fail
-        plugin.execute.__signature__ = None
-
-        services = MagicMock()
-        result = executor._invoke_plugin(plugin, sample_job, services, "tricky_plugin")
-        assert result is not None
+        with pytest.raises(PluginError, match="execute"):
+            executor._invoke_plugin(plugin, sample_job, services, "empty_plugin")
 
 
 # ---------------------------------------------------------------------------
@@ -214,61 +190,30 @@ class TestInvokePlugin:
 # ---------------------------------------------------------------------------
 
 class TestExtractPluginResult:
-    """Tests for _extract_plugin_result method."""
+    """Tests for _extract_plugin_result method (PluginResult only)."""
 
-    def test_result_with_data_attribute(self, executor):
-        result = MagicMock()
-        result.data = {"title": "Movie", "year": 2024}
-        result.status = None
-
+    def test_plugin_result_success(self, executor):
+        result = _ok_result({"title": "Movie", "year": 2024})
         data, success = executor._extract_plugin_result(result)
-
         assert data == {"title": "Movie", "year": 2024}
         assert success is True
 
-    def test_result_as_dict(self, executor):
-        result = {"title": "Movie", "year": 2024}
-
-        data, success = executor._extract_plugin_result(result)
-
-        assert data == {"title": "Movie", "year": 2024}
-        assert success is True
-
-    def test_result_with_success_status(self, executor):
-        result = MagicMock()
-        result.data = {"key": "value"}
-        result.status = MagicMock()
-        result.status.value = "success"
-
-        data, success = executor._extract_plugin_result(result)
-        assert success is True
-
-    def test_result_with_failure_status(self, executor):
-        """MagicMock with success=False attribute is detected as failure."""
-        result = MagicMock()
-        result.data = {"key": "val"}
-        result.success = False
-
-        data, success = executor._extract_plugin_result(result)
-        assert success is False
-
-    def test_result_with_empty_data(self, executor):
-        result = MagicMock()
-        result.data = {}
-        del result.status
-
-        data, success = executor._extract_plugin_result(result)
-
-        assert data == {}
-        assert success is True
-
-    def test_dict_with_embedded_status(self, executor):
-        """Legacy dict result with embedded status dict."""
-        result = {"status": {"success": False}, "movie": {"title": "Test"}}
-
+    def test_plugin_result_failure(self, executor):
+        result = _fail_result({"movie": {"title": "Test"}})
         data, success = executor._extract_plugin_result(result)
         assert success is False
         assert data == {"movie": {"title": "Test"}}
+
+    def test_plugin_result_empty_data(self, executor):
+        result = _ok_result()
+        data, success = executor._extract_plugin_result(result)
+        assert data == {}
+        assert success is True
+
+    def test_non_plugin_result_raises(self, executor):
+        """Dict / raw / legacy returns no longer supported under hard cut-off."""
+        with pytest.raises(PluginError, match="PluginResult"):
+            executor._extract_plugin_result({"title": "Movie"})
 
 
 # ---------------------------------------------------------------------------
@@ -317,43 +262,62 @@ class TestUpdateJobPluginState:
 # TestHandlePluginError
 # ---------------------------------------------------------------------------
 
-class TestHandlePluginError:
-    """Tests for _handle_plugin_error method."""
+class TestInvokeSafelyAndCommit:
+    """Tests for the failure path: _invoke_safely returns failure result,
+    _commit_invocation emits events and marks job failed."""
 
-    def test_plugin_error_returns_failure(self, executor, sample_job):
-        error = PluginError("API timeout", context={"plugin": "tmdb"})
-        result = executor._handle_plugin_error(
-            error, "tmdb_mock", sample_job, Stage.DATA, datetime.now()
+    def _failed_exec(self, error: str = "API timeout"):
+        return PluginExecutionResult(
+            plugin_name="tmdb_mock", success=False, data={},
+            error=error, duration_ms=10
         )
+
+    def test_plugin_error_in_invoke_returns_failure(self, executor, sample_job):
+        """Plugin execute raises -> _invoke_safely returns success=False result, no raise."""
+        plugin = MagicMock()
+        plugin.name = "tmdb_mock"
+        plugin.execute.side_effect = PluginError("API timeout")
+
+        result = executor._invoke_safely(plugin, sample_job, "tmdb_mock")
         assert result.success is False
-        assert result.plugin_name == "tmdb_mock"
         assert "API timeout" in result.error
 
-    def test_generic_error_returns_failure(self, executor, sample_job):
-        error = ValueError("something broke")
-        result = executor._handle_plugin_error(
-            error, "tmdb_mock", sample_job, Stage.DATA, datetime.now()
-        )
+    def test_generic_error_in_invoke_returns_failure(self, executor, sample_job):
+        plugin = MagicMock()
+        plugin.name = "tmdb_mock"
+        plugin.execute.side_effect = ValueError("something broke")
+
+        result = executor._invoke_safely(plugin, sample_job, "tmdb_mock")
         assert result.success is False
         assert "something broke" in result.error
 
-    def test_error_marks_job_failed(self, executor, sample_job):
-        error = PluginError("fail")
-        executor._handle_plugin_error(
-            error, "tmdb_mock", sample_job, Stage.DATA, datetime.now()
-        )
+    def test_commit_invocation_marks_job_failed(self, executor, sample_job):
+        executor._commit_invocation(sample_job, Stage.DATA, self._failed_exec())
         assert "tmdb_mock" in sample_job.status.plugins
         assert sample_job.status.plugins["tmdb_mock"]["state"] == "failed"
+        assert sample_job.status.success is False
 
-    def test_error_emits_failed_event(self, executor, sample_job, event_bus):
+    def test_commit_invocation_emits_failed_event(self, executor, sample_job, event_bus):
         events_received = []
         event_bus.subscribe(Events.PLUGIN_FAILED, lambda e: events_received.append(e))
 
-        error = PluginError("fail")
-        executor._handle_plugin_error(
-            error, "tmdb_mock", sample_job, Stage.DATA, datetime.now()
-        )
+        executor._commit_invocation(sample_job, Stage.DATA, self._failed_exec("fail"))
         assert len(events_received) == 1
+        assert events_received[0].data["plugin_name"] == "tmdb_mock"
+        assert events_received[0].data["error"] == "fail"
+
+    def test_commit_invocation_skipped_is_noop(self, executor, sample_job, event_bus):
+        """A skipped result should not emit events or touch provides registry."""
+        events_received = []
+        event_bus.subscribe(Events.PLUGIN_FAILED, lambda e: events_received.append(e))
+        event_bus.subscribe(Events.PLUGIN_COMPLETED, lambda e: events_received.append(e))
+
+        skip_result = PluginExecutionResult(
+            plugin_name="tmdb_mock", success=True, data={},
+            skipped=True, skip_reason="test"
+        )
+        executor._commit_invocation(sample_job, Stage.DATA, skip_result)
+        assert events_received == []
 
 
 # ---------------------------------------------------------------------------
@@ -369,10 +333,7 @@ class TestExecutePluginForJob:
         }
 
         plugin = _make_plugin("data_plugin")
-        mock_result = MagicMock()
-        mock_result.data = {"title": "Test Movie"}
-        mock_result.status = None
-        plugin.execute.return_value = mock_result
+        plugin.execute.return_value = _ok_result({"title": "Test Movie"})
 
         result = executor._execute_plugin_for_job(plugin, sample_job, Stage.DATA)
 
@@ -469,10 +430,7 @@ class TestPluginDataCache:
         mock_registry.get_manifest.return_value = {"requires": []}
 
         plugin = _make_plugin("cached_plugin")
-        mock_result = MagicMock()
-        mock_result.data = {"cached": "data"}
-        mock_result.status = None
-        plugin.execute.return_value = mock_result
+        plugin.execute.return_value = _ok_result({"cached": "data"})
 
         executor._execute_plugin_for_job(plugin, sample_job, Stage.DATA)
 
@@ -714,7 +672,7 @@ class TestProvidesRegistryIntegration:
             config=config,
         )
 
-        plugin = _make_plugin("test_plugin", execute_result={"data": {"key": "val"}})
+        plugin = _make_plugin("test_plugin", execute_result=_ok_result({"key": "val"}))
         executor._execute_plugin_for_job(plugin, sample_job, Stage.DATA)
 
         assert executor._provides_registry.is_completed("http.request")

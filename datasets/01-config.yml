@@ -1,0 +1,86 @@
+config:
+  aliases:
+    <name>: <dotted.path_or_interpolation>
+  options:
+    log_level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+    debug: bool
+    dry_run: bool
+    no_delete: bool
+    hardlink: bool
+    persistence_mode: full | degraded | off
+  <plugin_name>:
+    enabled: bool
+    aliases:
+      <name>: <value>
+    <plugin_specific_config>: any
+
+options_contract:
+  see: 12-safety.yml
+
+aliases_contract:
+  model: see 10-aliases.yml
+  allowed_anywhere: true
+  resolved_phase: 4_scoped_interpolation
+
+scanner:
+  enabled: bool
+  targets: [path]
+  allow_virtual_paths: bool
+  extensions: [ext]
+  recursive: bool
+  min_size_bytes: int
+
+renamer:
+  enabled: bool
+  media_type: auto | movie | show
+
+tmdb:
+  enabled: bool
+  api_key: string
+  language: string
+  region: string
+  include_raw_data: bool
+  extras:
+    movie_credits: bool
+    movie_images: bool
+    movie_keywords: bool
+    movie_videos: bool
+    tv_credits: bool
+    tv_episode_credits: bool
+    tv_episode_images: bool
+    tv_images: bool
+    tv_keywords: bool
+    tv_season_images: bool
+    tv_videos: bool
+
+tasker:
+  enabled: bool
+  save_output: bool
+  output_dir: string
+  tasks:
+    - name: string
+      type: print | save
+      condition: jinja_expr
+      template: jinja_template
+      destination: jinja_template
+
+env_var_syntax:
+  - ${VAR}
+  - ${env:VAR}
+
+include_directive:
+  tasks: !include ./tasks/
+  config: !include ./sub.yml
+
+loader_pipeline:
+  1_yaml_include: load_yaml_with_includes
+  2_env_expand: expand_env_vars
+  3_structural_merge: merge plugin manifests (3-layer, see 02-manifest.yml)
+  4_scoped_interpolation: resolve ${...} with alias scope stack (see 10-aliases.yml)
+  5_pydantic_validate: validate PluginManifest + plugin config_schemas
+  6_freeze: config is read-only
+
+deprecated:
+  - regex alias rewrite (config_loader.py:280-341)
+  - tasker-local context shortcuts
+  - plugin.{name} vs plugin.{name}.data double-surface

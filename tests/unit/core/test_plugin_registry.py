@@ -71,20 +71,20 @@ class TestPluginRegistry:
         discovery.discover.return_value = {
             "scanner": {
                 "name": "scanner",
-                "category": "input",
+                "stage": "input", "run_mode": "per_run",
                 "version": "1.0.0",
                 "_path": "/plugins/scanner"
             },
             "renamer": {
                 "name": "renamer",
-                "category": "output",
+                "stage": "data", "run_mode": "per_job",
                 "version": "1.0.0",
                 "_path": "/plugins/renamer",
                 "provides": ["renamer.parsed"]
             },
             "tmdb": {
                 "name": "tmdb",
-                "category": "output",
+                "stage": "data", "run_mode": "per_job",
                 "version": "1.0.0",
                 "_path": "/plugins/tmdb",
                 "requires": ["renamer.parsed"],
@@ -161,9 +161,9 @@ class TestPluginRegistry:
         input_plugins = registry.get_input_plugin_names()
         assert "scanner" in input_plugins
         
-        output_plugins = registry.get_plugins_by_stage(Stage.PARSE)
-        assert "renamer" in output_plugins
-        assert "tmdb" in output_plugins
+        data_plugins = registry.get_plugins_by_stage(Stage.DATA)
+        assert "renamer" in data_plugins
+        assert "tmdb" in data_plugins
     
     @patch('archiverr.core.plugins.registry.PluginDiscovery')
     @patch('archiverr.core.plugins.registry.PluginLoader')
@@ -208,7 +208,7 @@ class TestPluginRegistry:
         manifest = registry.get_manifest("scanner")
         assert manifest is not None
         assert manifest["name"] == "scanner"
-        assert manifest["category"] == "input"
+        assert manifest["stage"] == "input"
     
     @patch('archiverr.core.plugins.registry.PluginDiscovery')
     @patch('archiverr.core.plugins.registry.PluginLoader')
@@ -345,7 +345,7 @@ class TestPluginRegistryStageMapping:
         discovery.discover.return_value = {
             "parser": {
                 "name": "parser",
-                "category": "output",
+                "stage": "data", "run_mode": "per_job",
                 "stage": "parse"  # Explicit stage
             }
         }
@@ -365,30 +365,28 @@ class TestPluginRegistryStageMapping:
     
     @patch('archiverr.core.plugins.registry.PluginDiscovery')
     @patch('archiverr.core.plugins.registry.PluginLoader')
-    def test_category_fallback(
+    def test_missing_stage_raises(
         self,
         mock_loader_class,
         mock_discovery_class,
         mock_debugger
     ):
-        """Test category fallback when no stage field"""
+        """Missing stage field on an output plugin must raise (no fallback after hard cut-off)."""
         discovery = Mock()
         discovery.discover.return_value = {
-            "scanner": {
-                "name": "scanner",
-                "category": "input"  # No stage field
+            "parser": {
+                "name": "parser",
+                "category": "output"  # legacy field; stage intentionally missing
             }
         }
         mock_discovery_class.return_value = discovery
-        
+
         loader = Mock()
-        loader.load_by_category = Mock(side_effect=lambda c: 
-            {"scanner": Mock()} if c == "input" else {}
+        loader.load_by_category = Mock(side_effect=lambda c:
+            {"parser": Mock()} if c == "output" else {}
         )
         mock_loader_class.return_value = loader
-        
+
         registry = PluginRegistry({}, debugger=mock_debugger)
-        registry.discover_and_load()
-        
-        input_plugins = registry.get_input_plugin_names()
-        assert "scanner" in input_plugins
+        with pytest.raises(ValueError, match="[Ss]tage"):
+            registry.discover_and_load()

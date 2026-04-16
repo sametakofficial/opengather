@@ -80,7 +80,7 @@ tasker:
     - name: print_renamer
       type: print
       template: |
-        {% if movie %}MOVIE: {{ movie.name }} ({{ movie.year }}){% elif show %}SHOW: {{ show.name }} S{{ '%02d' | format(show.season) }}E{{ '%02d' | format(show.episode) }}{% endif %}
+        {% if plugin.renamer.data.parsed.movie %}MOVIE: {{ plugin.renamer.data.parsed.movie.name }} ({{ plugin.renamer.data.parsed.movie.year }}){% elif plugin.renamer.data.parsed.show %}SHOW: {{ plugin.renamer.data.parsed.show.name }} S{{ '%02d' | format(plugin.renamer.data.parsed.show.season) }}E{{ '%02d' | format(plugin.renamer.data.parsed.show.episode) }}{% endif %}
 
     # TMDb metadata (Session 12 format)
     - name: print_tmdb
@@ -104,7 +104,7 @@ tasker:
     - name: test_count
       type: print
       template: |
-        {% if plugin.tmdb.data.movie %}Genres: {{ count:plugin.tmdb.data.movie.genres }} | Cast: {{ count:plugin.tmdb.data.movie.people.cast }}{% elif plugin.tmdb.data.show %}Genres: {{ count:plugin.tmdb.data.show.genres }} | Cast: {{ count:plugin.tmdb.data.show.people.cast }}{% if plugin.tmdb.data.episode %} | Guest Stars: {{ count:plugin.tmdb.data.episode.people.guest_stars }}{% endif %}{% endif %}
+        {% if plugin.tmdb.data.movie %}Genres: {{ plugin.tmdb.data.movie.genres | count }} | Cast: {{ plugin.tmdb.data.movie.people.cast | count }}{% elif plugin.tmdb.data.show %}Genres: {{ plugin.tmdb.data.show.genres | count }} | Cast: {{ plugin.tmdb.data.show.people.cast | count }}{% if plugin.tmdb.data.episode %} | Guest Stars: {{ plugin.tmdb.data.episode.people.guest_stars | count }}{% endif %}{% endif %}
 
     # Test FFprobe (if available)
     - name: test_ffprobe

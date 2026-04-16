@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class TemplateContextBuilder:
     """
     Builds Jinja2 template contexts from run/job state.
-    
+
     Extracted from GlobalStateManager to follow SRP.
     This class is stateless and only transforms state to context dicts.
     """
@@ -26,12 +26,12 @@ class TemplateContextBuilder:
     ) -> dict[str, Any]:
         """
         Build Jinja2 template context for a job.
-        
+
         Args:
             job: Current job state
             run: Optional run state for run-level context
             all_jobs: Optional list of all jobs for jobs array
-            
+
         Returns:
             Complete template context dict
         """
@@ -41,20 +41,13 @@ class TemplateContextBuilder:
         # Job context with status breakdown
         job_context = self._build_job_context_dict(job)
 
-        # Full context
-        context = {
+        return {
             "run": run_context,
             "job": job_context,
             "jobs": [self._job_to_summary(j) for j in (all_jobs or [])],
             "config": run.config if run else {},
-            "options": run.config.get('options', {}) if run else {}
+            "options": run.config.get('options', {}) if run else {},
         }
-
-        # Add plugin shortcuts (e.g., context['tmdb'] = tmdb_data)
-        for plugin_name, plugin_data in job.plugins.items():
-            context[plugin_name] = plugin_data
-
-        return context
 
     def _build_run_context(self, run: Optional['RunState']) -> dict[str, Any]:
         """Build run-level context dict."""
@@ -133,24 +126,3 @@ class TemplateContextBuilder:
         }
 
 
-# Default instance for convenience
-_default_builder = TemplateContextBuilder()
-
-
-def build_template_context(
-    job: 'JobState',
-    run: Optional['RunState'] = None,
-    all_jobs: list['JobState'] | None = None
-) -> dict[str, Any]:
-    """
-    Convenience function to build template context.
-    
-    Args:
-        job: Current job state
-        run: Optional run state
-        all_jobs: Optional list of all jobs
-        
-    Returns:
-        Complete template context dict
-    """
-    return _default_builder.build_job_context(job, run, all_jobs)
