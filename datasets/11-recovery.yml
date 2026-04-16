@@ -1,3 +1,20 @@
+recovery_model: slim
+contract: |
+  Single startup scan in persistence_mode=full marks any non-terminal
+  plugin_execution row (state in [started, running, claimed]) as
+  'crashed'. There is no in-flight lease, no heartbeat, no atomic
+  claim. The trade-off: a second concurrent orchestrator process
+  against the same Mongo deployment is undefined behaviour — at most
+  one orchestrator may run against a given persistence backend at a
+  time.
+
+  Out of scope for the slim contract (Session 36+):
+    - lease_expires_at / heartbeat (5s interval, 30s lease)
+    - atomic findOneAndUpdate claim with state guard
+    - checkpoints + idempotency_key for output plugins
+  These remain documented below as the future-work shape so the
+  slim recovery does not paint us into a corner; they are unwired.
+
 collections_additions:
   plugin_executions:
     _id: ObjectId
@@ -5,16 +22,17 @@ collections_additions:
     job_id: job_{run_id}_{index}
     plugin_name: string
     attempt: int
-    state: pending | claimed | running | completed | failed | crashed | skipped
-    claimed_at: ISODate
-    lease_expires_at: ISODate
+    state: started | running | completed | failed | crashed | skipped
     started_at: ISODate
     finished_at: ISODate
     duration_ms: int
     error: string | null
-    idempotency_key: string
+    # future-work fields (slim contract: not written today)
+    claimed_at: ISODate | null
+    lease_expires_at: ISODate | null
+    idempotency_key: string | null
     output_fingerprint: string | null
-  checkpoints:
+  checkpoints: # future-work; no current writers
     _id: ObjectId
     run_id: run_{uuid8}
     job_id: job_{run_id}_{index}
@@ -31,23 +49,22 @@ collections_additions:
 indexes_additions:
   plugin_executions:
     - {run_id: 1, job_id: 1, plugin_name: 1, attempt: 1}
+    - {state: 1, finished_at: 1}
+    # future-work index (claim path):
     - {state: 1, lease_expires_at: 1}
+    # future-work index (idempotency dedupe):
     - {idempotency_key: 1}
   checkpoints:
     - {run_id: 1, job_id: 1, plugin_name: 1}
 
 plugin_state_machine:
-  pending:
+  # Slim model — straight-line, no claim/lease.
+  started:
     enters_from: []
-    exits_to: [claimed, skipped]
-  claimed:
-    enters_from: [pending]
-    exits_to: [running, crashed]
-    guard: atomic claim with lease
+    exits_to: [running, crashed, skipped]
   running:
-    enters_from: [claimed]
+    enters_from: [started]
     exits_to: [completed, failed, crashed]
-    guard: heartbeat updates lease
   completed:
     enters_from: [running]
     terminal: true
@@ -55,51 +72,56 @@ plugin_state_machine:
     enters_from: [running]
     terminal: true
   crashed:
-    enters_from: [claimed, running]
+    enters_from: [started, running]
     terminal_for_attempt: true
-    recoverable_via: new attempt with attempt+1
+    recoverable_via: new attempt (no automatic retry today)
   skipped:
-    enters_from: [pending]
+    enters_from: [started]
     terminal: true
 
 recovery_rules:
-  - on orchestrator start, scan plugin_executions where state in (claimed, running) and lease_expires_at < now -> crashed
-  - for each crashed record, check trigger_rule before creating attempt+1
+  - on orchestrator start (persistence_mode=full only), scan plugin_executions where state in (started, running, claimed) -> crashed
+  - on persistence_mode=degraded, the startup scan is skipped; the run still proceeds
   - completed attempts are never re-run unless explicitly re-executed
-  - output plugins must write a checkpoint row before externalizing side effects
-  - output plugins must record idempotency_key and skip if a prior attempt already wrote the same fingerprint
+  - failed attempts are not retried automatically; trigger_rule on dependent plugins decides skip
 
 persistence_mode_contract:
   full:
     backend: pymongo
     null_fallback: false
-    on_connect_fail: raise
+    on_connect_fail: raise CriticalError
+    recovery: enabled (startup scan only, slim contract)
+    on_query_fail_during_recovery: raise CriticalError
   degraded:
     backend: pymongo
     null_fallback: true
-    on_connect_fail: log.warn
+    on_connect_fail: log.warn (run continues without recovery bookkeeping)
     recovery: disabled
+    on_query_fail_during_recovery: log.warn (best-effort)
   off:
     backend: null_persistence
     null_fallback: true
     recovery: disabled
 
 orchestrator_contract:
-  - no silent NullPersistence downgrade; mode must be explicit
-  - if recovery is configured and backend connect fails, fail-fast
+  - no silent NullPersistence downgrade; mode must be explicit (default: degraded)
+  - persistence_mode=full + connect fail = fail-fast
+  - persistence_mode=full + recovery query fail = fail-fast (durability promise)
+  - _save_exec_state failures are warn-once-per-run + counter; do not crash the run
 
 failure_domains:
   business_failure:
     marker: state=failed
     recoverable: respects trigger_rule
   worker_crash:
-    marker: state=crashed via lease expiry
-    recoverable: new attempt
+    marker: state=crashed via startup scan
+    recoverable: new attempt (manual today; auto-retry deferred)
   infrastructure_unavailable:
     marker: persistence.connect fail
     handled_by: persistence_mode_contract
 
-heartbeat:
+# Heartbeat config retained for future-work reference only — not used.
+heartbeat_future_work:
   interval_ms: 5000
   lease_ms: 30000
   on_miss: lease expires; becomes crashed on next scan

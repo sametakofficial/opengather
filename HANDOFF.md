@@ -88,3 +88,25 @@ Session 33: Deep 5-agent analysis, then execution across 4 phases. Fixed 2 CRITI
 | `plugins/file-reader/client.py` | Migrated to execute_run(services) |
 | `tests/test_e2e_pipeline.py` | NEW: 14 E2E tests |
 | `docs/SESSION33_DEEP_ANALYSIS.md` | Full analysis and action plan |
+
+## Recovery model: slim (Session 35 F1)
+
+Single startup scan in `persistence_mode=full` marks any non-terminal
+`plugin_executions` row (`state in [started, running, claimed]`) as
+`crashed`. There is no in-flight lease, no heartbeat, no atomic claim.
+
+**Operational consequence:** at most one orchestrator may run against a
+given Mongo deployment at a time. A second concurrent process is
+undefined behaviour today.
+
+**Mode behaviour:**
+- `full`: connect-fail → CriticalError; recovery scan runs; query-fail
+  during scan → CriticalError (durability promise).
+- `degraded` (default): connect-fail → warn + continue; recovery scan
+  skipped; `_save_exec_state` failures are warn-once-per-run + counter.
+- `off`: NullPersistence; no recovery.
+
+Future-work (deferred to Session 36+): lease + heartbeat + atomic claim,
+checkpoints + idempotency_key for output plugins. The schema in
+`datasets/11-recovery.yml` keeps these fields documented but unwired so
+the slim shape is forward-compatible.
