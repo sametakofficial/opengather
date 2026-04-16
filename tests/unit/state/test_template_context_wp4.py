@@ -35,6 +35,7 @@ def _make_services(plugins_data):
     services.get_run.return_value = None
     services.get_all_jobs.return_value = []
     services.run_safety = {"dry_run": True, "hardlink": False, "no_delete": True}
+    services.events.snapshot.return_value = {}
     services.state.get_job_plugin_names.return_value = list(plugins_data.keys())
     services.state.get_plugin_data.side_effect = (
         lambda job_id, name: plugins_data.get(name, {})
@@ -55,7 +56,7 @@ class TestTemplateContextBuilderTrim:
         job = _make_job({})
         ctx = TemplateContextBuilder().build_job_context(job)
 
-        assert set(ctx.keys()) == {"run", "job", "jobs", "config", "options"}
+        assert set(ctx.keys()) == {"run", "job", "jobs", "config", "options", "events"}
 
     def test_module_wrapper_removed(self):
         """WP-4: module-level build_template_context function deleted."""

@@ -22,7 +22,8 @@ class TemplateContextBuilder:
         self,
         job: 'JobState',
         run: Optional['RunState'] = None,
-        all_jobs: list['JobState'] | None = None
+        all_jobs: list['JobState'] | None = None,
+        events: dict[str, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """
         Build Jinja2 template context for a job.
@@ -31,6 +32,9 @@ class TemplateContextBuilder:
             job: Current job state
             run: Optional run state for run-level context
             all_jobs: Optional list of all jobs for jobs array
+            events: Optional event-bus snapshot
+                (``EventBus.get_history_dict()`` shape) injected as
+                ``{{ events }}`` per datasets/04-template-context.yml.
 
         Returns:
             Complete template context dict
@@ -47,6 +51,7 @@ class TemplateContextBuilder:
             "jobs": [self._job_to_summary(j) for j in (all_jobs or [])],
             "config": run.config if run else {},
             "options": run.config.get('options', {}) if run else {},
+            "events": events or {},
         }
 
     def _build_run_context(self, run: Optional['RunState']) -> dict[str, Any]:

@@ -69,7 +69,11 @@ class TaskerPlugin(OutputPlugin):
         run = services.get_run() if hasattr(services, "get_run") else None
         all_jobs = list(services.get_all_jobs()) if hasattr(services, "get_all_jobs") else []
 
-        context = TemplateContextBuilder().build_job_context(job, run=run, all_jobs=all_jobs)
+        events_snapshot = services.events.snapshot() if hasattr(services, "events") else {}
+
+        context = TemplateContextBuilder().build_job_context(
+            job, run=run, all_jobs=all_jobs, events=events_snapshot
+        )
         context["plugin"] = {
             name: {"data": info if isinstance(info, dict) else {}}
             for name, info in plugins_data.items()
