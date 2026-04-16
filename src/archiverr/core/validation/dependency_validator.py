@@ -61,15 +61,11 @@ class DependencyValidator:
         return result
 
     def _build_dependency_graph(self, manifests: dict[str, dict]) -> dict[str, set[str]]:
-        """
-        Build dependency graph from requires.
-        
-        Parses requires paths to extract plugin dependencies:
-        - job.plugins.renamer.parsed → depends on 'renamer'
-        - renamer.parsed → depends on 'renamer' (legacy)
-        
-        Returns:
-            Dict mapping plugin_name → set of dependency plugin names
+        """Build dependency graph from each manifest's ``requires`` list.
+
+        See ``_extract_plugin_from_requires`` for the recognised path
+        shapes. Anything else (state, events, provides, malformed) is
+        treated as a non-dependency and ignored.
         """
         graph: dict[str, set[str]] = defaultdict(set)
 
@@ -90,29 +86,46 @@ class DependencyValidator:
         return dict(graph)
 
     def _extract_plugin_from_requires(self, req: str) -> str | None:
+        """Return the plugin name a ``requires`` entry depends on, or None.
+
+        Recognised shapes:
+            ``plugin.<name>.<path>[:success|fail]``        (modern)
+            ``plugins.<name>.<path>[:success|fail]``       (alias of above)
+            ``job.plugins.<name>.<path>``                  (normalised v1)
+
+        Returns None for non-dependency paths:
+            ``provides.<capability>[:state]``
+            ``events.<name>[:fired]``
+            ``job.input.*``, ``job.output.*``, ``run.*``
+
+        The bare ``<plugin>.<path>`` legacy form was removed in
+        session 35 — the matcher rejects ``:success`` on non-plugin
+        paths, so the previous fallback was producing fake "plugin"
+        dependencies (e.g. ``plugin`` and ``events``) that were
+        downgraded to WARNINGs and quietly ignored.
         """
-        Extract plugin name from requires path.
-        
-        Examples:
-        - job.plugins.renamer.parsed → renamer
-        - job.plugins.tmdb.movie.title → tmdb
-        - renamer.parsed → renamer (legacy)
-        - provides.state.update → None (not a plugin dependency)
-        """
-        # Skip provides-based requires
-        if req.startswith('provides.'):
+        # Strip optional ":check_value" suffix so prefix matching is clean.
+        path = req.split(':', 1)[0].strip()
+
+        # Non-plugin-dependency shapes
+        if path.startswith('provides.') or path.startswith('events.'):
+            return None
+        if (
+            path.startswith('job.input.')
+            or path.startswith('job.output.')
+            or path.startswith('run.')
+        ):
             return None
 
-        # New format: job.plugins.{plugin}.{path}
-        if req.startswith('job.plugins.'):
-            parts = req.split('.')
-            if len(parts) >= 3:
-                return parts[2]  # The plugin name
+        # Modern: plugin.<name>.<...>
+        if path.startswith('plugin.') or path.startswith('plugins.'):
+            parts = path.split('.')
+            return parts[1] if len(parts) >= 2 and parts[1] else None
 
-        # Legacy format: {plugin}.{path}
-        parts = req.split('.')
-        if len(parts) >= 2:
-            return parts[0]
+        # Normalised v1: job.plugins.<name>.<...>
+        if path.startswith('job.plugins.'):
+            parts = path.split('.')
+            return parts[2] if len(parts) >= 3 and parts[2] else None
 
         return None
 

@@ -76,15 +76,30 @@ class TestDependencyValidator:
         # Self-dependency is filtered out, so no cycle
         assert result.valid is True
     
-    def test_legacy_requires_format(self, validator):
-        """Test legacy requires format (plugin.path)."""
+    def test_modern_plugin_requires_extracts_plugin_name(self, validator):
+        """Modern format `plugin.<name>.<path>:success` resolves the dependency."""
         manifests = {
             "renamer": {"name": "renamer", "requires": []},
-            "tmdb": {"name": "tmdb", "requires": ["renamer.parsed"]}  # Legacy
+            "tmdb": {"name": "tmdb", "requires": ["plugin.renamer.parsed:success"]}
         }
         result = validator.validate(manifests)
         assert result.valid is True
-    
+        # Dependency was extracted (would otherwise log E014 missing-dep warning)
+        assert not any(e.code == E014 for e in result.errors)
+
+    def test_events_requires_not_treated_as_plugin(self, validator):
+        """`events.<name>:fired` is a runtime check, not a plugin dependency."""
+        manifests = {
+            "tmdb": {"name": "tmdb", "requires": ["events.run.started:fired"]},
+        }
+        result = validator.validate(manifests)
+        assert result.valid is True
+        # No fake "events" plugin should be reported as missing
+        assert not any(
+            "events" in e.message and "not available" in e.message
+            for e in result.errors
+        )
+
     def test_non_plugin_requires_ignored(self, validator):
         """Test that job.input.* and run.* requires are ignored."""
         manifests = {
@@ -94,7 +109,9 @@ class TestDependencyValidator:
             }
         }
         result = validator.validate(manifests)
-        assert result.valid is True  # These are not treated as plugin dependencies
+        assert result.valid is True
+        # These are state paths, not plugin deps -> no E014 warnings
+        assert not any(e.code == E014 for e in result.errors)
 
 
 class TestDependencyValidatorOrder:
