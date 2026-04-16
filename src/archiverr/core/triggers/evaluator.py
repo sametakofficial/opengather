@@ -9,9 +9,12 @@ Evaluates standard trigger rules (Airflow-inspired):
 - none_fail: No requirements can fail
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .matcher import ValueMatcher
+
+if TYPE_CHECKING:
+    from archiverr.events import EventBus
 
 
 class TriggerRuleEvaluator:
@@ -44,8 +47,9 @@ class TriggerRuleEvaluator:
         'none_fail'
     }
 
-    def __init__(self):
+    def __init__(self, event_bus: 'EventBus | None' = None):
         self.matcher = ValueMatcher()
+        self._event_bus = event_bus
 
     def evaluate(
         self,
@@ -77,7 +81,9 @@ class TriggerRuleEvaluator:
         errors = []
 
         for req in requirements:
-            is_valid, matched, error = self.matcher.match(state, req)
+            is_valid, matched, error = self.matcher.match(
+                state, req, event_bus=self._event_bus
+            )
 
             if not is_valid:
                 errors.append(f"{req}: {error}")

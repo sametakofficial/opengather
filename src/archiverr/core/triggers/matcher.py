@@ -1,5 +1,5 @@
 """
-Value Matcher - 
+Value Matcher -
 
 Matches state values against requirements with:
 - Plugin path validation (success/fail semantics)
@@ -7,7 +7,10 @@ Matches state values against requirements with:
 - Nested path resolution
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from archiverr.events import EventBus
 
 
 class ValueMatcher:
@@ -92,6 +95,15 @@ class ValueMatcher:
         # Provides paths: completed/pending/failed allowed
         if path.startswith('provides.') and check_value in ('completed', 'pending', 'failed'):
             return True, None
+
+        # Events paths: only :fired allowed
+        if path.startswith('events.'):
+            if check_value == 'fired':
+                return True, None
+            return False, (
+                f"Event requirements only support ':fired' (got {check_value!r}). "
+                f"Use 'events.<name>:fired' or 'events.<name>' (existence implies fired)."
+            )
 
         # Non-plugin, non-provides paths: success/fail forbidden
         if check_value in ('success', 'fail'):
@@ -255,22 +267,28 @@ class ValueMatcher:
     @staticmethod
     def match(
         state: dict[str, Any],
-        requirement: str
+        requirement: str,
+        *,
+        event_bus: 'EventBus | None' = None,
     ) -> tuple[bool, bool, str | None]:
         """
         Match requirement against state.
-        
+
         Args:
             state: Global state dict
             requirement: Requirement string
-            
+            event_bus: Optional EventBus for ``events.*:fired`` resolution.
+                When omitted, ``events.*`` requirements report a missing-
+                context error rather than silently passing.
+
         Returns:
             (is_valid, matches, error) tuple
-            
+
         Examples:
             plugin.tmdb.data.movie:success -> Check if tmdb plugin succeeded
             job.input.value:"/path/file.mkv" -> Check if input value matches
             plugin.tmdb.data.title:"Inception" -> Check exact value
+            events.run.started:fired -> Check if RUN_STARTED has been emitted
         """
         # Validate requirement
         is_valid, error = ValueMatcher.validate_requirement(requirement)
@@ -279,6 +297,21 @@ class ValueMatcher:
 
         # Parse requirement
         path, check_value = ValueMatcher.parse_requirement(requirement)
+
+        # Events path resolves against the bus, not state. Falls through
+        # to existence-only handling when no bus is wired so callers see
+        # the configuration error instead of an opaque "not met" reason.
+        if path.startswith('events.'):
+            event_name = path[len('events.'):]
+            if not event_name:
+                return False, False, "Empty event name in 'events.' path"
+            if event_bus is None:
+                return False, False, (
+                    f"events.* requirement '{requirement}' needs an event_bus; "
+                    "the trigger manager was constructed without one."
+                )
+            fired = event_bus.has_fired(event_name)
+            return True, fired, None
 
         # No check value - just check existence
         if check_value is None:

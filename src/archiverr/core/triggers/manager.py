@@ -5,10 +5,13 @@ Main interface for trigger rule evaluation.
 Integrates ValueMatcher and TriggerRuleEvaluator.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .evaluator import TriggerRuleEvaluator
 from .matcher import ValueMatcher
+
+if TYPE_CHECKING:
+    from archiverr.events import EventBus
 
 
 class TriggerRuleManager:
@@ -38,8 +41,9 @@ class TriggerRuleManager:
             # Skip plugin with reason
     """
 
-    def __init__(self):
-        self.evaluator = TriggerRuleEvaluator()
+    def __init__(self, event_bus: 'EventBus | None' = None):
+        self._event_bus = event_bus
+        self.evaluator = TriggerRuleEvaluator(event_bus=event_bus)
         self.matcher = ValueMatcher()
 
     def should_execute(
@@ -98,7 +102,7 @@ class TriggerRuleManager:
         Returns:
             (is_valid, matches, error) tuple
         """
-        return self.matcher.match(state, requirement)
+        return self.matcher.match(state, requirement, event_bus=self._event_bus)
 
     def validate_requirements(
         self,

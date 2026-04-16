@@ -124,8 +124,10 @@ class StageExecutor:
         # Global state cache per job (invalidated after each plugin completes)
         self._global_state_cache: dict[str, dict[str, Any]] = {}
 
-        # Trigger rule manager for dependency resolution
-        self._trigger_manager = TriggerRuleManager()
+        # Trigger rule manager for dependency resolution. The bus is
+        # threaded in so ``requires: events.<name>:fired`` can resolve
+        # against the live event history at decide-skip time.
+        self._trigger_manager = TriggerRuleManager(event_bus=event_bus)
 
         # Provides registry -- per-run instance, no shared global state
         self._provides_registry: ProvidesRegistry = provides_registry or ProvidesRegistry()
