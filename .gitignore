@@ -76,6 +76,10 @@ logs/
 *.log
 report_*.json
 
+# Runtime output artifacts
+output/run_*.json
+output/*.json
+
 do-not-raead/*
 
 reports
