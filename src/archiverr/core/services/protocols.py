@@ -5,10 +5,10 @@ Type-safe interfaces for plugin dependency injection.
 All plugin services must implement these protocols.
 """
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from archiverr.events import Event
     from archiverr.state.models import JobState, RunState
 
 
@@ -113,30 +113,24 @@ class StateService(Protocol):
 
 @runtime_checkable
 class EventService(Protocol):
-    """
-    Event bus service protocol.
-    
-    Provides event emission and subscription for plugins.
+    """Read-only view over the event bus.
+
+    Plugins MUST NOT emit or subscribe; both would create a parallel
+    ordering system that competes with the dependency resolver and
+    lifecycle hooks. Use ``provides`` for ordering and the executor
+    for status writes.
     """
 
-    def emit(self, event: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Emit an event.
-        
-        Args:
-            event: Event name (e.g., "plugin.completed", "file.created")
-            data: Event payload
-        """
+    def has_fired(self, name: str) -> bool:
+        """True if an event with this name has been emitted at least once."""
         ...
 
-    def subscribe(self, event: str, handler: Callable) -> None:
-        """
-        Subscribe to an event.
-        
-        Args:
-            event: Event name pattern (supports wildcards)
-            handler: Callback function(event_name, data)
-        """
+    def history(self, name: str | None = None, limit: int = 100) -> list['Event']:
+        """Past events, newest first; ``name=None`` returns all."""
+        ...
+
+    def snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        """Event history grouped by name, suitable for template injection."""
         ...
 
 

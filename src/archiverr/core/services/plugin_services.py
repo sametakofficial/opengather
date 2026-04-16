@@ -57,6 +57,7 @@ class PluginServices:
         self._current_plugin_name = current_plugin_name
         self._provides_registry = provides_registry
         self._run_safety = run_safety
+        self._event_service = None
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:
         """
@@ -176,23 +177,6 @@ class PluginServices:
         """
         return self._state.plugins
 
-    def emit(self, event: str, data: dict[str, Any] = None) -> None:
-        """
-        Emit event (both modes).
-        
-        Args:
-            event: Event name
-            data: Event data
-        """
-        self._event_bus.emit(event, data or {}, source=self._current_plugin_name or "plugin")
-
-        self._logger.debug(
-            "plugin_services",
-            f"Emitted event: {event}",
-            plugin=self._current_plugin_name,
-            mode=self._mode
-        )
-
     @property
     def mode(self) -> str:
         """Get plugin mode (per_run or per_job)."""
@@ -234,6 +218,25 @@ class PluginServices:
             )
         from archiverr.core.services.provides_service import ProvidesServiceImpl
         return ProvidesServiceImpl(self._provides_registry, self._current_plugin_name or "unknown")
+
+    @property
+    def events(self):
+        """Read-only EventService.
+
+        Plugins can ``has_fired(name)``, ``history(name)``, or
+        ``snapshot()`` the event bus, but cannot emit or subscribe
+        (that surface lives on the executor / lifecycle hooks only).
+        """
+        if self._event_bus is None:
+            from archiverr.core.exceptions import PluginError
+            raise PluginError(
+                "services.events accessed without event_bus wiring "
+                f"(plugin={self._current_plugin_name or 'unknown'}, mode={self._mode})"
+            )
+        if self._event_service is None:
+            from archiverr.core.services.event_service import EventServiceImpl
+            self._event_service = EventServiceImpl(self._event_bus)
+        return self._event_service
 
     @property
     def run_safety(self) -> dict[str, bool]:

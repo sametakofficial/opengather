@@ -1,55 +1,35 @@
-"""
-Event Service Implementation
+"""Read-only EventService for plugins.
 
-Wraps EventBus to provide clean interface for plugins.
+Plugins MUST NOT emit or subscribe — that would create a parallel ordering
+system that competes with the dependency resolver and lifecycle hooks.
+
+The read surface here covers the documented contract in
+``datasets/08-services.yml``:
+  - ``has_fired(name)`` for ``requires: events.*:fired`` style checks
+  - ``history(name)`` for inspecting past events
+  - ``snapshot()`` for template-context injection ({{ events }})
 """
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from archiverr.events import EventBus
+    from archiverr.events import Event, EventBus
 
 
 class EventServiceImpl:
-    """
-    EventService implementation that wraps EventBus.
-    
-    Provides simplified event emission and subscription for plugins.
-    """
+    """Read-only view over the EventBus exposed to plugins."""
 
-    def __init__(self, event_bus: 'EventBus', source: str = "plugin"):
-        """
-        Initialize event service.
-        
-        Args:
-            event_bus: EventBus instance
-            source: Default source for emitted events
-        """
+    def __init__(self, event_bus: 'EventBus'):
         self._bus = event_bus
-        self._source = source
 
-    def emit(self, event: str, data: dict[str, Any] | None = None) -> None:
-        """
-        Emit an event.
-        
-        Args:
-            event: Event name (e.g., "plugin.completed")
-            data: Event payload
-        """
-        self._bus.emit(event, data or {}, source=self._source)
+    def has_fired(self, name: str) -> bool:
+        """True if an event with this name has been emitted at least once."""
+        return self._bus.has_fired(name)
 
-    def subscribe(self, event: str, handler: Callable) -> None:
-        """
-        Subscribe to an event.
-        
-        Args:
-            event: Event name pattern
-            handler: Callback function
-        """
-        self._bus.subscribe(event, handler)
+    def history(self, name: str | None = None, limit: int = 100) -> list['Event']:
+        """Return past events, newest first. ``name=None`` returns all."""
+        return self._bus.get_history(event_name=name, limit=limit)
 
-    @property
-    def bus(self) -> 'EventBus':
-        """Get underlying EventBus (for advanced usage)."""
-        return self._bus
+    def snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        """Event history grouped by name, suitable for template injection."""
+        return self._bus.get_history_dict()
