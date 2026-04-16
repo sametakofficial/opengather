@@ -168,15 +168,6 @@ class GlobalStateManager:
                  errors=self._run.status.failed,
                  duration_ms=self._run.status.duration_ms)
 
-        self._emit(Events.EXECUTION_COMPLETED, {
-            "execution_id": self._run.id,
-            "total_matches": self._run.status.total_jobs,
-            "completed_matches": self._run.status.completed,
-            "failed_matches": self._run.status.failed,
-            "duration_ms": self._run.status.duration_ms,
-            "success": self._run.status.success
-        })
-
         return self._run
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:

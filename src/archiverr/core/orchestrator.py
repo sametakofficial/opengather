@@ -18,6 +18,7 @@ from archiverr.core.plugins.registry import PluginRegistry, Stage
 from archiverr.core.plugins.stage_executor import StageExecutor
 from archiverr.core.provides_registry import ProvidesRegistry
 from archiverr.core.result_builder import ResultBuilder, RunResult
+from archiverr.core.safety import resolve_run_safety
 from archiverr.core.state_dumper import StateDumper
 from archiverr.events import EventBus, Events
 from archiverr.state.manager import GlobalStateManager
@@ -94,6 +95,9 @@ class Orchestrator:
         # ``full`` / ``degraded`` / ``off`` — populated by build_orchestrator.
         # Direct construction defaults to ``degraded``.
         self._persistence_mode: str = "degraded"
+        # Resolved run-scope safety flags ({"dry_run", "hardlink", "no_delete"});
+        # threaded into PluginServices so plugins read one source of truth.
+        self._run_safety: dict[str, bool] = resolve_run_safety(config.get("options", {}))
 
         # Runtime state
         self._run_id: str | None = None
@@ -166,6 +170,7 @@ class Orchestrator:
                 config=self._config,
                 debugger=self._debugger,
                 provides_registry=self._provides_registry,
+                run_safety=self._run_safety,
             )
         self._per_run_executor.execute()
 
@@ -262,7 +267,8 @@ class Orchestrator:
             event_bus=self._event_bus,
             config=self._config,
             debugger=self._debugger,
-            provides_registry=self._provides_registry
+            provides_registry=self._provides_registry,
+            run_safety=self._run_safety,
         )
 
         # Emit run.started event
@@ -457,12 +463,24 @@ class Orchestrator:
         contract (no lease, no heartbeat, no claim). Anything still
         ``started`` / ``running`` from a previous process is considered a
         crash and transitioned so operators have a durable signal.
+
+        Failure handling per persistence_mode:
+            - ``full``: query failure → ``CriticalError`` (operator
+              promised durability and we cannot honour it)
+            - ``degraded``: warn-and-continue (best-effort)
+            - ``off``: never invoked
         """
         if self._persistence is None:
             return
         try:
             orphans = self._persistence.get_unfinished_plugin_executions()
         except Exception as e:  # noqa: BLE001
+            if self._persistence_mode == "full":
+                raise CriticalError(
+                    "persistence_mode=full: startup recovery scan failed; "
+                    "refusing to start without durable plugin_execution state",
+                    {"error": str(e), "type": type(e).__name__},
+                ) from e
             self._log("warn", f"Crashed scan: unable to query executions: {e}")
             return
 

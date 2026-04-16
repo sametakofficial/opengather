@@ -79,6 +79,7 @@ class Interpolator:
         self._env = env if env is not None else os.environ
         self._root: dict[str, Any] | None = None
         self._in_flight: list[tuple[str, ...]] = []
+        self._in_flight_aliases: set[str] = set()
 
     def compile(self, config_tree: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(config_tree, dict):
@@ -96,6 +97,7 @@ class Interpolator:
         finally:
             self._root = None
             self._in_flight.clear()
+            self._in_flight_aliases.clear()
 
         return compiled
 
@@ -230,10 +232,16 @@ class Interpolator:
         raw = stack.resolve_alias(name)
         if raw is None:
             return _MISSING
+        if name in self._in_flight_aliases:
+            raise InterpolationError(f"cyclic alias reference: {name!r}")
         # Alias values are themselves interpolable; re-enter with the
         # declaring frame as the scope context so ${.x} inside an alias
         # resolves against the declarer, not the caller.
-        return self._walk(copy.deepcopy(raw), path=path, stack=stack)
+        self._in_flight_aliases.add(name)
+        try:
+            return self._walk(copy.deepcopy(raw), path=path, stack=stack)
+        finally:
+            self._in_flight_aliases.discard(name)
 
     def _lookup_absolute(self, dotted: str) -> Any:
         assert self._root is not None, "compile() must be active"

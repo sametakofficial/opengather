@@ -104,14 +104,6 @@ class Events:
     VALIDATION_PASSED = "validation.passed"
     VALIDATION_FAILED = "validation.failed"
 
-    # ==================== LEGACY (backward compatibility) ====================
-    EXECUTION_STARTED = "execution.started"
-    EXECUTION_COMPLETED = "execution.completed"
-    EXECUTION_FAILED = "execution.failed"
-    MATCH_STARTED = "match.started"
-    MATCH_COMPLETED = "match.completed"
-    MATCH_FAILED = "match.failed"
-
 
 # Type alias for event handlers
 EventHandler = Callable[[Event], None]

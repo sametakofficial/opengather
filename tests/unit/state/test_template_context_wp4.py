@@ -34,6 +34,7 @@ def _make_services(plugins_data):
     services = Mock()
     services.get_run.return_value = None
     services.get_all_jobs.return_value = []
+    services.run_safety = {"dry_run": True, "hardlink": False, "no_delete": True}
     services.state.get_job_plugin_names.return_value = list(plugins_data.keys())
     services.state.get_plugin_data.side_effect = (
         lambda job_id, name: plugins_data.get(name, {})

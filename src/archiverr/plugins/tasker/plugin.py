@@ -25,7 +25,6 @@ class TaskerPlugin(OutputPlugin):
         super().__init__(config)
         self.name = "tasker"
         self.tasks = config.get('tasks', [])
-        self.dry_run = config.get('dry_run', True)
         self.save_output = config.get('save_output', True)
         self.output_dir = config.get('output_dir', 'output')
 
@@ -40,16 +39,17 @@ class TaskerPlugin(OutputPlugin):
         # Run output tracking
         self._run_output: dict[str, Any] = {}
 
-    def configure(self, global_config: dict[str, Any]) -> None:
-        """Configure with global config."""
-        if 'dry_run' not in self.config:
-            self.dry_run = global_config.get('options', {}).get('dry_run', True)
-
     def execute(self, job: Any, services: Any) -> SDKPluginResult:
         """Execute tasks for job, returning a modern PluginResult."""
         from archiverr.state.template_context import TemplateContextBuilder
 
         started_at = datetime.now()
+
+        # Run-scope safety flags are owned by the orchestrator. We read them
+        # once per job invocation and thread them down into individual tasks.
+        run_safety = services.run_safety
+        dry_run = run_safety["dry_run"]
+        hardlink = run_safety["hardlink"]
 
         plugins_data = {}
         if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
@@ -82,7 +82,7 @@ class TaskerPlugin(OutputPlugin):
         output_values = []
 
         for task in self.tasks:
-            result = self._execute_task(task, context)
+            result = self._execute_task(task, context, dry_run=dry_run, hardlink=hardlink)
             if result:
                 task_name = result.get('name', 'unnamed')
                 task_results[task_name] = result
@@ -118,7 +118,14 @@ class TaskerPlugin(OutputPlugin):
             finished_at=datetime.now(),
         )
 
-    def _execute_task(self, task: dict[str, Any], context: dict[str, Any]) -> dict[str, Any] | None:
+    def _execute_task(
+        self,
+        task: dict[str, Any],
+        context: dict[str, Any],
+        *,
+        dry_run: bool,
+        hardlink: bool,
+    ) -> dict[str, Any] | None:
         """Execute single task (print/save) against the rendered context."""
         task_name = task.get('name', 'unnamed')
         task_type = task.get('type', 'print')
@@ -133,7 +140,7 @@ class TaskerPlugin(OutputPlugin):
             if task_type == 'print':
                 return self._execute_print(task, context, task_name)
             elif task_type == 'save':
-                return self._execute_save(task, context, task_name)
+                return self._execute_save(task, context, task_name, dry_run=dry_run, hardlink=hardlink)
             else:
                 return None
         except Exception as e:
@@ -161,7 +168,15 @@ class TaskerPlugin(OutputPlugin):
             'rendered': rendered
         }
 
-    def _execute_save(self, task: dict[str, Any], context: dict[str, Any], task_name: str) -> dict[str, Any] | None:
+    def _execute_save(
+        self,
+        task: dict[str, Any],
+        context: dict[str, Any],
+        task_name: str,
+        *,
+        dry_run: bool,
+        hardlink: bool,
+    ) -> dict[str, Any] | None:
         """Execute save task."""
         destination_template = task.get('destination', '')
         if not destination_template:
@@ -176,10 +191,9 @@ class TaskerPlugin(OutputPlugin):
         if not destination:
             return None
 
-        hardlink = bool(self.config.get('hardlink', False))
         planned = safe_copy(
             source, destination,
-            hardlink=hardlink, dry_run=self.dry_run, overwrite=False,
+            hardlink=hardlink, dry_run=dry_run, overwrite=False,
         )
         success = planned.op not in {"error"}
         if planned.op == "error":
@@ -191,7 +205,7 @@ class TaskerPlugin(OutputPlugin):
             'success': success,
             'source': source,
             'destination': destination,
-            'dry_run': self.dry_run,
+            'dry_run': dry_run,
             'planned_operation': planned.to_dict(),
         }
 

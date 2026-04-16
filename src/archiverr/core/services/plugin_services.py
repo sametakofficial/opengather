@@ -28,7 +28,8 @@ class PluginServices:
         mode: str,  # "per_run" or "per_job"
         current_job_id: str | None = None,
         current_plugin_name: str | None = None,
-        provides_registry: 'Any' = None
+        provides_registry: 'Any' = None,
+        run_safety: dict[str, bool] | None = None,
     ):
         """
         Initialize Plugin Services.
@@ -42,6 +43,10 @@ class PluginServices:
             current_job_id: Current job ID (per_job only)
             current_plugin_name: Current plugin name (per_job only)
             provides_registry: Optional ProvidesRegistry for early completion
+            run_safety: Resolved run-scope safety flags
+                ({"dry_run", "hardlink", "no_delete"}). Required - must be
+                resolved once at run start by the orchestrator via
+                ``core.safety.resolve_run_safety``.
         """
         self._state = state
         self._event_bus = event_bus
@@ -51,6 +56,7 @@ class PluginServices:
         self._current_job_id = current_job_id
         self._current_plugin_name = current_plugin_name
         self._provides_registry = provides_registry
+        self._run_safety = run_safety
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:
         """
@@ -228,3 +234,21 @@ class PluginServices:
             )
         from archiverr.core.services.provides_service import ProvidesServiceImpl
         return ProvidesServiceImpl(self._provides_registry, self._current_plugin_name or "unknown")
+
+    @property
+    def run_safety(self) -> dict[str, bool]:
+        """Resolved run-scope safety flags.
+
+        Returns the dict produced by ``core.safety.resolve_run_safety``
+        with keys ``dry_run``, ``hardlink``, ``no_delete``. Plugins must
+        read these instead of poking at ``config['options']`` directly so
+        the orchestrator stays the single source of truth.
+        """
+        if self._run_safety is None:
+            from archiverr.core.exceptions import PluginError
+            raise PluginError(
+                "services.run_safety accessed without wiring. "
+                "Executor must construct PluginServices with run_safety=... "
+                f"(plugin={self._current_plugin_name or 'unknown'}, mode={self._mode})"
+            )
+        return dict(self._run_safety)

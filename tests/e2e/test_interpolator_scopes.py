@@ -79,3 +79,16 @@ def test_direct_cycle_detected():
     cfg = {"a": "${b}", "b": "${a}"}
     with pytest.raises(InterpolationError):
         compile_config(cfg)
+
+
+def test_alias_to_alias_cycle_detected():
+    """Two aliases that reference each other raise instead of recursing."""
+    cfg = {
+        "aliases": {
+            "x": "${alias:y}",
+            "y": "${alias:x}",
+        },
+        "value": "${alias:x}",
+    }
+    with pytest.raises(InterpolationError):
+        compile_config(cfg)

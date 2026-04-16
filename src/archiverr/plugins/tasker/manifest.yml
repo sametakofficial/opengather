@@ -27,18 +27,11 @@ trigger_rule: all_done
 categories: []
 
 # Configuration schema
+# Run-scope safety flags (dry_run, hardlink, no_delete) are owned by
+# options.* and surfaced via services.run_safety. They are NOT plugin
+# config keys and do not appear here.
 config_schema:
-  provides:
-    type: list
-    description: List of provides with path constraints (e.g., fs.write:/srv/media)
-    default: []
-
   tasks:
     type: list
     required: true
     description: List of tasks to execute
-
-  dry_run:
-    type: boolean
-    default: true
-    description: If true, don't actually write files

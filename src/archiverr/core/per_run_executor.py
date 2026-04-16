@@ -27,6 +27,7 @@ class PerRunPluginExecutor:
         config: dict[str, Any],
         debugger: 'Debugger' = None,
         provides_registry: 'ProvidesRegistry | None' = None,
+        run_safety: dict[str, bool] | None = None,
     ):
         self._state = state
         self._plugin_registry = plugin_registry
@@ -34,6 +35,7 @@ class PerRunPluginExecutor:
         self._config = config
         self._debugger = debugger
         self._provides_registry = provides_registry
+        self._run_safety = run_safety
 
     def execute(self) -> dict[str, Any]:
         """
@@ -72,6 +74,7 @@ class PerRunPluginExecutor:
                     mode="per_run",
                     current_plugin_name=plugin_name,
                     provides_registry=self._provides_registry,
+                    run_safety=self._run_safety,
                 )
 
                 result = plugin_instance.execute_run(services)

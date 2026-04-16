@@ -97,7 +97,8 @@ class StageExecutor:
         event_bus: EventBus,
         config: dict[str, Any],
         debugger: Debugger | None = None,
-        provides_registry: ProvidesRegistry | None = None
+        provides_registry: ProvidesRegistry | None = None,
+        run_safety: dict[str, bool] | None = None,
     ):
         """
         Initialize stage executor.
@@ -109,6 +110,7 @@ class StageExecutor:
             config: Application configuration
             debugger: Optional debugger for logging
             provides_registry: Per-run provides registry (created if not provided)
+            run_safety: Resolved run-scope safety flags (dry_run, hardlink, no_delete)
         """
         self._state = state
         self._registry = plugin_registry
@@ -128,6 +130,11 @@ class StageExecutor:
         # Provides registry -- per-run instance, no shared global state
         self._provides_registry: ProvidesRegistry = provides_registry or ProvidesRegistry()
         self._register_provides_from_manifests()
+
+        # Run-scope safety flags resolved once at run start; threaded into PluginServices
+        self._run_safety = run_safety
+        # _save_exec_state failure counter (warn-once-per-run discipline)
+        self._exec_state_failures = 0
 
     def _register_provides_from_manifests(self) -> None:
         """Register all plugin provides from manifests into the ProvidesRegistry."""
@@ -380,9 +387,10 @@ class StageExecutor:
     ) -> None:
         """Write a plugin_execution state transition via persistence.
 
-        No-op for NullPersistence. All failures are swallowed (debug log)
-        because execution state is auxiliary — never crash the pipeline to
-        keep recovery bookkeeping intact.
+        No-op for NullPersistence. Persistence failures are warned the
+        first time they occur per run (then counted) — execution state is
+        auxiliary so the pipeline keeps running, but operators must see
+        that recovery bookkeeping is degraded.
         """
         persistence = getattr(self._state, "persistence", None)
         if persistence is None:
@@ -399,10 +407,20 @@ class StageExecutor:
                 timestamp=timestamp,
             )
         except Exception as e:  # noqa: BLE001
-            self._log(
-                "debug",
-                f"save_plugin_execution({plugin_name}, {state}) skipped: {e}",
-            )
+            self._exec_state_failures += 1
+            if self._exec_state_failures == 1:
+                self._log(
+                    "warn",
+                    "save_plugin_execution failed; recovery bookkeeping degraded "
+                    f"({plugin_name}, {state}): {e}. Subsequent failures will be "
+                    "counted but not warned.",
+                )
+            else:
+                self._log(
+                    "debug",
+                    f"save_plugin_execution failure #{self._exec_state_failures} "
+                    f"({plugin_name}, {state}): {e}",
+                )
 
     def _invoke_plugin(
         self,
@@ -611,7 +629,8 @@ class StageExecutor:
             mode=mode,
             current_job_id=job_id,
             current_plugin_name=plugin_name,
-            provides_registry=self._provides_registry
+            provides_registry=self._provides_registry,
+            run_safety=self._run_safety,
         )
 
         return services

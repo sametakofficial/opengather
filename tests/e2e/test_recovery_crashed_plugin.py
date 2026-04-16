@@ -109,11 +109,28 @@ def test_recovery_skips_when_persistence_none():
     orch._recover_crashed()
 
 
-def test_recovery_swallows_persistence_errors():
+def test_recovery_full_mode_query_failure_raises_critical():
+    """full mode promises durability — query failure aborts the run."""
+    import pytest
+
+    from archiverr.core.exceptions import CriticalError
+
     class _Broken:
         def get_unfinished_plugin_executions(self, run_id=None):
             raise RuntimeError("connection lost")
 
-    orch = _make_orch(_Broken())
+    orch = _make_orch(_Broken(), mode="full")
+    with pytest.raises(CriticalError):
+        orch._recover_crashed()
+
+
+def test_recovery_degraded_swallows_persistence_errors():
+    """degraded mode is best-effort: query failure logs and continues."""
+
+    class _Broken:
+        def get_unfinished_plugin_executions(self, run_id=None):
+            raise RuntimeError("connection lost")
+
+    orch = _make_orch(_Broken(), mode="degraded")
     # Must not bubble up — the run continues.
     orch._recover_crashed()
