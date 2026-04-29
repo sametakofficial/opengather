@@ -23,9 +23,9 @@ collections_additions:
     plugin_name: string
     attempt: int
     state: started | running | completed | failed | crashed | skipped
-    started_at: ISODate
-    finished_at: ISODate
-    duration_ms: int
+    created_at: ISODate
+    updated_at: ISODate
+    finished_at: ISODate | null
     error: string | null
     # future-work fields (slim contract: not written today)
     claimed_at: ISODate | null

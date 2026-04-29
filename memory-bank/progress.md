@@ -1,6 +1,7 @@
 # Progress
 
-**Last Updated:** Session 32 - April 10, 2026
+**Last Updated:** Session 35 - April 17, 2026
+**Tests:** 621 passed, 35 skipped, 0 failed
 
 ## What Works
 
@@ -29,6 +30,19 @@
 - [x] **complete_job() wired into _finalize** (session 32 fix)
 - [x] **RUN_STARTED emitted exactly once** (session 32 fix)
 - [x] **~909 LOC dead code removed** (session 32)
+- [x] **NullPersistence + per-run ProvidesRegistry** (session 33)
+- [x] **All 9 plugins on modern protocol** (session 33)
+- [x] **Single interpolation engine, no regex alias rewrite** (session 34)
+- [x] **persistence_mode contract: full/degraded/off** (session 34, default=degraded)
+- [x] **Slim recovery: startup-scan-only crashed transition** (session 34, documented session 35 F1)
+- [x] **services.events read-only EventService** (session 35 WP-9.1)
+- [x] **{{ events }} template injection via snapshot kwarg** (session 35 WP-9.2)
+- [x] **requires: events.*:fired matcher branch** (session 35 WP-9.3, no longer silent-pass)
+- [x] **dependency_validator extracts plugin name from `plugin.<name>.<path>` correctly** (session 35 D2 bug fix)
+- [x] **services.run_safety threaded through executors → tasker** (session 35 B1-3)
+- [x] **Interpolator alias→alias cycle raises InterpolationError** (session 35 A1)
+- [x] **_save_exec_state warn-once-per-run + counter** (session 35 C1)
+- [x] **_recover_crashed mode-aware: full=CriticalError, degraded=warn** (session 35 C2)
 
 ### All 9 Plugins Working
 - [x] scanner, file-reader (input)

@@ -278,9 +278,6 @@ class Orchestrator:
             "plugins": self._plugin_registry.enabled_plugins
         })
 
-        # Register event handlers for persistence
-        self._register_event_handlers()
-
     def _execute_stages(self) -> None:
         """
         Execute all 3 stages in order.
@@ -378,44 +375,6 @@ class Orchestrator:
             "stages_completed": self._stages_completed,
             "stages_failed": self._stages_failed
         })
-
-    def _register_event_handlers(self) -> None:
-        """Register event handlers for persistence and logging."""
-
-        def on_job_completed(event):
-            """Persist job state on completion."""
-            data = event.data if hasattr(event, 'data') else event
-            job_id = data.get("job_id")
-            if job_id and self._persistence:
-                job = self._state.get_job_by_id(job_id) if hasattr(self._state, 'get_job_by_id') else None
-                if job:
-                    self._persistence.save_job({
-                        "job_id": job_id,
-                        "run_id": self._run_id,
-                        "stage": data.get("stage"),
-                        "status": job.status.to_dict() if hasattr(job.status, 'to_dict') else {},
-                    })
-
-        def on_plugin_completed(event):
-            """Persist plugin data on completion"""
-            # Handle both Event object and dict
-            data = event.data if hasattr(event, 'data') else event
-
-            if self._persistence:
-                job_id = data.get("job_id")
-                plugin_name = data.get("plugin_name")
-                if job_id and plugin_name:
-                    self._persistence.save_plugin({
-                        "job_id": job_id,
-                        "run_id": self._run_id,
-                        "plugin_name": plugin_name,
-                        "stage": data.get("stage"),
-                        "data": data.get("data", {}),
-                        "status": data.get("status", {})
-                    })
-
-        self._event_bus.subscribe("job.completed", on_job_completed)
-        self._event_bus.subscribe("plugin.completed", on_plugin_completed)
 
     def _build_result(self, success: bool, error: str = None) -> RunResult:
         """Build RunResult using ResultBuilder delegate."""
