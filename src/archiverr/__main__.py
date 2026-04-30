@@ -86,6 +86,13 @@ def cli_main(config_file: str = "config.yml"):
         # Execute 4-stage pipeline: INPUT → PARSE → DATA → OUTPUT
         result = orchestrator.run()
 
+        # Stable contract line for subprocess wrappers (e.g. /api/v1/run/).
+        # Stdout is mostly free; logs go to stderr (init_debugger). This
+        # single line lets a parent process correlate subprocess execution
+        # with the persisted run_id without parsing JSON reports. (S37 PASS 7)
+        sys.stdout.write(f"ARCHIVERR_RUN_ID={result.run_id}\n")
+        sys.stdout.flush()
+
         # Log result
         debugger.info("system", "Archiverr complete",
                      run_id=result.run_id,

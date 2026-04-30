@@ -5,6 +5,7 @@ Run Router - Simple subprocess-based execution
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -100,18 +101,26 @@ def run_default(request: RunRequest = Body(None)):
 
         duration_ms = int((time.time() - start_time) * 1000)
 
+        full_stdout = result.stdout or ""
+        full_stderr = result.stderr or ""
+
+        # Extract run_id via stable stdout marker emitted by __main__.py
+        # (S37 PASS 7). Authoritative when present; falls back to legacy
+        # JSON report parse for backward compat. NEVER fakes "ok" anymore
+        # — AGENT.md "no silent failures".
+        marker = re.search(r"^ARCHIVERR_RUN_ID=(\S+)$", full_stdout, re.M)
+        marker_run_id = marker.group(1) if marker else None
+
         if result.returncode != 0:
             # AGENT.md §5: no silent failures. Log full stderr; truncate only the
             # response body for client convenience.
-            full_stderr = result.stderr or ""
-            full_stdout = result.stdout or ""
             logger.error(
                 "Subprocess archiverr run failed (returncode=%s, duration_ms=%s)\n"
                 "STDERR (full):\n%s\nSTDOUT (full):\n%s",
                 result.returncode, duration_ms, full_stderr, full_stdout,
             )
             return RunResponse(
-                execution_id="error",
+                execution_id=marker_run_id or "error",
                 success=False,
                 total_matches=0,
                 completed_matches=0,
@@ -120,7 +129,7 @@ def run_default(request: RunRequest = Body(None)):
                 error=(full_stderr[:500] if full_stderr else "Process failed")
             )
 
-        # Read latest report
+        # Read latest report (legacy enrichment — pre-Mongo era)
         reports_dir = PROJECT_ROOT / "reports"
         if reports_dir.exists():
             report_files = sorted(
@@ -136,8 +145,10 @@ def run_default(request: RunRequest = Body(None)):
                 globals_data = api_response.get('globals', {})
                 status = globals_data.get('status', {})
 
+                # Marker takes precedence over JSON's execution_id (which may
+                # belong to an older report file under concurrent /run/ calls).
                 return RunResponse(
-                    execution_id=globals_data.get('execution_id', 'ok'),
+                    execution_id=marker_run_id or globals_data.get('execution_id', 'unknown'),
                     success=status.get('success', True),
                     total_matches=status.get('matches', 0),
                     completed_matches=status.get('matches', 0),
@@ -146,8 +157,10 @@ def run_default(request: RunRequest = Body(None)):
                     api_response=api_response
                 )
 
+        # No report file — use marker if present, else admit we don't know
+        # rather than lying with "ok" (S37 PASS 7).
         return RunResponse(
-            execution_id="ok",
+            execution_id=marker_run_id or "unknown",
             success=True,
             total_matches=0,
             completed_matches=0,
