@@ -19,23 +19,34 @@ manifest:
   categories:
     - movie
     - show
-
-  capabilities:
-    - <name>
-  hooks:
-    - <event>
-  listens_to:
-    - <event>
-  reactive: bool
+  # categories: declared on most plugins but only consumed by
+  # models/response_builder.py:208-215 for UI summary; not used for
+  # pipeline routing today.
 
   fs_lock:
     - <absolute_path>
-
-  aliases:
-    <name>: <dotted.path_or_interpolation>
+  # fs_lock: validated by core/locking/{manager,validator}.py for static-path
+  # conflict detection at startup. There is NO runtime lock acquire/release;
+  # the field reserves the path conceptually but does not gate execution.
 
   defaults:
     <config_field>: <value>
+
+  # REMOVED 2026-04-30 (zero runtime readers, dead schema):
+  #   capabilities: list[str]
+  #   hooks: list[str]
+  #   listens_to: list[str]
+  #   reactive: bool
+  # These were added in Session 34 (commit 5c24b22) as scaffolding for a
+  # reactive plugin model that was never wired. They remain in the Pydantic
+  # PluginManifest (manifest.py:27,33,36,37) with empty defaults but no
+  # code path reads them. Drop from datasets to avoid misleading future readers.
+
+  # aliases (manifest-level): NOT IMPLEMENTED.
+  # PluginManifest schema does not declare an `aliases` field; Pydantic
+  # extra=ignore drops it silently. Config-level aliases (subtree scopes)
+  # work; manifest-level scope is documented in 10-aliases.yml#scopes.manifest
+  # but is currently a known divergence (see datasets/README.yml).
 
   config_schema:
     <field>:
@@ -70,13 +81,13 @@ required_fields:
   - entry_point
 
 forbidden_defaults:
-  - stage         # must be explicit
-  - run_mode      # must be explicit
-  - trigger_rule  # default all_success only if intended
+  - stage         # must be explicit; missing -> ValueError (manifest.py:49-55)
+  - run_mode      # must be explicit; missing -> ValueError (manifest.py:56-60)
+# Note: trigger_rule has an implicit default of "all_success" in
+# PluginManifest (manifest.py:26). Treat that as opt-in default, not
+# forbidden. Plugins should still declare it explicitly when meaningful.
 
 template_support:
-  deprecated_fields:
-    - requires_only_jinja_render
   new_model:
     see: 10-aliases.yml
   allowed_expressions:
@@ -84,12 +95,14 @@ template_support:
     - "${config.<path>}"
     - "${alias:<name>}"
     - "${..field}"
+  # deprecated_fields.requires_only_jinja_render: removed 2026-04-30,
+  # could not be located in any active or .deleted/ source.
 
 discovery_extras:
   _path: string
   _manifest_type: string
   _validated: bool
-  _resolved_at: ISO8601
+# _resolved_at removed 2026-04-30: zero readers/writers
 
 requires_path_prefix_rule:
   - "<name>.<field>  -> plugin.<name>.<field>"

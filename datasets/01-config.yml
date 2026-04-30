@@ -28,7 +28,7 @@ scanner:
   allow_virtual_paths: bool
   extensions: [ext]
   recursive: bool
-  min_size_bytes: int
+# min_size_bytes removed 2026-04-30: zero readers in scanner/client.py
 
 renamer:
   enabled: bool
@@ -39,7 +39,7 @@ tmdb:
   api_key: string
   language: string
   region: string
-  include_raw_data: bool
+  # include_raw_data removed 2026-04-30: zero readers
   extras:
     movie_credits: bool
     movie_images: bool
@@ -78,9 +78,9 @@ loader_pipeline:
   3_structural_merge: merge plugin manifests (3-layer, see 02-manifest.yml)
   4_scoped_interpolation: resolve ${...} with alias scope stack (see 10-aliases.yml)
   5_pydantic_validate: validate PluginManifest + plugin config_schemas
-  6_freeze: config is read-only
+  6_freeze: config is treated as read-only by convention (deepcopy in loader); no Pydantic frozen / immutable wrapper today
 
 deprecated:
-  - regex alias rewrite (config_loader.py:280-341)
-  - tasker-local context shortcuts
-  - plugin.{name} vs plugin.{name}.data double-surface
+  - regex alias rewrite (former code now under .deleted/alias_resolver.py)
+  - tasker-local context shortcuts (removed 2026-04-30)
+  - plugin.{name} vs plugin.{name}.data double-surface (closed 2026-04-30, single canonical surface in TemplateContextBuilder)

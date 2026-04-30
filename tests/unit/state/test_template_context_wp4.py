@@ -56,7 +56,7 @@ class TestTemplateContextBuilderTrim:
         job = _make_job({})
         ctx = TemplateContextBuilder().build_job_context(job)
 
-        assert set(ctx.keys()) == {"run", "job", "jobs", "config", "options", "events"}
+        assert set(ctx.keys()) == {"run", "job", "jobs", "config", "options", "events", "plugin"}
 
     def test_module_wrapper_removed(self):
         """WP-4: module-level build_template_context function deleted."""

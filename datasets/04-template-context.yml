@@ -12,14 +12,17 @@ context_shape:
     <plugin_name>:
       status: plugin_status
       data: plugin_data
-  plugins:
-    - per_job: {<plugin_name>: {status, data}}
   config: frozen_config
   options: config.options
-  provides: provides_registry_snapshot
   events: event_bus_snapshot
-  index: int
-  <resolved_alias>: value
+# REMOVED 2026-04-30 (TemplateContextBuilder.build_job_context does not emit them):
+#   plugins (top-level array)         -- use job.plugins or plugin.<name>.data
+#   provides (registry snapshot)      -- ProvidesRegistry is plugin-DI only,
+#                                        not exposed in render-time context
+#   index (top-level)                 -- only job.index is emitted; tasker adds a
+#                                        local `index` shortcut after build_job_context
+#   <resolved_alias>: value           -- aliases stay under config.aliases; not
+#                                        copied to context root
 
 canonical_access_path:
   current_plugin_data: plugin.<name>.data
@@ -63,21 +66,29 @@ jinja_features_allowed:
   - if / elif / else
   - for loops
   - filters (built-in + whitelisted archiverr filters)
-  - {% set %}
+  - "{% set %}"
 jinja_features_forbidden:
-  - {% include %}
-  - {% import %}
+  - "{% include %}"
+  - "{% import %}"
   - custom globals at render time (must be pre-compiled aliases)
+# Note: there is no enforcement layer for forbidden features today;
+# tasker uses a default Jinja Environment and forbidden features will
+# fail at render time with the standard Jinja error rather than a
+# pre-flight check.
 
 custom_filters:
-  - truncate
-  - tojson
-  - format
-  - archiverr-specific:
-    - count
-    - index
+  registered_in: src/archiverr/plugins/tasker/plugin.py
+  archiverr:
+    - count       # registered (tasker/plugin.py:37)
+  builtins_used:
+    - truncate    # Jinja built-in
+    - format      # Jinja built-in (registered as filter alias in tasker/plugin.py:36)
+  # tojson is a Jinja built-in available without registration
+  # `index` filter was previously documented but is NOT registered; removed 2026-04-30
 
 pipeline:
-  1_build_context: TemplateContextBuilder(job, run, all_jobs)
-  2_inject_resolved_aliases: already in config, copied into context root
+  1_build_context: TemplateContextBuilder(job, run, all_jobs, events)
+  2_aliases_accessible_via_config: aliases are pre-resolved in config and
+    remain reachable at render time as `config.aliases.<name>`; they are
+    NOT copied to context root today.
   3_jinja_render: Jinja2.Environment.from_string(template).render(context)

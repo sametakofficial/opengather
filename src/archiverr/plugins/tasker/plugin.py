@@ -51,33 +51,18 @@ class TaskerPlugin(OutputPlugin):
         dry_run = run_safety["dry_run"]
         hardlink = run_safety["hardlink"]
 
-        plugins_data = {}
-        if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-            plugins_data = dict(job.plugins)
-
-        if hasattr(services, 'state'):
-            available_plugins = services.state.get_job_plugin_names(job.id)
-            for plugin_name in available_plugins:
-                if plugin_name not in plugins_data:
-                    try:
-                        data = services.state.get_plugin_data(job.id, plugin_name)
-                        if data:
-                            plugins_data[plugin_name] = data
-                    except Exception:
-                        pass
-
+        # Canonical template context comes from TemplateContextBuilder per
+        # datasets/04-template-context.yml. Tasker no longer mutates the
+        # render-time context (plugin.<name>.data surface lives upstream).
         run = services.get_run() if hasattr(services, "get_run") else None
         all_jobs = list(services.get_all_jobs()) if hasattr(services, "get_all_jobs") else []
-
         events_snapshot = services.events.snapshot() if hasattr(services, "events") else {}
 
         context = TemplateContextBuilder().build_job_context(
             job, run=run, all_jobs=all_jobs, events=events_snapshot
         )
-        context["plugin"] = {
-            name: {"data": info if isinstance(info, dict) else {}}
-            for name, info in plugins_data.items()
-        }
+        # `index` is documented as a top-level shortcut in 04-template-context.yml.
+        # `total` is tasker-local convenience; not part of the canonical contract.
         context["index"] = getattr(job, "index", 0)
         context["total"] = len(all_jobs) if all_jobs else 1
 
@@ -110,7 +95,9 @@ class TaskerPlugin(OutputPlugin):
         })
 
         # Track for JSON output
-        self._track_run_output(job, task_results, plugins_data)
+        # Snapshot of plugin data for run-output JSON tracking.
+        plugins_snapshot = dict(getattr(job, 'plugins', {}) or {})
+        self._track_run_output(job, task_results, plugins_snapshot)
 
         return SDKPluginResult(
             success=True,

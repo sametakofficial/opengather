@@ -1,0 +1,1197 @@
+# AUTO-GENERATED from datasets/*.yml -- DO NOT EDIT BY HAND.
+# Generated: 2026-04-30
+
+_meta:
+  generated_at: '2026-04-30'
+  source_dir: datasets/
+  status: v1-draft (post 2026-04-30 schema-vs-code reality audit)
+  note: Auto-generated. Per-file shards in datasets/ remain canonical. Removed dead schema fields are
+    listed in datasets/README.yml#dead_schema_removed_2026-04-30.
+  shards:
+  - README.yml
+  - 00-enums.yml
+  - 01-config.yml
+  - 02-manifest.yml
+  - 03-run-state.yml
+  - 04-template-context.yml
+  - 05-events.yml
+  - 06-mongodb.yml
+  - 07-plugin-io.yml
+  - 08-services.yml
+  - 09-api-fastapi.yml
+  - 10-aliases.yml
+  - 11-recovery.yml
+  - 12-safety.yml
+_index:
+  index:
+    00-enums.yml: enum values - state, stage, run_mode, trigger_rule, media_category
+    01-config.yml: config.yml top-level structure and plugin configs
+    02-manifest.yml: plugin manifest.yml structure and 3-layer merge (user/defaults/meta/resolved)
+    03-run-state.yml: runtime state - run, job, jobs, plugin, plugins, plugin_result
+    04-template-context.yml: jinja2 template context and alias resolution (render-time)
+    05-events.yml: event bus events and payloads
+    06-mongodb.yml: mongodb collections and indexes
+    07-plugin-io.yml: per-plugin inputs and outputs
+    08-services.yml: plugin services contracts (state, events, logger, config, template, provides)
+    09-api-fastapi.yml: fastapi request/response shapes
+    10-aliases.yml: inline alias/interpolation model (v1 target)
+    11-recovery.yml: plugin_executions and checkpoints for run recovery (v1 target)
+    12-safety.yml: dry_run, no-delete, hardlink central semantics (v1 target)
+  status: v1-draft (post reality-check, post 2026-04-29 audit)
+  canonical_sources_of_truth:
+    enums:
+      state: src/archiverr/state/models.py
+      plugin_status_media_category_plugin_category: src/archiverr/core/plugins/sdk/types.py
+    run_job: src/archiverr/state/models.py
+    manifest: src/archiverr/core/plugins/sdk/manifest.py
+    plugin_result: src/archiverr/core/plugins/sdk/result.py
+    persistence: src/archiverr/infrastructure/database/interface.py
+    events: src/archiverr/events/bus.py
+    template_context: src/archiverr/state/template_context.py
+    alias_resolver: src/archiverr/core/config/interpolator.py
+    config_loader: src/archiverr/utils/config_loader.py
+  contract_freeze_rules:
+  - one shape per concept; divergent shapes in legacy code must be adapted, not persisted here
+  - no comments in *.yml; reference code via canonical_sources_of_truth
+  - examples live in AI/DATASETS.yml and FINAL_DATASETS.yml
+  - when code disagrees with a dataset file, code is the bug, not the dataset
+  known_divergences_today:
+  - JobState.plugins (data) vs JobState.status.plugins (status) - dual write surfaces; plugin contract
+    unaffected but bookkeeping is duplicated
+  - get_execution_order returns flat list, drops dependency-group info (was: stage-ordered)
+  - manifest.aliases is not in PluginManifest schema; config-level subtree aliases work, manifest-scope
+    was removed from 10-aliases.yml on 2026-04-30
+  - jinja_features_forbidden has no enforcement layer; using {% include %} fails at render time, not at
+    config load
+  - audit.events_emitted (plugin.side_effect) and audit.mongodb_trace (side_effects field, checkpoints
+    collection) are not implemented; PlannedOperation is in-process only
+  unverified_in_2026-04-30_audit:
+  - 03-run-state.yml: run.status.plugins and run.plugins shapes (writers not located)
+  - 05-events.yml: payload field sets for run.completed and plugin.completed (emitter exists, exact dict
+      not inspected)
+  - 06-mongodb.yml: indexes_additions.plugin_executions creation in _create_new_indexes
+  - 07-plugin-io.yml: ffprobe / tvdb / omdb / tvmaze / tasker.tasks data shapes (per-field spot-check
+      pending)
+  - 09-api-fastapi.yml: api/v1/run/ vs api/v1/runs/ duplicate router schemas; canonical not declared
+  - 10-aliases.yml: ${path:-fallback} default-syntax parsing in interpolator
+  - 02-manifest.yml: requires_path_prefix_rule strict enforcement
+  closed_since_last_review:
+  - ExecutionContext legacy fields (match_index, total_matches, api_response) - moved to .deleted/
+  - manifest stage/run_mode PARSE default - now raises ValueError in manifest.py:49-61 (Session 34)
+  - provides_registry silent fallback in PluginServices - now raises PluginError in plugin_services.py:209
+  - build_orchestrator silent NullPersistence downgrade - resolved via persistence_mode contract (orchestrator.py:512-617)
+  - tasker shutil.copy2 direct call - now routes via core.safety.safe_copy (tasker/plugin.py:18,198)
+  - hardlink option not consumed by tasker - now threaded through tasks (tasker/plugin.py:52,200)
+  - dry_run dual surface - single authority via resolve_run_safety (orchestrator.py:100); per-plugin override
+    forbidden
+  - plugin.<name>.data canonical surface moved from tasker into TemplateContextBuilder (2026-04-30)
+  dead_schema_removed_2026-04-30:
+  - 02-manifest.yml: capabilities, hooks, listens_to, reactive (Pydantic-only, zero readers)
+  - 02-manifest.yml: discovery_extras._resolved_at (zero readers/writers)
+  - 02-manifest.yml: template_support.deprecated_fields.requires_only_jinja_render (no source)
+  - 01-config.yml: scanner.min_size_bytes (zero readers)
+  - 01-config.yml: tmdb.include_raw_data (zero readers)
+  - 04-template-context.yml: context_shape.plugins, provides, index, <resolved_alias> (not emitted by
+      builder)
+  - 04-template-context.yml: custom_filters.tojson (Jinja built-in, not custom), index (not registered)
+  - 05-events.yml: run.failed, job.started, plugin.started, plugin.progress, task.{started,completed,failed},
+      state.changed, db.{connected,disconnected,synced,error} (zero emitters)
+  - 06-mongodb.yml: interface.{save_checkpoint, get_checkpoints, claim_plugin_execution, heartbeat_plugin_execution}
+      (future-work, unwired); get_plugin_executions renamed to get_unfinished_plugin_executions
+  - 07-plugin-io.yml: renamer.confidence, tasker.tasks_executed, tasker.tasks_skipped, tasker.output_files
+      (zero readers/writers)
+  - 08-services.yml: EventService.emit, EventService.subscribe (read-only contract for plugins); legacy_per_job
+      execute(match_data) (Session 34 deletion); lifecycle.setup, lifecycle.teardown (not in BasePlugin)
+  - 10-aliases.yml: scopes.manifest, manifest_sample (PluginManifest schema does not accept aliases)
+  - 12-safety.yml: audit.events_emitted (plugin.side_effect), audit.mongodb_trace (zero implementation)
+  v1_direction:
+  - single path-based interpolation model (see 10-aliases.yml)
+  - plugin 3-layer merge: _manifest / _defaults / user -> resolved (see 02-manifest.yml)
+  - plugin_executions + checkpoints for recovery (see 11-recovery.yml)
+  - central dry_run / no-delete / hardlink contract (see 12-safety.yml)
+  - canonical template context only; drop tasker local context builder
+enums:
+  state:
+  - pending
+  - running
+  - success
+  - failed
+  - partial
+  - cancelled
+  plugin_status:
+  - pending
+  - running
+  - completed
+  - failed
+  - skipped
+  stage:
+  - input
+  - parse
+  - data
+  - output
+  run_mode:
+  - per_run
+  - per_job
+  trigger_rule:
+  - all_success
+  - one_success
+  - all_done
+  - all_fail
+  - none_fail
+  media_category:
+  - movie
+  - show
+  - episode
+  - season
+  plugin_category:
+  - input
+  - output
+  id_format:
+    run: run_{uuid8}
+    job: job_{run_id}_{index}
+    example_run: run_abc12345
+    example_job: job_run_abc12345_0
+config:
+  config:
+    aliases:
+      <name>: <dotted.path_or_interpolation>
+    options:
+      log_level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+      debug: bool
+      dry_run: bool
+      no_delete: bool
+      hardlink: bool
+      persistence_mode: full | degraded | off
+    <plugin_name>:
+      enabled: bool
+      aliases:
+        <name>: <value>
+      <plugin_specific_config>: any
+  options_contract:
+    see: 12-safety.yml
+  aliases_contract:
+    model: see 10-aliases.yml
+    allowed_anywhere: true
+    resolved_phase: 4_scoped_interpolation
+  scanner:
+    enabled: bool
+    targets:
+    - path
+    allow_virtual_paths: bool
+    extensions:
+    - ext
+    recursive: bool
+  renamer:
+    enabled: bool
+    media_type: auto | movie | show
+  tmdb:
+    enabled: bool
+    api_key: string
+    language: string
+    region: string
+    extras:
+      movie_credits: bool
+      movie_images: bool
+      movie_keywords: bool
+      movie_videos: bool
+      tv_credits: bool
+      tv_episode_credits: bool
+      tv_episode_images: bool
+      tv_images: bool
+      tv_keywords: bool
+      tv_season_images: bool
+      tv_videos: bool
+  tasker:
+    enabled: bool
+    save_output: bool
+    output_dir: string
+    tasks:
+    - name: string
+      type: print | save
+      condition: jinja_expr
+      template: jinja_template
+      destination: jinja_template
+  env_var_syntax:
+  - ${VAR}
+  - ${env:VAR}
+  include_directive:
+    tasks: !include './tasks/'
+    config: !include './sub.yml'
+  loader_pipeline:
+    1_yaml_include: load_yaml_with_includes
+    2_env_expand: expand_env_vars
+    3_structural_merge: merge plugin manifests (3-layer, see 02-manifest.yml)
+    4_scoped_interpolation: resolve ${...} with alias scope stack (see 10-aliases.yml)
+    5_pydantic_validate: validate PluginManifest + plugin config_schemas
+    6_freeze: config is treated as read-only by convention (deepcopy in loader); no Pydantic frozen /
+      immutable wrapper today
+  deprecated:
+  - regex alias rewrite (former code now under .deleted/alias_resolver.py)
+  - tasker-local context shortcuts (removed 2026-04-30)
+  - plugin.{name} vs plugin.{name}.data double-surface (closed 2026-04-30, single canonical surface in
+    TemplateContextBuilder)
+manifest:
+  manifest:
+    name: string
+    version: string
+    description: string
+    class_name: string
+    entry_point: client.py
+    stage: input | parse | data | output
+    run_mode: per_run | per_job
+    requires:
+    - plugin.<name>.<field>:success
+    - plugin.<name>.<field>:any
+    - job.<field>
+    provides:
+    - <capability>
+    trigger_rule: all_success | one_success | all_done | all_fail | none_fail
+    categories:
+    - movie
+    - show
+    fs_lock:
+    - <absolute_path>
+    defaults:
+      <config_field>: <value>
+    config_schema:
+      <field>:
+        type: string | integer | boolean | array | dict | object
+        required: bool
+        default: any
+        min_length: int
+        max_length: int
+        pattern: regex
+        not_contains:
+        - string
+        secret: bool
+        description: string
+  three_layer_merge:
+    key_scheme:
+      _manifest: meta+schema read from manifest.yml
+      _defaults: manifest.defaults block
+      user: config.yml plugin branch (authoritative)
+      _resolved: final compiled config
+    precedence:
+    - user > _defaults > _manifest.config_schema.default
+    merge_rules:
+    - user values win; defaults never override user
+    - _manifest is read-only; never overridden; consumable via ${plugin.<name>._manifest.*}
+    - _resolved is computed once per run, then frozen
+  required_fields:
+  - name
+  - stage
+  - run_mode
+  - class_name
+  - entry_point
+  forbidden_defaults:
+  - stage
+  - run_mode
+  template_support:
+    new_model:
+      see: 10-aliases.yml
+    allowed_expressions:
+    - ${env:VAR}
+    - ${config.<path>}
+    - ${alias:<name>}
+    - ${..field}
+  discovery_extras:
+    _path: string
+    _manifest_type: string
+    _validated: bool
+  requires_path_prefix_rule:
+  - <name>.<field>  -> plugin.<name>.<field>
+  - job.<field>     -> job.<field>
+  - plugin.<name>   -> plugin.<name>
+run_state:
+  run:
+    id: run_{uuid8}
+    status:
+      state: pending | running | success | failed | partial | cancelled
+      success: bool
+      total_jobs: int
+      completed: int
+      failed: int
+      plugins: {}
+      started_at: ISO8601
+      finished_at: ISO8601
+      duration_ms: int
+    config:
+      options: {}
+      aliases: {}
+    plugins: {}
+  job:
+    id: job_{run_id}_{index}
+    index: int
+    run_id: run_{uuid8}
+    input:
+      value: string
+      data: {}
+    output:
+      values:
+      - string
+      data: {}
+    status:
+      state: pending | running | success | failed
+      success: bool
+      plugins:
+        <plugin_name>:
+          state: pending | running | completed | failed | skipped
+          success: bool
+          started_at: ISO8601
+          finished_at: ISO8601
+          duration_ms: int
+          error: string | null
+      started_at: ISO8601
+      finished_at: ISO8601
+      duration_ms: int
+    plugins:
+      <plugin_name>: {}
+  jobs:
+  - <job>
+  plugin_result:
+    success: bool
+    data: {}
+    error: string | null
+    started_at: ISO8601
+    finished_at: ISO8601
+    metadata:
+      skipped: bool
+      skip_reason: string
+template_context:
+  render_time_context:
+    source: TemplateContextBuilder only
+    forbidden_sources:
+    - tasker local _build_context
+    - plugin-specific context mutation
+  context_shape:
+    run: run_state_projection
+    job: job_state_projection
+    jobs:
+    - job_summary
+    plugin:
+      <plugin_name>:
+        status: plugin_status
+        data: plugin_data
+    config: frozen_config
+    options: config.options
+    events: event_bus_snapshot
+  canonical_access_path:
+    current_plugin_data: plugin.<name>.data
+    current_plugin_status: plugin.<name>.status
+    deprecated_shortcuts:
+    - plugin.<name>
+    - context[<plugin_name>]
+  run_state_projection:
+    id: string
+    status:
+      state: string
+      success: bool
+      total_jobs: int
+      completed: int
+      failed: int
+  job_state_projection:
+    index: int
+    id: string
+    input:
+      value: string
+      data: {}
+    output:
+      values:
+      - string
+      data: {}
+    status:
+      state: string
+      success: bool
+      executed:
+      - string
+      failed:
+      - string
+      skipped:
+      - string
+  alias_resolution:
+    phase: config-load-time (see 10-aliases.yml)
+    at_render_time: none
+    rationale: aliases are pre-compiled into the config tree; jinja only sees final values
+  jinja_features_allowed:
+  - expressions
+  - if / elif / else
+  - for loops
+  - filters (built-in + whitelisted archiverr filters)
+  - '{% set %}'
+  jinja_features_forbidden:
+  - '{% include %}'
+  - '{% import %}'
+  - custom globals at render time (must be pre-compiled aliases)
+  custom_filters:
+    registered_in: src/archiverr/plugins/tasker/plugin.py
+    archiverr:
+    - count
+    builtins_used:
+    - truncate
+    - format
+  pipeline:
+    1_build_context: TemplateContextBuilder(job, run, all_jobs, events)
+    2_aliases_accessible_via_config: aliases are pre-resolved in config and remain reachable at render
+      time as `config.aliases.<name>`; they are NOT copied to context root today.
+    3_jinja_render: Jinja2.Environment.from_string(template).render(context)
+events:
+  events:
+    run:
+    - run.started
+    - run.completed
+    - run.error
+    stage:
+    - stage.started
+    - stage.completed
+    - stage.failed
+    job:
+    - job.created
+    - job.completed
+    - job.failed
+    - job.updated
+    - job.stage_completed
+    plugin:
+    - plugin.completed
+    - plugin.failed
+    - plugin.skipped
+    - plugin.updated
+  event_shape:
+    name: string
+    data: {}
+    timestamp: ISO8601
+    source: string
+  payloads:
+    run.started:
+      run_id: null
+    run.completed:
+      run_id: null
+      success: null
+      duration_ms: null
+    run.error:
+      run_id: null
+      error: null
+    stage.started:
+      stage: null
+      plugins: null
+    stage.completed:
+      stage: null
+      duration_ms: null
+    stage.failed:
+      stage: null
+      error: null
+    job.created:
+      job_id: null
+      index: null
+      input: null
+    job.completed:
+      job_id: null
+      success: null
+    job.failed:
+      job_id: null
+      error: null
+    job.updated:
+      job_id: null
+      field: null
+      value: null
+    job.stage_completed:
+      job_id: null
+      stage: null
+    plugin.completed:
+      plugin_name: null
+      job_id: null
+      success: null
+      data: null
+      duration_ms: null
+    plugin.failed:
+      plugin_name: null
+      job_id: null
+      error: null
+      duration_ms: null
+    plugin.skipped:
+      plugin_name: null
+      job_id: null
+      reason: null
+    plugin.updated:
+      plugin_name: null
+      job_id: null
+      data: null
+mongodb:
+  runs:
+    _id: ObjectId
+    id: run_{uuid8}
+    status:
+      state: string
+      success: bool
+      total_jobs: int
+      completed: int
+      failed: int
+      started_at: ISODate
+      finished_at: ISODate
+      duration_ms: int
+      plugins: {}
+    config:
+      options: {}
+      plugins: {}
+      aliases: {}
+      tasks: []
+    plugins: {}
+    created_at: ISODate
+    updated_at: ISODate
+    persistence_mode: full | degraded | off
+  jobs:
+    _id: ObjectId
+    id: job_{run_id}_{index}
+    run_id: run_{uuid8}
+    index: int
+    input:
+      value: string
+      data: {}
+    output:
+      values:
+      - string
+      data: {}
+    status:
+      state: string
+      success: bool
+      plugins: {}
+      started_at: ISODate
+      finished_at: ISODate
+      duration_ms: int
+    plugins: {}
+    created_at: ISODate
+    updated_at: ISODate
+  plugins:
+    _id: ObjectId
+    run_id: run_{uuid8}
+    job_id: job_{run_id}_{index}
+    job_index: int
+    plugin_name: string
+    stage: input | parse | data | output
+    status:
+      state: completed | failed | skipped
+      success: bool
+      started_at: ISODate
+      finished_at: ISODate
+      duration_ms: int
+      error: string | null
+    data: {}
+    created_at: ISODate
+  recovery_collections:
+    see: 11-recovery.yml
+    adds:
+    - plugin_executions
+    - checkpoints
+  indexes:
+    runs:
+    - id: 1
+    - created_at: -1
+    jobs:
+    - id: 1
+    - run_id: 1
+      index: 1
+    plugins:
+    - run_id: 1
+      job_id: 1
+      plugin_name: 1
+    - job_id: 1
+  backends:
+    pymongo_persistence: PersistenceInterface
+    null_persistence: PersistenceInterface
+  mode_contract:
+    see: 11-recovery.yml#persistence_mode_contract
+  interface:
+  - connect
+  - disconnect
+  - save_run
+  - save_job
+  - save_plugin
+  - save_plugin_execution
+  - get_run
+  - get_jobs
+  - get_job
+  - get_plugins
+  - get_plugin
+  - get_unfinished_plugin_executions
+  - get_statistics
+plugin_io:
+  scanner:
+    stage: input
+    run_mode: per_run
+    output_per_job_input:
+      value: path
+      data:
+        filename: string
+        extension: string
+        size_bytes: int
+        modified_at: ISO8601
+        source: filesystem
+  file_reader:
+    stage: input
+    run_mode: per_run
+    output_per_job_input:
+      value: path
+      data:
+        path: string
+        virtual: bool
+  renamer:
+    stage: parse
+    run_mode: per_job
+    requires:
+    - job.input.value
+    data:
+      parsed:
+        movie:
+          name: string
+          year: int
+          resolution: string
+          source: string
+          codec: string
+        show:
+          name: string
+          season: int
+          episode: int
+          title: string
+          resolution: string
+      category: movie | show
+  ffprobe:
+    stage: data
+    run_mode: per_job
+    requires:
+    - plugin.renamer.parsed:success
+    data:
+      format:
+        filename: string
+        format_name: string
+        format_long_name: string
+        duration: string
+        size: string
+        bit_rate: string
+      streams:
+      - index: int
+        codec_type: video | audio | subtitle
+        codec_name: string
+        width: int
+        height: int
+        channels: int
+        language: string
+  tmdb:
+    stage: data
+    run_mode: per_job
+    requires:
+    - plugin.renamer.parsed:success
+    data:
+      movie:
+        media_type: movie
+        identifiers:
+          tmdb_id: string
+          imdb_id: string
+        title:
+          primary: string
+          original: string
+          localized: string
+        release:
+          date: YYYY-MM-DD
+          year: int
+          status: string
+        runtime: int
+        ratings:
+          tmdb:
+            score: float
+            votes: int
+        overview: string
+        genres:
+        - string
+        financial:
+          budget: int
+          revenue: int
+        images:
+          poster: path
+          backdrop: path
+          posters:
+          - path
+          backdrops:
+          - path
+        people:
+          cast:
+          - name: string
+            character: string
+            profile_path: path
+            order: int
+          crew:
+          - name: string
+            job: string
+            department: string
+        videos:
+        - name: string
+          key: string
+          site: YouTube | Vimeo
+          type: Trailer | Teaser | Clip
+        keywords:
+        - string
+      show:
+        media_type: show
+        identifiers:
+          tmdb_id: string
+        title:
+          primary: string
+          original: string
+          localized: string
+        air_dates:
+          first: YYYY-MM-DD
+          last: YYYY-MM-DD
+          year: int
+        status: string
+        runtime: int
+        ratings:
+          tmdb:
+            score: float
+            votes: int
+        overview: string
+        genres:
+        - string
+        network:
+          name: string
+          id: string
+        seasons:
+          total: int
+        episodes:
+          total: int
+        images:
+          poster: path
+          backdrop: path
+        people:
+          cast: []
+          crew: []
+      episode:
+        media_type: episode
+        identifiers:
+          tmdb_id: string
+        title:
+          primary: string
+        season_number: int
+        episode_number: int
+        air_date: YYYY-MM-DD
+        runtime: int
+        overview: string
+        images:
+          still: path
+        people:
+          guest_stars: []
+  tvdb:
+    stage: data
+    run_mode: per_job
+    requires:
+    - plugin.renamer.parsed:success
+    data:
+      show:
+        identifiers:
+          tvdb_id: string
+        title:
+          primary: string
+        overview: string
+        genres:
+        - string
+        status: string
+  omdb:
+    stage: data
+    run_mode: per_job
+    requires:
+    - plugin.renamer.parsed:success
+    data:
+      movie:
+        identifiers:
+          imdb_id: string
+        title:
+          primary: string
+        ratings:
+          imdb:
+            score: float
+            votes: int
+  tvmaze:
+    stage: data
+    run_mode: per_job
+    requires:
+    - plugin.renamer.parsed:success
+    data:
+      show:
+        identifiers:
+          tvmaze_id: string
+        title:
+          primary: string
+        network:
+          name: string
+  tasker:
+    stage: output
+    run_mode: per_job
+    requires:
+    - plugin.tmdb.data:success
+    - plugin.renamer.parsed:success
+    data:
+      tasks:
+        <task_name>:
+          type: print | save
+          success: bool
+          rendered: string
+          output: path | null
+    effects:
+      job.output.values: list[path]
+services:
+  plugin_services:
+    state: StateService
+    events: EventService
+    logger: LoggerService
+    config: ConfigService
+    template: TemplateService
+    provides: ProvidesService
+  StateService:
+    get_current_job: () -> JobState
+    get_job: '(job_id: str) -> JobState | None'
+    get_job_by_index: '(index: int) -> JobState | None'
+    get_all_jobs: () -> [JobState]
+    get_run: () -> RunState
+    get_plugin_data: (job_id, plugin_name) -> dict
+    save_plugin_data: (job_id, plugin_name, stage, data, status) -> None
+  EventService:
+    has_fired: '(event: str) -> bool'
+    history: '(event: str | None = None) -> list[dict]'
+    snapshot: () -> dict[str, list[dict]]
+  LoggerService:
+    debug: '(message: str, **kwargs) -> None'
+    info: '(message: str, **kwargs) -> None'
+    warn: '(message: str, **kwargs) -> None'
+    error: '(message: str, **kwargs) -> None'
+  ConfigService:
+    get: '(key: str, default: any) -> any'
+    get_plugin: '(plugin_name: str) -> dict'
+    get_option: '(option: str, default: any) -> any'
+  TemplateService:
+    render: '(template: str, context: dict) -> str'
+    build_context: '(job_id: str) -> dict'
+  ProvidesService:
+    complete: '(provide: str) -> None'
+    is_completed: '(provide: str) -> bool'
+    get_status: '(provide: str) -> dict'
+  execution_modes:
+    per_run:
+      stage: null
+      access:
+      - run
+      - config
+      cannot_access:
+      - job
+      - jobs
+      - plugin
+      - plugins
+      api:
+      - create_job(input_value, input_data)
+    per_job:
+      stage: parse | data | output
+      access:
+      - run
+      - config
+      - job
+      - jobs
+      - plugin
+      - plugins
+      api:
+      - create_job(input_value, input_data)
+      - update_job(job_id, key, value)
+      - update_plugin(plugin_name, data)
+  plugin_contracts:
+    per_run: execute_run(services) -> dict
+    per_job: execute(job, services) -> PluginResult | dict
+  base_classes:
+  - BasePlugin (abstract)
+  - InputPlugin (per_run)
+  - OutputPlugin (per_job)
+  lifecycle:
+  - __init__(config)
+  - execute_run(services) | execute(job, services)
+api_fastapi:
+  RunResponse:
+    id: run_{uuid8}
+    status:
+      state: pending | running | success | failed | partial | cancelled
+      success: bool
+      total_jobs: int
+      completed: int
+      failed: int
+      duration_ms: int
+      error: string | null
+    input:
+      value: string
+      data: {}
+    output:
+      values:
+      - string
+      data: {}
+    jobs:
+    - job_id
+    config: {}
+    options: {}
+    created_at: ISO8601
+    completed_at: ISO8601
+  RunListResponse:
+    items:
+    - RunResponse
+    total: int
+    page: int
+    page_size: int
+  RunCreate:
+    config: {}
+    dry_run: bool
+aliases:
+  model: path-based-interpolation + dbt-scoped-vars
+  jinja: render-only (tasker tasks, template fields)
+  deprecated:
+  - regex alias rewrite at config load
+  - tasker-local shortcut remaps
+  - top-level-only aliases
+  syntax:
+    absolute: ${config.plugin.renamer.parsed.movie}
+    relative_sibling: ${.field}
+    relative_parent: ${..field}
+    alias_lookup: ${alias:movie}
+    env: ${env:TMDB_API_KEY}
+    default: ${config.plugin.tmdb.language:-en-US}
+  scopes:
+    root:
+      defined_at: config.yml top-level
+      key: aliases
+      visible_in: all descendants
+    subtree:
+      defined_at: any mapping
+      key: aliases
+      visible_in: that mapping and its descendants
+      shadows: outer aliases with same name
+  resolver_phases:
+    1_yaml_include: resolve !include directives
+    2_env_expand: resolve ${env:VAR} and ${VAR}
+    3_structural_merge: merge manifest -> plugin config branch (3-layer)
+    4_scoped_interpolation: resolve ${...} expressions with scope stack
+    5_pydantic_validate: validate via PluginManifest / config schemas
+    6_freeze: 'config is read-only by convention from this point. Loader uses deepcopy
+
+      boundaries; there is NO Pydantic frozen / immutable wrapper. Mutating
+
+      config at runtime is undefined behaviour.
+
+      '
+  resolver_rules:
+  - interpolation is evaluated against the compiled config tree, not strings
+  - cyclic references fail at phase 4 with explicit error
+  - unresolved refs fail-fast (no silent empty string)
+  - default syntax ${path:-fallback} is the only implicit fallback
+  - aliases are data, not code; no jinja control flow in alias values
+  alias_value_shape:
+    simple: <dotted.path>
+    explicit: ${<dotted.path>}
+    computed: ${<resolver>:<args>}
+  reserved_alias_names:
+  - run
+  - job
+  - jobs
+  - plugin
+  - plugins
+  - config
+  - options
+  - provides
+  - events
+  config_sample:
+    aliases:
+      movie: ${config.plugin.renamer.parsed.movie}
+      show: ${config.plugin.renamer.parsed.show}
+      tmdb_movie: ${config.plugin.tmdb.data.movie}
+    tmdb:
+      api_key: ${env:TMDB_API_KEY}
+      language: tr-TR
+    tasker:
+      aliases:
+        title: ${movie.name}
+      tasks:
+      - name: save
+        destination: '{{ title }} ({{ movie.year }}).mkv'
+  runtime_template_context_rule:
+  - render-time jinja only sees a frozen context built from the compiled config + current run/job state
+  - no alias resolution happens at render time; all aliases are pre-compiled into the context
+recovery:
+  recovery_model: slim
+  contract: "Single startup scan in persistence_mode=full marks any non-terminal\nplugin_execution row\
+    \ (state in [started, running, claimed]) as\n'crashed'. There is no in-flight lease, no heartbeat,\
+    \ no atomic\nclaim. The trade-off: a second concurrent orchestrator process\nagainst the same Mongo\
+    \ deployment is undefined behaviour — at most\none orchestrator may run against a given persistence\
+    \ backend at a\ntime.\n\nOut of scope for the slim contract (Session 36+):\n  - lease_expires_at /\
+    \ heartbeat (5s interval, 30s lease)\n  - atomic findOneAndUpdate claim with state guard\n  - checkpoints\
+    \ + idempotency_key for output plugins\nThese remain documented below as the future-work shape so\
+    \ the\nslim recovery does not paint us into a corner; they are unwired.\n"
+  collections_additions:
+    plugin_executions:
+      _id: ObjectId
+      run_id: run_{uuid8}
+      job_id: job_{run_id}_{index}
+      plugin_name: string
+      attempt: int
+      state: started | running | completed | failed | crashed | skipped
+      started_at: ISODate
+      finished_at: ISODate
+      duration_ms: int
+      error: string | null
+      claimed_at: ISODate | null
+      lease_expires_at: ISODate | null
+      idempotency_key: string | null
+      output_fingerprint: string | null
+    checkpoints:
+      _id: ObjectId
+      run_id: run_{uuid8}
+      job_id: job_{run_id}_{index}
+      plugin_name: string
+      attempt: int
+      marker: string
+      side_effects:
+      - type: fs.write | http.request | db.write
+        target: string
+        hash: string | null
+        timestamp: ISODate
+      created_at: ISODate
+  indexes_additions:
+    plugin_executions:
+    - run_id: 1
+      job_id: 1
+      plugin_name: 1
+      attempt: 1
+    - state: 1
+      finished_at: 1
+    - state: 1
+      lease_expires_at: 1
+    - idempotency_key: 1
+    checkpoints:
+    - run_id: 1
+      job_id: 1
+      plugin_name: 1
+  plugin_state_machine:
+    started:
+      enters_from: []
+      exits_to:
+      - running
+      - crashed
+      - skipped
+    running:
+      enters_from:
+      - started
+      exits_to:
+      - completed
+      - failed
+      - crashed
+    completed:
+      enters_from:
+      - running
+      terminal: true
+    failed:
+      enters_from:
+      - running
+      terminal: true
+    crashed:
+      enters_from:
+      - started
+      - running
+      terminal_for_attempt: true
+      recoverable_via: new attempt (no automatic retry today)
+    skipped:
+      enters_from:
+      - started
+      terminal: true
+  recovery_rules:
+  - on orchestrator start (persistence_mode=full only), scan plugin_executions where state in (started,
+    running, claimed) -> crashed
+  - on persistence_mode=degraded, the startup scan is skipped; the run still proceeds
+  - completed attempts are never re-run unless explicitly re-executed
+  - failed attempts are not retried automatically; trigger_rule on dependent plugins decides skip
+  persistence_mode_contract:
+    full:
+      backend: pymongo
+      null_fallback: false
+      on_connect_fail: raise CriticalError
+      recovery: enabled (startup scan only, slim contract)
+      on_query_fail_during_recovery: raise CriticalError
+    degraded:
+      backend: pymongo
+      null_fallback: true
+      on_connect_fail: log.warn (run continues without recovery bookkeeping)
+      recovery: disabled
+      on_query_fail_during_recovery: log.warn (best-effort)
+    false:
+      backend: null_persistence
+      null_fallback: true
+      recovery: disabled
+  orchestrator_contract:
+  - no silent NullPersistence downgrade; mode must be explicit (default: degraded)
+  - persistence_mode=full + connect fail = fail-fast
+  - persistence_mode=full + recovery query fail = fail-fast (durability promise)
+  - _save_exec_state failures are warn-once-per-run + counter; do not crash the run
+  failure_domains:
+    business_failure:
+      marker: state=failed
+      recoverable: respects trigger_rule
+    worker_crash:
+      marker: state=crashed via startup scan
+      recoverable: new attempt (manual today; auto-retry deferred)
+    infrastructure_unavailable:
+      marker: persistence.connect fail
+      handled_by: persistence_mode_contract
+  heartbeat_future_work:
+    interval_ms: 5000
+    lease_ms: 30000
+    on_miss: lease expires; becomes crashed on next scan
+safety:
+  safety_contract:
+    owned_by: core.safety service
+    consumed_by:
+    - all plugins that touch filesystem
+    - all plugins that call external mutating APIs
+    not_consumed_by:
+    - pure data-fetch plugins (tmdb, tvdb, omdb, tvmaze)
+  dry_run:
+    scope: run
+    source: config.options.dry_run
+    override_per_plugin: not allowed
+    plugins_must:
+    - skip side-effectful operation
+    - still produce a planned_operation record in plugin data
+    - log the skip at info level
+  no_delete:
+    scope: run
+    source: config.options.no_delete
+    default: true
+    forbidden_ops:
+    - os.remove
+    - os.rmdir
+    - shutil.rmtree
+    - pathlib.Path.unlink
+    - pathlib.Path.rmdir
+    allowed_alternative: move to .deleted/
+  hardlink:
+    scope: run
+    source: config.options.hardlink
+    default: false
+    fallback_if_unsupported:
+      same_filesystem_unknown: copy
+      cross_filesystem: copy
+      readonly_source: copy
+    when_true:
+    - prefer os.link; fallback to copy with warning
+    when_false:
+    - always copy
+  planned_operation_record:
+    op: copy | link | move | write | skip
+    source: path | null
+    target: path | null
+    reason: string
+    dry_run_only: bool
+  central_api:
+    safe_copy: '(src, dst, *, hardlink: bool, dry_run: bool) -> PlannedOperation'
+    safe_write: '(dst, content, *, dry_run: bool) -> PlannedOperation'
+    safe_move: '(src, dst, *, dry_run: bool) -> PlannedOperation'
+    safe_delete: not exposed; callers must safe_move to .deleted/
+  audit:
+    planned_operation_in_process: PlannedOperation (see central_api)
+  current_violations_to_fix: []

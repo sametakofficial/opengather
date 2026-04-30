@@ -13,17 +13,19 @@ index:
   11-recovery.yml:           plugin_executions and checkpoints for run recovery (v1 target)
   12-safety.yml:             dry_run, no-delete, hardlink central semantics (v1 target)
 
-status: v1-draft (post reality-check)
+status: v1-draft (post reality-check, post 2026-04-29 audit)
 
 canonical_sources_of_truth:
-  enums: src/archiverr/state/models.py
+  enums:
+    state: src/archiverr/state/models.py            # StateEnum
+    plugin_status_media_category_plugin_category: src/archiverr/core/plugins/sdk/types.py
   run_job: src/archiverr/state/models.py
   manifest: src/archiverr/core/plugins/sdk/manifest.py
   plugin_result: src/archiverr/core/plugins/sdk/result.py
   persistence: src/archiverr/infrastructure/database/interface.py
   events: src/archiverr/events/bus.py
   template_context: src/archiverr/state/template_context.py
-  alias_resolver: src/archiverr/core/config/alias_resolver.py
+  alias_resolver: src/archiverr/core/config/interpolator.py   # Interpolator class (was incorrectly pointing to .deleted/alias_resolver.py)
   config_loader: src/archiverr/utils/config_loader.py
 
 contract_freeze_rules:
@@ -33,14 +35,45 @@ contract_freeze_rules:
   - when code disagrees with a dataset file, code is the bug, not the dataset
 
 known_divergences_today:
-  - JobState plugins dict vs job.status.plugins dict - two parallel plugin-status views
-  - plugin.{name} vs plugin.{name}.data double-surface in tasker template context
-  - ExecutionContext carries legacy fields (match_index, total_matches, api_response)
-  - get_execution_order returns stage-ordered list (misleading)
-  - stage defaults to PARSE when missing in manifest (dangerous)
-  - provides_registry silent fallback in PluginServices
-  - NullPersistence silent downgrade in build_orchestrator
-  - aliases: top-level only; manifest Jinja limited to requires/provides
+  - JobState.plugins (data) vs JobState.status.plugins (status) - dual write surfaces; plugin contract unaffected but bookkeeping is duplicated
+  - get_execution_order returns flat list, drops dependency-group info (was: stage-ordered)
+  - manifest.aliases is not in PluginManifest schema; config-level subtree aliases work, manifest-scope was removed from 10-aliases.yml on 2026-04-30
+  - jinja_features_forbidden has no enforcement layer; using {% include %} fails at render time, not at config load
+  - audit.events_emitted (plugin.side_effect) and audit.mongodb_trace (side_effects field, checkpoints collection) are not implemented; PlannedOperation is in-process only
+
+unverified_in_2026-04-30_audit:
+  - 03-run-state.yml: run.status.plugins and run.plugins shapes (writers not located)
+  - 05-events.yml: payload field sets for run.completed and plugin.completed (emitter exists, exact dict not inspected)
+  - 06-mongodb.yml: indexes_additions.plugin_executions creation in _create_new_indexes
+  - 07-plugin-io.yml: ffprobe / tvdb / omdb / tvmaze / tasker.tasks data shapes (per-field spot-check pending)
+  - 09-api-fastapi.yml: api/v1/run/ vs api/v1/runs/ duplicate router schemas; canonical not declared
+  - 10-aliases.yml: ${path:-fallback} default-syntax parsing in interpolator
+  - 02-manifest.yml: requires_path_prefix_rule strict enforcement
+
+closed_since_last_review:
+  - ExecutionContext legacy fields (match_index, total_matches, api_response) - moved to .deleted/
+  - manifest stage/run_mode PARSE default - now raises ValueError in manifest.py:49-61 (Session 34)
+  - provides_registry silent fallback in PluginServices - now raises PluginError in plugin_services.py:209
+  - build_orchestrator silent NullPersistence downgrade - resolved via persistence_mode contract (orchestrator.py:512-617)
+  - tasker shutil.copy2 direct call - now routes via core.safety.safe_copy (tasker/plugin.py:18,198)
+  - hardlink option not consumed by tasker - now threaded through tasks (tasker/plugin.py:52,200)
+  - dry_run dual surface - single authority via resolve_run_safety (orchestrator.py:100); per-plugin override forbidden
+  - plugin.<name>.data canonical surface moved from tasker into TemplateContextBuilder (2026-04-30)
+
+dead_schema_removed_2026-04-30:
+  - 02-manifest.yml: capabilities, hooks, listens_to, reactive (Pydantic-only, zero readers)
+  - 02-manifest.yml: discovery_extras._resolved_at (zero readers/writers)
+  - 02-manifest.yml: template_support.deprecated_fields.requires_only_jinja_render (no source)
+  - 01-config.yml: scanner.min_size_bytes (zero readers)
+  - 01-config.yml: tmdb.include_raw_data (zero readers)
+  - 04-template-context.yml: context_shape.plugins, provides, index, <resolved_alias> (not emitted by builder)
+  - 04-template-context.yml: custom_filters.tojson (Jinja built-in, not custom), index (not registered)
+  - 05-events.yml: run.failed, job.started, plugin.started, plugin.progress, task.{started,completed,failed}, state.changed, db.{connected,disconnected,synced,error} (zero emitters)
+  - 06-mongodb.yml: interface.{save_checkpoint, get_checkpoints, claim_plugin_execution, heartbeat_plugin_execution} (future-work, unwired); get_plugin_executions renamed to get_unfinished_plugin_executions
+  - 07-plugin-io.yml: renamer.confidence, tasker.tasks_executed, tasker.tasks_skipped, tasker.output_files (zero readers/writers)
+  - 08-services.yml: EventService.emit, EventService.subscribe (read-only contract for plugins); legacy_per_job execute(match_data) (Session 34 deletion); lifecycle.setup, lifecycle.teardown (not in BasePlugin)
+  - 10-aliases.yml: scopes.manifest, manifest_sample (PluginManifest schema does not accept aliases)
+  - 12-safety.yml: audit.events_emitted (plugin.side_effect), audit.mongodb_trace (zero implementation)
 
 v1_direction:
   - single path-based interpolation model (see 10-aliases.yml)

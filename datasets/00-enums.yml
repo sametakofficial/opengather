@@ -1,3 +1,4 @@
+# source: src/archiverr/state/models.py StateEnum
 state:
   - pending
   - running
@@ -6,6 +7,10 @@ state:
   - partial
   - cancelled
 
+# PluginStatus enum is defined in src/archiverr/core/plugins/sdk/types.py
+# but runtime code uses bare string literals (stage_executor.py,
+# orchestrator.py). The enum is documentation-only today; values must
+# match the strings below.
 plugin_status:
   - pending
   - running
@@ -13,16 +18,19 @@ plugin_status:
   - failed
   - skipped
 
+# source: src/archiverr/core/plugins/sdk/manifest.py VALID_STAGES
 stage:
   - input
   - parse
   - data
   - output
 
+# source: src/archiverr/core/plugins/sdk/manifest.py
 run_mode:
   - per_run
   - per_job
 
+# source: src/archiverr/core/plugins/sdk/manifest.py VALID_TRIGGER_RULES
 trigger_rule:
   - all_success
   - one_success
@@ -30,12 +38,17 @@ trigger_rule:
   - all_fail
   - none_fail
 
+# MediaCategory enum is defined in sdk/types.py but runtime code uses
+# bare 'movie'/'show' string literals. Documentation-only today.
 media_category:
   - movie
   - show
   - episode
   - season
 
+# PluginCategory enum exists in sdk/types.py but loader.py:159 calls
+# these "legacy categories"; runtime code uses bare 'input'/'output'
+# strings. Documentation-only today.
 plugin_category:
   - input
   - output

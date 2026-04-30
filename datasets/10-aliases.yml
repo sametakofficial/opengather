@@ -23,13 +23,12 @@ scopes:
     key: aliases
     visible_in: that mapping and its descendants
     shadows: outer aliases with same name
-  manifest:
-    defined_at: plugins/<name>/manifest.yml
-    key: aliases
-    visible_in: that manifest and its merged config branch
-    cannot_access:
-      - runtime job/plugin state
-      - other plugins' manifest-local aliases
+  # manifest scope: REMOVED 2026-04-30.
+  # PluginManifest schema does not declare an `aliases` field; Pydantic
+  # extra=ignore drops any manifest-level `aliases:` block. This scope
+  # is documentation-only today. To restore, add `aliases: dict[str, Any]`
+  # to PluginManifest and push it onto the resolver scope stack during
+  # 3_structural_merge. See datasets/README.yml#known_divergences_today.
 
 resolver_phases:
   1_yaml_include: resolve !include directives
@@ -37,7 +36,10 @@ resolver_phases:
   3_structural_merge: merge manifest -> plugin config branch (3-layer)
   4_scoped_interpolation: resolve ${...} expressions with scope stack
   5_pydantic_validate: validate via PluginManifest / config schemas
-  6_freeze: config is read-only from this point
+  6_freeze: |
+    config is read-only by convention from this point. Loader uses deepcopy
+    boundaries; there is NO Pydantic frozen / immutable wrapper. Mutating
+    config at runtime is undefined behaviour.
 
 resolver_rules:
   - interpolation is evaluated against the compiled config tree, not strings
@@ -77,13 +79,8 @@ config_sample:
       - name: save
         destination: "{{ title }} ({{ movie.year }}).mkv"
 
-manifest_sample:
-  name: tmdb
-  stage: data
-  aliases:
-    parsed: ${config.plugin.renamer.parsed}
-  requires:
-    - ${alias:parsed}:success
+# manifest_sample REMOVED 2026-04-30: aligns with manifest scope removal.
+# Manifest-level aliases are not supported today (PluginManifest extra=ignore).
 
 runtime_template_context_rule:
   - render-time jinja only sees a frozen context built from the compiled config + current run/job state

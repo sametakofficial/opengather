@@ -7,51 +7,57 @@ plugin_services:
   provides: ProvidesService
 
 StateService:
-  get_current_job: () -> JobState
-  get_job: (job_id: str) -> JobState | None
-  get_job_by_index: (index: int) -> JobState | None
-  get_all_jobs: () -> [JobState]
-  get_run: () -> RunState
-  get_plugin_data: (job_id, plugin_name) -> dict
-  save_plugin_data: (job_id, plugin_name, stage, data, status) -> None
+  get_current_job: "() -> JobState"
+  get_job: "(job_id: str) -> JobState | None"
+  get_job_by_index: "(index: int) -> JobState | None"
+  get_all_jobs: "() -> [JobState]"
+  get_run: "() -> RunState"
+  get_plugin_data: "(job_id, plugin_name) -> dict"
+  save_plugin_data: "(job_id, plugin_name, stage, data, status) -> None"
 
 EventService:
-  emit: (event: str, data: dict | None) -> None
-  subscribe: (event: str, handler: Callable) -> None
+  # READ-ONLY for plugins per 2026-04-29 audit and protocols.py:117-122
+  # ("Plugins MUST NOT emit or subscribe").
+  has_fired: "(event: str) -> bool"
+  history: "(event: str | None = None) -> list[dict]"
+  snapshot: "() -> dict[str, list[dict]]"
+  # REMOVED 2026-04-30: emit / subscribe -- plugins are not allowed to
+  # emit events or register handlers. Event publishing belongs to core
+  # (orchestrator, stage_executor, state managers).
 
 LoggerService:
-  debug: (message: str, **kwargs) -> None
-  info: (message: str, **kwargs) -> None
-  warn: (message: str, **kwargs) -> None
-  error: (message: str, **kwargs) -> None
+  debug: "(message: str, **kwargs) -> None"
+  info: "(message: str, **kwargs) -> None"
+  warn: "(message: str, **kwargs) -> None"
+  error: "(message: str, **kwargs) -> None"
 
 ConfigService:
-  get: (key: str, default: any) -> any
-  get_plugin: (plugin_name: str) -> dict
-  get_option: (option: str, default: any) -> any
+  get: "(key: str, default: any) -> any"
+  get_plugin: "(plugin_name: str) -> dict"
+  get_option: "(option: str, default: any) -> any"
 
 TemplateService:
-  render: (template: str, context: dict) -> str
-  build_context: (job_id: str) -> dict
+  render: "(template: str, context: dict) -> str"
+  build_context: "(job_id: str) -> dict"
 
 ProvidesService:
-  complete: (provide: str) -> None
-  is_completed: (provide: str) -> bool
-  get_status: (provide: str) -> dict
+  complete: "(provide: str) -> None"
+  is_completed: "(provide: str) -> bool"
+  get_status: "(provide: str) -> dict"
 
 execution_modes:
   per_run:
     stage: null
-    access:
+    access:           # documented contract; not runtime-enforced
       - run
       - config
-    cannot_access:
+    cannot_access:    # documented contract; not runtime-enforced
       - job
       - jobs
       - plugin
       - plugins
     api:
-      - createJob(input_value, input_data)
+      - "create_job(input_value, input_data)"
   per_job:
     stage: parse | data | output
     access:
@@ -62,14 +68,16 @@ execution_modes:
       - plugin
       - plugins
     api:
-      - createJob(input_value, input_data)
-      - updateJob(job_id, key, value)
-      - updatePlugin(plugin_name, data)
+      - "create_job(input_value, input_data)"
+      - "update_job(job_id, key, value)"
+      - "update_plugin(plugin_name, data)"
 
 plugin_contracts:
   per_run: "execute_run(services) -> dict"
   per_job: "execute(job, services) -> PluginResult | dict"
-  legacy_per_job: "execute(match_data) -> dict"
+  # REMOVED 2026-04-30 (Session 34 WP-1 deleted the legacy adapter):
+  #   legacy_per_job: execute(match_data) -> dict
+  # Wrong signatures now raise PluginError at registry load.
 
 base_classes:
   - BasePlugin (abstract)
@@ -78,6 +86,6 @@ base_classes:
 
 lifecycle:
   - __init__(config)
-  - setup()
-  - execute(...)
-  - teardown()
+  - execute_run(services) | execute(job, services)
+# REMOVED 2026-04-30: setup()/teardown() -- not present in BasePlugin
+# nor in any plugin client (zero hits).

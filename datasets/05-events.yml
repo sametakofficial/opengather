@@ -1,38 +1,28 @@
 events:
+  # Only events with at least one runtime emitter are listed. Removed
+  # 2026-04-30: run.failed, job.started, plugin.started, plugin.progress,
+  # task.{started,completed,failed}, state.changed, db.{connected,
+  # disconnected,synced,error}. These were defined in events/bus.py as
+  # enum values but had zero emitters.
   run:
-    - run.started
-    - run.completed
-    - run.failed
-    - run.error
+    - run.started        # orchestrator.py:275
+    - run.completed      # orchestrator.py:375
+    - run.error          # orchestrator.py:441
   stage:
-    - stage.started
-    - stage.completed
-    - stage.failed
+    - stage.started      # orchestrator.py:296,305
+    - stage.completed    # orchestrator.py:314
+    - stage.failed       # orchestrator.py:325
   job:
-    - job.created
-    - job.started
-    - job.completed
-    - job.failed
-    - job.updated
-    - job.stage_completed
+    - job.created        # state/job_manager.py:103
+    - job.completed      # state/job_manager.py:146
+    - job.failed         # state/job_manager.py:146
+    - job.updated        # state/job_manager.py:193
+    - job.stage_completed # core/plugins/stage_executor.py:223
   plugin:
-    - plugin.started
-    - plugin.completed
-    - plugin.failed
-    - plugin.skipped
-    - plugin.progress
-    - plugin.updated
-  task:
-    - task.started
-    - task.completed
-    - task.failed
-  state:
-    - state.changed
-  db:
-    - db.connected
-    - db.disconnected
-    - db.synced
-    - db.error
+    - plugin.completed   # core/plugins/stage_executor.py:700
+    - plugin.failed      # core/plugins/stage_executor.py:720
+    - plugin.skipped     # state/manager.py:269
+    - plugin.updated     # state/plugin_data_manager.py:82
 
 event_shape:
   name: string
@@ -41,30 +31,21 @@ event_shape:
   source: string
 
 payloads:
+  # Payloads listed only for events that have runtime emitters.
+  # Some payloads marked _unverified: emitter exists, exact field set
+  # not inspected during 2026-04-30 audit.
   run.started: {run_id}
-  run.completed: {run_id, success, duration_ms}
-  run.failed: {run_id, error}
+  run.completed: {run_id, success, duration_ms}  # _unverified
   run.error: {run_id, error}
   stage.started: {stage, plugins}
   stage.completed: {stage, duration_ms}
   stage.failed: {stage, error}
   job.created: {job_id, index, input}
-  job.started: {job_id}
   job.completed: {job_id, success}
   job.failed: {job_id, error}
   job.updated: {job_id, field, value}
   job.stage_completed: {job_id, stage}
-  plugin.started: {plugin_name, job_id}
-  plugin.completed: {plugin_name, job_id, success, data, duration_ms}
+  plugin.completed: {plugin_name, job_id, success, data, duration_ms}  # _unverified
   plugin.failed: {plugin_name, job_id, error, duration_ms}
   plugin.skipped: {plugin_name, job_id, reason}
-  plugin.progress: {plugin_name, percent, message}
   plugin.updated: {plugin_name, job_id, data}
-  task.started: {task_name, job_id}
-  task.completed: {task_name, job_id}
-  task.failed: {task_name, job_id, error}
-  state.changed: {entity, id, field, value}
-  db.connected: {backend}
-  db.disconnected: {backend}
-  db.synced: {collections}
-  db.error: {error}

@@ -16,10 +16,10 @@ file_reader:
   output_per_job_input:
     value: path
     data:
-      filename: string
-      extension: string
-      size_bytes: int
-      source: filesystem
+      path: string      # actual emitted shape per file-reader/client.py:73-76
+      virtual: bool
+  # NOTE 2026-04-30: previously documented {filename, extension, size_bytes, source}
+  # were not produced by file-reader. Aligned with real output.
 
 renamer:
   stage: parse
@@ -41,7 +41,7 @@ renamer:
         title: string
         resolution: string
     category: movie | show
-    confidence: float
+    # confidence: removed 2026-04-30 (zero readers/writers in renamer)
 
 ffprobe:
   stage: data
@@ -222,6 +222,9 @@ tasker:
         success: bool
         rendered: string
         output: path | null
-    tasks_executed: int
-    tasks_skipped: int
-    output_files: [path]
+  # NOTE 2026-04-30:
+  #   - tasks_executed / tasks_skipped: removed; not produced by tasker
+  #   - output_files: removed; tasker writes save destinations to
+  #     job.output.values via services.update_job(), not to plugin.tasker.data
+  effects:
+    job.output.values: list[path]   # updated via update_job() per task

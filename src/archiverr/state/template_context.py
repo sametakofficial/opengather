@@ -52,6 +52,31 @@ class TemplateContextBuilder:
             "config": run.config if run else {},
             "options": run.config.get('options', {}) if run else {},
             "events": events or {},
+            "plugin": self._build_plugin_surface(job),
+        }
+
+    def _build_plugin_surface(self, job: 'JobState') -> dict[str, Any]:
+        """Build canonical ``plugin.<name>.{data,status}`` surface.
+
+        Per ``datasets/04-template-context.yml``:
+        - ``source: TemplateContextBuilder only``
+        - ``forbidden_sources: tasker local _build_context``
+
+        ``data`` comes from ``job.plugins[name]`` (flat plugin output dict).
+        ``status`` comes from ``job.status.plugins[name]`` (state/success/timing).
+        """
+        plugins = getattr(job, 'plugins', {}) or {}
+        statuses = (
+            job.status.plugins
+            if hasattr(job, 'status') and getattr(job.status, 'plugins', None) is not None
+            else {}
+        )
+        return {
+            name: {
+                "data": pdata if isinstance(pdata, dict) else {},
+                "status": statuses.get(name, {}),
+            }
+            for name, pdata in plugins.items()
         }
 
     def _build_run_context(self, run: Optional['RunState']) -> dict[str, Any]:

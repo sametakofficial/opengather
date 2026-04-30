@@ -46,26 +46,13 @@ job:
 jobs:
   - <job>
 
-plugin:
-  job_id: job_{run_id}_{index}
-  run_id: run_{uuid8}
-  <plugin_name>:
-    status:
-      state: completed | failed | skipped
-      success: bool
-      started_at: ISO8601
-      finished_at: ISO8601
-      duration_ms: int
-      error: string | null
-    data: {}
-
-plugins:
-  - job_id: job_{run_id}_{index}
-    job_index: int
-    run_id: run_{uuid8}
-    <plugin_name>:
-      status: {}
-      data: {}
+# NOTE 2026-04-30: The previous `plugin` and `plugins` top-level shapes
+# documented here did not match the runtime persistence shape and had no
+# direct readers. Kept here only as the *MongoDB persistence projection*
+# of plugin executions; see 06-mongodb.yml#plugins for the real schema
+# (flat document with explicit plugin_name field, not nested by name).
+# At runtime, in-memory plugin state lives on `job.plugins` and
+# `job.status.plugins` (see above) -- not on a separate top-level object.
 
 plugin_result:
   success: bool
