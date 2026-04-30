@@ -30,3 +30,36 @@ RunListResponse:
 RunCreate:
   config: {}
   dry_run: bool
+
+# Two distinct execution endpoints (NOT duplicates - different models)
+# Source: api/v1/run/router.py + api/v1/runs/router.py
+endpoints:
+  /api/v1/run/:
+    canonical: false
+    role: blackbox CLI proxy
+    execution: subprocess (python -m archiverr); merges options into temp YAML
+    response: RunResponse{execution_id, success, total_matches, completed_matches, failed_matches, duration_ms, error, api_response}
+    use_case: external "trigger and block" caller; full-process isolation
+    notes: |
+      stderr/stdout are captured in full and logged at error level on non-zero
+      returncode (api/v1/run/router.py); the response body's `error` field is
+      truncated to 500 chars for client convenience but the full output stays
+      in server logs (AGENT.md §5 no silent failures).
+
+  /api/v1/runs/:
+    canonical: true
+    role: RESTful CRUD over run lifecycle
+    execution: in-process (build_orchestrator) via run_in_threadpool
+    sub_resources:
+      - GET /api/v1/runs/                    # list with pagination
+      - POST /api/v1/runs/                   # create + execute
+      - GET /api/v1/runs/{run_id}            # detail
+      - GET /api/v1/runs/{run_id}/status     # status only
+      - GET /api/v1/runs/{run_id}/jobs       # nested jobs
+      - DELETE /api/v1/runs/{run_id}         # delete (no-delete policy: moves to .deleted/)
+    response: RunResponse (canonical shape, this file)
+    use_case: API-driven UI, polling, cross-run query
+    notes: |
+      Streaming/SSE not implemented; long-running runs are polled via
+      /{run_id}/status. websocket_url field exists in /run/ schemas.py but is
+      never set (phantom).

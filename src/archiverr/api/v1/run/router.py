@@ -3,6 +3,7 @@ Run Router - Simple subprocess-based execution
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 
 from .schemas import RunRequest
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Project root - where config.yml is (dynamically determined)
@@ -99,6 +101,15 @@ def run_default(request: RunRequest = Body(None)):
         duration_ms = int((time.time() - start_time) * 1000)
 
         if result.returncode != 0:
+            # AGENT.md §5: no silent failures. Log full stderr; truncate only the
+            # response body for client convenience.
+            full_stderr = result.stderr or ""
+            full_stdout = result.stdout or ""
+            logger.error(
+                "Subprocess archiverr run failed (returncode=%s, duration_ms=%s)\n"
+                "STDERR (full):\n%s\nSTDOUT (full):\n%s",
+                result.returncode, duration_ms, full_stderr, full_stdout,
+            )
             return RunResponse(
                 execution_id="error",
                 success=False,
@@ -106,7 +117,7 @@ def run_default(request: RunRequest = Body(None)):
                 completed_matches=0,
                 failed_matches=0,
                 duration_ms=duration_ms,
-                error=result.stderr[:500] if result.stderr else "Process failed"
+                error=(full_stderr[:500] if full_stderr else "Process failed")
             )
 
         # Read latest report

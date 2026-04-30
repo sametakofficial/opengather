@@ -108,9 +108,9 @@ async def system_status(persistence: PersistenceDep):
             backend=stats.get("backend", "unknown"),
             database=stats.get("database"),
             collections={
-                "executions": stats.get("executions", 0),
-                "matches": stats.get("matches", 0),
-                "plugin_results": stats.get("plugin_results", 0)
+                "runs": stats.get("runs", 0),
+                "jobs": stats.get("jobs", 0),
+                "plugins": stats.get("plugins", 0)
             }
         )
     except Exception as e:

@@ -44,9 +44,9 @@ class AsyncPersistenceWrapper:
         return {
             "backend": "MongoDBPersistence",
             "database": self._db.name,
-            "executions": await self._db["executions"].count_documents({}),
-            "matches": await self._db["matches"].count_documents({}),
-            "plugin_results": await self._db["plugin_results"].count_documents({})
+            "runs": await self._db["runs"].count_documents({}),
+            "jobs": await self._db["jobs"].count_documents({}),
+            "plugins": await self._db["plugins"].count_documents({})
         }
 
     # ========================================================================
