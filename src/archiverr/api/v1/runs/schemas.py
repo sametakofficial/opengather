@@ -52,6 +52,21 @@ class RunCreate(BaseModel):
     dry_run: bool = True
 
 
+class PersistenceInfo(BaseModel):
+    """Persistence visibility (S37 PASS 2).
+
+    Surfaces the persistence_mode contract (11-recovery.yml) so callers can
+    distinguish a persisted run from a degraded NullPersistence fallback.
+    Without this, a degraded-mode run with Mongo down returns a 201 that
+    looks identical to a persisted run -- AGENT.md "no silent failures".
+    """
+    mode: str = Field(default="degraded", description="Requested mode: full | degraded | off")
+    backend: str = Field(default="NullPersistence", description="Active backend class")
+    persisted: bool = Field(default=False, description="True iff run was actually persisted to Mongo")
+
+    model_config = {"from_attributes": True}
+
+
 class RunResponse(BaseModel):
     """Run response (aligned with FINAL_DATASETS.yml)"""
     id: str = Field(..., description="Run ID (run_{timestamp}_{hash})")
@@ -63,6 +78,7 @@ class RunResponse(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.now)
     completed_at: datetime | None = None
+    persistence: PersistenceInfo | None = Field(default=None, description="Persistence visibility (S37)")
 
     model_config = {"from_attributes": True}
 

@@ -25,6 +25,11 @@ class RunResult:
     stages_completed: list[str] = field(default_factory=list)
     stages_failed: list[str] = field(default_factory=list)
     error: str | None = None
+    # Persistence visibility (S37 PASS 2): so callers can distinguish a
+    # persisted run from a degraded NullPersistence fallback. Mirrors the
+    # persistence_mode contract in 11-recovery.yml#persistence_mode_contract.
+    persistence_mode: str = "degraded"
+    persistence_backend: str = "NullPersistence"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API/logging"""
@@ -38,7 +43,9 @@ class RunResult:
             "duration_ms": self.duration_ms,
             "stages_completed": self.stages_completed,
             "stages_failed": self.stages_failed,
-            "error": self.error
+            "error": self.error,
+            "persistence_mode": self.persistence_mode,
+            "persistence_backend": self.persistence_backend,
         }
 
 
@@ -53,7 +60,9 @@ class ResultBuilder:
         success: bool,
         stages_completed: list[str],
         stages_failed: list[str],
-        error: str = None
+        error: str = None,
+        persistence_mode: str = "degraded",
+        persistence_backend: str = "NullPersistence",
     ) -> RunResult:
         """
         Build RunResult from current state.
@@ -90,5 +99,7 @@ class ResultBuilder:
             duration_ms=duration_ms,
             stages_completed=stages_completed,
             stages_failed=stages_failed,
-            error=error
+            error=error,
+            persistence_mode=persistence_mode,
+            persistence_backend=persistence_backend,
         )

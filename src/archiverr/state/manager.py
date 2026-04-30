@@ -53,9 +53,16 @@ class GlobalStateManager:
         self,
         persistence=None,
         debugger=None,
-        event_bus: Optional['EventBus'] = None
+        event_bus: Optional['EventBus'] = None,
+        persistence_mode: Optional[str] = None,
     ):
-        """Reconfigure dependencies."""
+        """Reconfigure dependencies.
+
+        ``persistence_mode`` (S37 PASS 2): the resolved mode used for the
+        run ('full' | 'degraded' | 'off'). Threaded into RunState so the
+        Mongo `runs.persistence_mode` field reflects what actually ran (not
+        only what config requested). Defaults to 'degraded' if never set.
+        """
         if persistence is not None:
             self._persistence = persistence
             self._persistence_delegate.configure(persistence=persistence)
@@ -66,6 +73,8 @@ class GlobalStateManager:
             self._event_bus = event_bus
             self._event_emitter.configure(event_bus=event_bus)
             self._job_manager.configure(event_bus=event_bus)
+        if persistence_mode is not None:
+            self._persistence_mode_resolved = persistence_mode
 
     def reset(self):
         """reset state for new run."""
@@ -139,7 +148,8 @@ class GlobalStateManager:
 
         self._run = RunState(
             id=run_id,
-            config=config
+            config=config,
+            persistence_mode=getattr(self, "_persistence_mode_resolved", "degraded"),
         )
         self._run.start()
 

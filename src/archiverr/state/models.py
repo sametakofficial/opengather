@@ -158,13 +158,18 @@ class RunState:
     status: RunStatus = field(default_factory=RunStatus)
     config: dict[str, Any] = field(default_factory=dict)
     plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # S37 PASS 2: persisted alongside the run so historical runs carry the
+    # mode they ran under (forensic value when investigating partial state).
+    # Schema declared in datasets/06-mongodb.yml line 22; writer wired here.
+    persistence_mode: str = "degraded"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "status": self.status.to_dict(),
             "config": self.config,
-            "plugins": self.plugins
+            "plugins": self.plugins,
+            "persistence_mode": self.persistence_mode,
         }
 
     def start(self):

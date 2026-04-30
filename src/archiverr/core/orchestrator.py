@@ -378,6 +378,7 @@ class Orchestrator:
 
     def _build_result(self, success: bool, error: str = None) -> RunResult:
         """Build RunResult using ResultBuilder delegate."""
+        backend_name = type(self._persistence).__name__ if self._persistence else "NullPersistence"
         return self._result_builder.build(
             run_id=self._run_id,
             state=self._state,
@@ -385,7 +386,9 @@ class Orchestrator:
             success=success,
             stages_completed=self._stages_completed,
             stages_failed=self._stages_failed,
-            error=error
+            error=error,
+            persistence_mode=self._persistence_mode,
+            persistence_backend=backend_name,
         )
 
     def _summarize_config(self) -> dict[str, Any]:
@@ -575,11 +578,14 @@ def build_orchestrator(
                         "(no data will be persisted, recovery disabled)",
                     )
 
-    # Configure state with persistence
+    # Configure state with persistence + resolved persistence_mode (S37 PASS 2:
+    # so RunState.persistence_mode reflects what actually ran, surfaced on
+    # `runs.persistence_mode` in Mongo and on the API response).
     state.configure(
         persistence=persistence,
         debugger=debugger,
         event_bus=event_bus,
+        persistence_mode=mode,
     )
 
     # Create plugin registry

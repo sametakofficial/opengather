@@ -28,6 +28,7 @@ except ImportError:
 from .schemas import (
     InputData,
     OutputData,
+    PersistenceInfo,
     RunCreate,
     RunListResponse,
     RunResponse,
@@ -83,6 +84,15 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
         if isinstance(values, dict):
             output_data = {**output_data, "values": list(values.values())}
 
+    # S37 PASS 2: persistence visibility. If the doc was found in Mongo, it
+    # was persisted by definition; backend = MongoDBPersistence/PyMongo.
+    # `persistence_mode` is read from the doc (writer in state/manager.py).
+    persistence = PersistenceInfo(
+        mode=doc.get("persistence_mode", "degraded"),
+        backend="PyMongoPersistence",
+        persisted=True,
+    )
+
     return RunResponse(
         id=run_id,
         status=status,
@@ -92,7 +102,8 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
         config=doc.get("config", doc.get("config_snapshot", {})),
         options=doc.get("options", {}),
         created_at=created_at,
-        completed_at=completed_at
+        completed_at=completed_at,
+        persistence=persistence,
     )
 
 
@@ -179,52 +190,64 @@ async def create_run(body: RunCreate, db: DatabaseDep):
     
     This starts an asynchronous run process.
     """
+    from fastapi.concurrency import run_in_threadpool
+
+    from archiverr.core.exceptions import CriticalError
+    from archiverr.core.orchestrator import build_orchestrator
+    from archiverr.utils.config_loader import load_config_with_tracking
+
+    # 1. Load config + run orchestrator. If mode=full and Mongo down,
+    #    build_orchestrator raises CriticalError -> 503 (honors the
+    #    persistence_mode contract: full = fail-fast).
     try:
-        from fastapi.concurrency import run_in_threadpool
-
-        from archiverr.core.orchestrator import build_orchestrator
-        from archiverr.utils.config_loader import load_config_with_tracking
-
-        # Load config
         config = body.config or load_config_with_tracking("config.yml")
-
-        # Override dry_run
         config.setdefault('options', {})['dry_run'] = body.dry_run
 
-        # Build and run orchestrator in thread pool to avoid blocking event loop
         def _run_orchestrator():
             orchestrator = build_orchestrator(config)
             return orchestrator.run()
 
         result = await run_in_threadpool(_run_orchestrator)
-
-        # Get run from canonical 'runs' collection
-        doc = await db["runs"].find_one({"id": result.run_id})
-
-        if doc:
-            return _doc_to_run_response(doc)
-
-        # Fallback: create response from result
-        return RunResponse(
-            id=result.run_id,
-            status=RunStatus(
-                state=StateEnum.SUCCESS if result.success else StateEnum.FAILED,
-                success=result.success,
-                total_jobs=result.total_jobs,
-                completed=result.completed,
-                failed=result.failed,
-                duration_ms=result.duration_ms,
-                error=result.error
-            ),
-            created_at=datetime.now(timezone.utc)
-        )
-
-    except OperationFailure as e:
-        raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
-    except PyMongoError as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
+    except CriticalError as e:
+        raise HTTPException(status_code=503, detail=f"persistence_mode=full and Mongo unavailable: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Run failed to start: {e}")
+
+    # 2. The run completed (even if degraded -> NullPersistence). Try to
+    #    fetch the persisted doc; if Mongo is unreachable AT THIS POINT,
+    #    fall through to a synthesized response with persisted=False rather
+    #    than 503. The run succeeded; caller must be able to see it.
+    doc = None
+    try:
+        doc = await db["runs"].find_one({"id": result.run_id})
+    except (OperationFailure, PyMongoError):
+        doc = None  # treated as "Mongo unavailable, surface degraded fallback"
+
+    if doc:
+        return _doc_to_run_response(doc)
+
+    # 3. Synthesize from RunResult. Per persistence_mode contract, if backend
+    #    was NullPersistence (degraded fallback), surface persisted=False --
+    #    AGENT.md "no silent failures".
+    backend = getattr(result, "persistence_backend", "NullPersistence")
+    return RunResponse(
+        id=result.run_id,
+        status=RunStatus(
+            state=StateEnum.SUCCESS if result.success else StateEnum.FAILED,
+            success=result.success,
+            total_jobs=result.total_jobs,
+            completed=result.completed,
+            failed=result.failed,
+            duration_ms=result.duration_ms,
+            error=result.error
+        ),
+        created_at=datetime.now(timezone.utc),
+        persistence=PersistenceInfo(
+            mode=getattr(result, "persistence_mode", "degraded"),
+            backend=backend,
+            persisted=(backend != "NullPersistence"),
+        ),
+    )
 
 
 @router.delete("/{run_id}", status_code=204)
