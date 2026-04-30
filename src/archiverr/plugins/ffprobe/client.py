@@ -27,15 +27,20 @@ class FFProbePlugin(OutputPlugin):
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.name = "ffprobe"
+        # Session 38 A12 fix: previously hard-coded subprocess timeout=15 even
+        # though manifest.config_schema declared `timeout` (1-300, default 30).
+        # Now the manifest contract is honoured.
+        self.timeout = int(config.get('timeout', 30))
+        self.ffprobe_path = config.get('ffprobe_path', 'ffprobe')
 
     def execute(self, job: Any, services: Any) -> PluginResult:
         """
         Extract media metadata using ffprobe (Session 11 signature).
-        
+
         Args:
             job: JobState with input.value
             services: PluginServices
-            
+
         Returns:
             PluginResult with video, audio, container data
         """
@@ -43,7 +48,16 @@ class FFProbePlugin(OutputPlugin):
 
         # Get input path from job
         input_path = job.input.value if hasattr(job.input, 'value') else str(job.input)
-        is_virtual = job.input.data.get('source') == 'virtual' if hasattr(job.input, 'data') else False
+        # Session 38 A7+A13 fix: scanner's virtual-job dict carries the
+        # explicit ``virtual: True`` flag. The legacy ``source == 'virtual'``
+        # check never fired because scanner uses ``source: 'scanner'``.
+        # We honour both contracts so any caller-defined virtual job is
+        # handled, but the explicit flag is the canonical signal.
+        input_data = getattr(job.input, 'data', None) or {}
+        is_virtual = bool(
+            input_data.get('virtual', False)
+            or input_data.get('source') == 'virtual'
+        )
 
         # Skip virtual paths - ffprobe cannot analyze non-existent files
         if is_virtual:
@@ -56,7 +70,7 @@ class FFProbePlugin(OutputPlugin):
         try:
             # Run ffprobe
             cmd = [
-                'ffprobe',
+                self.ffprobe_path,
                 '-v', 'quiet',
                 '-print_format', 'json',
                 '-show_format',
@@ -64,7 +78,7 @@ class FFProbePlugin(OutputPlugin):
                 input_path
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout)
 
             if result.returncode != 0:
                 return self._error_result()
@@ -95,7 +109,14 @@ class FFProbePlugin(OutputPlugin):
                     'height': parse_int_safe(str(video_stream.get('height', 0))),
                     'resolution': f"{video_stream.get('height', 0)}p",
                     'aspect_ratio': video_stream.get('display_aspect_ratio', ''),
-                    'bit_depth': parse_int_safe(str(video_stream.get('bits_per_raw_sample', 8)), default=8),
+                    # Session 38 B5 fix: bit_depth was defaulting to 8, masking
+                    # actual missing-metadata cases. None is honest; consumers
+                    # already null-check the field.
+                    'bit_depth': (
+                        parse_int_safe(str(video_stream.get('bits_per_raw_sample')))
+                        if video_stream.get('bits_per_raw_sample') is not None
+                        else None
+                    ),
                     'pix_fmt': video_stream.get('pix_fmt', ''),
                     'fps': parse_fps(video_stream.get('r_frame_rate', '0/1')),
                     'duration': parse_duration(str(video_stream.get('duration', 0))),

@@ -45,6 +45,39 @@ class TVMazeNormalizer:
 
         return normalized
 
+    def normalize_episode(self, episode_data: dict[str, Any], show_id: str | int | None = None) -> dict[str, Any]:
+        """Normalize episode response from /shows/{id}/episodebynumber.
+
+        Session 38 A4 fix: previously fetched but discarded.
+        Mirrors tmdb's `episode` shape: identifiers, parent series ref,
+        season/episode numbers, air date, runtime, overview.
+        """
+        if not episode_data:
+            return {}
+
+        airdate = episode_data.get('airdate')
+        return {
+            'media_type': 'episode',
+            'identifiers': {
+                'tvmaze_id': str(episode_data.get('id', ''))
+            },
+            'series': {
+                'tvmaze_id': str(show_id) if show_id is not None else None
+            },
+            'title': {
+                'primary': episode_data.get('name'),
+                'original': episode_data.get('name')
+            },
+            'season_number': episode_data.get('season'),
+            'episode_number': episode_data.get('number'),
+            'air_dates': {
+                'first': airdate,
+                'year': int(airdate[:4]) if airdate else None
+            },
+            'runtime': episode_data.get('runtime'),
+            'overview': episode_data.get('summary'),
+        }
+
     def _normalize_people(self, cast_data: list[dict[str, Any]], crew_data: list[dict[str, Any]]) -> dict[str, Any]:
         """Normalize cast and crew"""
         cast = []

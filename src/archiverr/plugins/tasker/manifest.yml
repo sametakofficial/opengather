@@ -12,16 +12,23 @@ entry_point: plugin.py
 provides:
   - output.render
 
-# Plugin data dependencies (wait for data stage)
+# Plugin data dependencies (wait for data stage).
+# Only renamer is truly required: tasker templates depend on parsed
+# title/year. Metadata plugins (tmdb/omdb/tvdb/tvmaze) are OPTIONAL
+# contributors — their fields are accessed via Jinja and gracefully
+# render to "" when a plugin is not loaded or didn't succeed.
+# (Session 38 A11 fix: previously listed plugin.tmdb.data:success which
+# misled readers into thinking TMDB was mandatory; with trigger_rule
+# all_done the gate already let tasker run, but the manifest's stated
+# intent disagreed with actual behaviour.)
 requires:
-  - plugin.tmdb.data:success
   - plugin.renamer.parsed:success
 
 # FS lock for static paths only
 fs_lock:
   - /srv/archive
 
-trigger_rule: all_done
+trigger_rule: all_success
 
 # Supported media types (all)
 categories: []

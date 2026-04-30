@@ -64,6 +64,10 @@ class TVDbPlugin(OutputPlugin):
 
                 # Convert dict result to PluginResult
                 data = {k: v for k, v in result.items() if k != 'status'}
+                # Mirror normalized payload onto plugin.tvdb.data so downstream
+                # Jinja templates can reach `{{ plugin.tvdb.data.movie.* }}`
+                # consistently with tmdb (Session 38 A2 fix per audit §1).
+                services.update_plugin(data=data)
                 return PluginResult.success_result(data=data, started_at=started_at)
 
             elif show_data and show_data.get('name'):
@@ -79,6 +83,7 @@ class TVDbPlugin(OutputPlugin):
 
                 # Convert dict result to PluginResult
                 data = {k: v for k, v in result.items() if k != 'status'}
+                services.update_plugin(data=data)
                 return PluginResult.success_result(data=data, started_at=started_at)
 
             else:
@@ -239,6 +244,10 @@ class TVDbPlugin(OutputPlugin):
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
             'show': normalized_show,  # NORMALIZED by default
+            # season/episode require /series/{id}/episodes/default fetch +
+            # a normalize_episode() that doesn't exist yet. Documented as
+            # future-work; today they're explicit None so consumers can
+            # rely on the keys existing (Session 38 A5 audit note).
             'season': None,
             'episode': None,
             'movie': None

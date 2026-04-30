@@ -6,9 +6,7 @@ Combines:
 - Main branch template rendering (Jinja2, $ syntax, smart routing)
 """
 
-import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from jinja2 import BaseLoader, Environment
@@ -25,8 +23,9 @@ class TaskerPlugin(OutputPlugin):
         super().__init__(config)
         self.name = "tasker"
         self.tasks = config.get('tasks', [])
-        self.save_output = config.get('save_output', True)
-        self.output_dir = config.get('output_dir', 'output')
+        # Session 38 B4: removed dead config keys ``save_output`` and
+        # ``output_dir``; the run-output JSON path was never wired to a
+        # caller. Run-state persistence already lives in MongoDB.
 
         # Jinja2 environment. ``count`` is Jinja's built-in alias for
         # ``length``; we register it explicitly so the dependency is
@@ -35,9 +34,6 @@ class TaskerPlugin(OutputPlugin):
         self.env.filters['truncate'] = self._filter_truncate
         self.env.filters['format'] = lambda fmt, *args: fmt % args
         self.env.filters['count'] = self._filter_count
-
-        # Run output tracking
-        self._run_output: dict[str, Any] = {}
 
     def execute(self, job: Any, services: Any) -> SDKPluginResult:
         """Execute tasks for job, returning a modern PluginResult."""
@@ -94,10 +90,9 @@ class TaskerPlugin(OutputPlugin):
             "output_values": output_values
         })
 
-        # Track for JSON output
-        # Snapshot of plugin data for run-output JSON tracking.
-        plugins_snapshot = dict(getattr(job, 'plugins', {}) or {})
-        self._track_run_output(job, task_results, plugins_snapshot)
+        # Session 38 B4: dead ``_track_run_output`` + ``save_run_output``
+        # path removed; nothing in the orchestrator ever invoked the JSON
+        # writer. State persistence is handled by MongoDB now.
 
         return SDKPluginResult(
             success=True,
@@ -241,69 +236,4 @@ class TaskerPlugin(OutputPlugin):
             return len(value)
         except TypeError:
             return 0
-
-    def _track_run_output(self, job: Any, task_results: dict[str, Any], plugins_data: dict[str, Any]) -> None:
-        """
-        Track run output for JSON save.
-
-        Session 14 structure:
-        - input: value + data (plugin sets)
-        - output: values + data (plugin sets)
-        - plugins: plugin data (each plugin has status + data)
-        - tasks removed: tasker plugin stores task results in its own data
-        """
-        job_id = getattr(job, 'id', 'unknown')
-
-        # Add task results to tasker plugin data.
-        # Defensive setdefault: services.update_plugin(data=...) above this
-        # call already populated plugins_data['tasker']['data'], but the
-        # plugins map can pre-exist as a bare {} on virtual-path/dry-run jobs
-        # where the snapshot was taken before update_plugin landed. (S37)
-        if 'tasker' in plugins_data and isinstance(plugins_data['tasker'], dict):
-            plugins_data['tasker'].setdefault('data', {})['tasks'] = task_results
-
-        self._run_output[job_id] = {
-            'job_id': job_id,
-            'index': getattr(job, 'index', 0),
-            'input': {
-                'value': getattr(job.input, 'value', '') if hasattr(job, 'input') else '',
-                'data': getattr(job.input, 'data', {}) if hasattr(job, 'input') else {}
-            },
-            'output': {
-                'values': getattr(job.output, 'values', []) if hasattr(job, 'output') else [],
-                'data': getattr(job.output, 'data', {}) if hasattr(job, 'output') else {}
-            },
-            'plugins': plugins_data,
-            'success': True,
-            'timestamp': datetime.now().isoformat()
-        }
-
-    def save_run_output(self, run_id: str) -> str | None:
-        """Save run output to JSON file."""
-        if not self.save_output or not self._run_output:
-            return None
-
-        try:
-            output_dir = Path(self.output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"run_{run_id}_{timestamp}.json"
-            filepath = output_dir / filename
-
-            output_data = {
-                'run_id': run_id,
-                'timestamp': datetime.now().isoformat(),
-                'jobs': list(self._run_output.values()),
-                'total_jobs': len(self._run_output)
-            }
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(output_data, f, indent=2, ensure_ascii=False)
-
-            return str(filepath)
-
-        except OSError as e:
-            self.error(f"Failed to save run output: {e}")
-            return None
 

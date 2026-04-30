@@ -57,7 +57,13 @@ class TVMazePlugin(OutputPlugin):
             return PluginResult.skipped_result(reason="Not a TV show", started_at=started_at)
 
         try:
-            return self._fetch_show(show_data, started_at)
+            result = self._fetch_show(show_data, started_at)
+            # Mirror normalized payload onto plugin.tvmaze.data so downstream
+            # Jinja templates can reach `{{ plugin.tvmaze.data.show.* }}`
+            # consistently with tmdb (Session 38 A3 fix per audit §1).
+            if result.success and result.data:
+                services.update_plugin(data=result.data)
+            return result
         except Exception as e:
             self.error("Execution failed", error=str(e))
             return PluginResult.error_result(str(e), started_at=started_at)
@@ -85,21 +91,30 @@ class TVMazePlugin(OutputPlugin):
         if season_num and episode_num:
             try:
                 episode_info = self.api.get_episode_by_number(show_id, season_num, episode_num)
-            except Exception:
-                pass
+            except Exception as e:
+                # Episode lookup is best-effort; surface failure in debug log
+                # so it isn't silently lost (Session 38 A4: was bare `pass`).
+                self.debug("Episode lookup failed", error=str(e),
+                           season=season_num, episode=episode_num)
 
         # Fetch extras
         raw_extras = self._fetch_extras(show_id, episode_info)
 
         # Normalize (DEFAULT OUTPUT)
         normalized_show = self.normalizer.normalize_show(show_info, raw_extras)
+        # Session 38 A4 fix: episode_info was fetched above but never written
+        # to data['episode']. Now normalized via normalize_episode().
+        normalized_episode = (
+            self.normalizer.normalize_episode(episode_info, show_id=show_id)
+            if episode_info else None
+        )
 
         # Build result data
         data = {
             'show': normalized_show,  # NORMALIZED by default
-            'episode': None,
-            'season': None,
-            'movie': None
+            'episode': normalized_episode,
+            'season': None,  # TVMaze has no /season endpoint shape we normalize today
+            'movie': None,
         }
 
         # Add RAW data ONLY if requested

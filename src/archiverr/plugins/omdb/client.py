@@ -68,7 +68,7 @@ class OMDbPlugin(OutputPlugin):
                 if year:
                     params['y'] = year
 
-                response = requests.get('http://www.omdbapi.com/', params=params, timeout=5)
+                response = requests.get('https://www.omdbapi.com/', params=params, timeout=5)
                 data = response.json()
 
                 if data.get('Response') == 'True':
@@ -102,7 +102,7 @@ class OMDbPlugin(OutputPlugin):
             try:
                 params = {'apikey': self.api_key, 't': show_name, 'type': 'series'}
 
-                response = requests.get('http://www.omdbapi.com/', params=params, timeout=5)
+                response = requests.get('https://www.omdbapi.com/', params=params, timeout=5)
                 data = response.json()
 
                 if data.get('Response') == 'True':
@@ -125,6 +125,10 @@ class OMDbPlugin(OutputPlugin):
                 self.error("Show fetch failed", error=str(e))
                 return PluginResult.error_result(str(e), started_at=started_at)
 
+        # Mirror normalized payload onto plugin.omdb.data so downstream Jinja
+        # templates can reach `{{ plugin.omdb.data.movie.title.primary }}`
+        # consistently with tmdb (Session 38 A1 fix per audit §1).
+        services.update_plugin(data=result_data)
         return PluginResult.success_result(data=result_data, started_at=started_at)
 
     def _perform_validation(self, job: Any, omdb_data: dict[str, Any]) -> dict[str, Any]:

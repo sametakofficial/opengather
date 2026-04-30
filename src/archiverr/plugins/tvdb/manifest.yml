@@ -12,4 +12,5 @@ provides:
 # Note: reads ffprobe.container.duration for optional validation (soft dependency)
 trigger_rule: all_success
 categories:
+  - movie
   - show

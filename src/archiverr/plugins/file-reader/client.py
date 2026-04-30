@@ -14,7 +14,11 @@ class FileReaderPlugin(InputPlugin):
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
-        self.name = "file_reader"
+        # Session 38 A8 fix: previously "file_reader" (underscore) but the
+        # manifest declares "file-reader" (kebab-case). The registry indexes
+        # by manifest.name, so any internal log keyed off self.name was
+        # diverging from the canonical plugin id.
+        self.name = "file-reader"
 
     def execute_run(self, services: Any) -> dict[str, Any]:
         """
@@ -24,7 +28,9 @@ class FileReaderPlugin(InputPlugin):
             services: PluginServices instance
 
         Returns:
-            dict with count of jobs created
+            dict with count of jobs created (key ``count`` mirrors scanner
+            so per_run_executor's ``result.get('count', 0)`` summary
+            reflects reality — Session 38 A10).
         """
         targets = self.config.get('targets', [])
         allow_virtual = self.config.get('allow_virtual_paths', False)
@@ -75,10 +81,31 @@ class FileReaderPlugin(InputPlugin):
                 input_data={'virtual': path_info['virtual']}
             )
 
-        self.info("Reading complete", found=len(paths_found))
-        return {'jobs_created': len(paths_found)}
+        count = len(paths_found)
+        self.info("Reading complete", found=count)
+
+        # Session 38 A9 fix: previously file-reader skipped update_plugin,
+        # leaving plugin.file-reader.data empty downstream. Mirroring scanner.
+        services.update_plugin(
+            target_id=services.run_id,
+            plugin_name="file-reader",
+            data={
+                "count": count,
+                "targets": targets,
+                "allow_virtual_paths": allow_virtual,
+            },
+        )
+
+        return {'count': count}
 
     def execute(self) -> list[dict[str, Any]]:
-        """Legacy execute -- kept for backward compatibility but should not be called."""
-        self.warn("Legacy execute() called on file_reader -- use execute_run(services) instead")
-        return []
+        """Per_run plugins use ``execute_run(services)``; this stub exists
+        only because :class:`InputPlugin` declares ``execute`` as abstract.
+
+        Calling it is a contract violation — the orchestrator dispatches
+        on ``run_mode``. Session 38 B3: replaced the legacy warn-and-return
+        path with an explicit error matching scanner's pattern.
+        """
+        raise NotImplementedError(
+            "file-reader is per_run; call execute_run(services) instead"
+        )
