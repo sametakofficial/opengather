@@ -1,7 +1,69 @@
-# Handoff - Session 36 (MongoDB + FastAPI cleanup sprint)
+# Handoff - Session 37 (MongoDB + FastAPI End-to-End Sprint)
 
-**Date:** April 30, 2026
+**Date:** April 30, 2026 (afternoon, post Session 36)
 **Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 37)
+
+End-to-end sprint: bring Mongo up, prove FastAPI ↔ MongoDB integration runs,
+finalize structures + communications, surface persistence-mode honestly.
+
+**8 PASS commits**, 514/12 unit tests green, ZERO TOLERANCE plugin-agnostic
+guard 14/14 PASS, full smoke E2E verified (CLI + FastAPI + Mongo).
+
+```
+69f7398  PASS 8: unify async Mongo on AsyncMongoDB singleton (drop deps globals)
+0a3c44e  PASS 7: subprocess /run/ extracts real run_id via stdout marker
+670fb07  PASS 5: scope-out per_run plugin_executions in 11-recovery.yml
+c5bc407  PASS 4: archive unwired DiagnosticsLogger + /system/diagnostics
+3954094  PASS 3: clean stale schema fragments (plugins.status, run_{uuid8})
+e832d19  PASS 2: surface persistence_mode + backend in API + Mongo
+deee042  PASS 1: lifespan ensures Mongo indexes idempotently
+1059ff1  PASS 6: drop ObjectId from /api/v1/runs/{id}/jobs response
+```
+
+### What works now (post S37)
+
+- `docker compose up -d mongodb` → Mongo healthy
+- `python -m archiverr` (CLI) → writes runs/jobs/plugins/plugin_executions to canonical 4 collections, prints `ARCHIVERR_RUN_ID=<id>` stdout marker
+- `python -m archiverr serve --port 8001` → FastAPI on :8001, lifespan auto-creates indexes idempotently
+- `POST /api/v1/runs` (in-process) → 201 with `persistence: {mode, backend, persisted: bool}`
+- `POST /api/v1/run` (subprocess) → returns real `execution_id` from stdout marker (no more lying "ok")
+- `GET /api/v1/runs/{id}/jobs` → 200, no ObjectId leak
+- Mongo DOWN + degraded → 201 + `persisted: false` (run still completes via NullPersistence)
+- Mongo DOWN + `persistence_mode=full` → 503 (fail-fast contract)
+
+### Architecture changes (S37)
+
+- **Single async Mongo client path:** `AsyncMongoDB` singleton + `mongodb_lifespan`. Old `_async_db`/`_async_client` globals → `.deleted/s37-async-mongo-globals/`. `get_async_db()` is now a thin wrapper around `AsyncMongoDB.db`.
+- **Index lifecycle:** FastAPI lifespan calls async `ensure_indexes()` on startup; CLI path still uses `PyMongoPersistence._create_indexes()`. Both idempotent, both maintain the same index set.
+- **Persistence visibility:** `RunResult` + `RunState` + `RunResponse` all carry `persistence_mode` + `persistence_backend`. `runs.persistence_mode` field now actually written (writer for the schema declared in 06-mongodb.yml line 22).
+- **Subprocess /run/:** CLI emits `ARCHIVERR_RUN_ID=<id>` stdout marker. API parses it. JSON-report fallback kept for backward compat. Falls back to `"unknown"` (not `"ok"` lie) when no source available.
+- **Diagnostics surface:** `DiagnosticsLogger` class + `/api/v1/system/diagnostics` endpoint archived to `.deleted/s37-diagnostics/`. Zero readers, never instantiated.
+
+### Dataset changes (S37)
+
+- `06-mongodb.yml`: dropped stale `plugins.status` block + `plugins.stage` field. Updated `id: run_{uuid8}` → `id: uuid4_string`. `known_unwired.diagnostics` → status: archived.
+- `11-recovery.yml`: added `out_of_scope.per_run_plugin_executions` block.
+- `09-api-fastapi.yml`: added `persistence` block under RunResponse.
+- `00-enums.yml`, `03-run-state.yml`, `11-recovery.yml`: replaced `run_{uuid8}` with `uuid4_string`.
+
+### Known still-open (deferred)
+
+- B1: `RunRepository` stub method cleanup (audit K9, S36 unfinished)
+- B2: Per-run plugin → `plugin_executions` actual writer (E1/K6 — documented out_of_scope this sprint, not wired)
+- B3: Pre-S36 legacy collection backup + drop (`executions`/`matches`/`plugin_results` mongoexport → `.deleted/`)
+- B4: CI/CD GitHub Actions (kritik-bulgular C1)
+- B5: Plugin developer docs (kritik-bulgular C2)
+- B6: Real TMDb API smoke test (kritik-bulgular C3)
+- B7: Pydantic dead schema cleanup (`reactive`, `capabilities`, `hooks`, `listens_to` — kullanıcı confirme etmemiş)
+- B8: `/api/v1/run/` long-term plan (no removal needed; canonical=`/runs/`, /run/ = blackbox proxy as designed)
+- Pre-existing: 764 ruff style errors (whitespace, docstring formatting); 8 auto-fixable. Not S37 introduced.
+- Tasker plugin `'data'` KeyError on virtual-path scan (pipeline records error and continues — non-blocking, plugin issue not core)
+
+---
+
+# Handoff - Session 36 (MongoDB + FastAPI cleanup sprint)
 
 ## TL;DR (Session 36)
 
