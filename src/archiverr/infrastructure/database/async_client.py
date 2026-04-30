@@ -130,25 +130,82 @@ class AsyncMongoDB:
         return cls.client is not None
 
 
+async def ensure_indexes(db: AsyncDatabase) -> None:
+    """
+    Idempotently create indexes for the canonical 4 collections.
+
+    Mirrors PyMongoPersistence._create_indexes (sync, CLI/orchestrator path).
+    MongoDB ignores duplicate index specs, so calling this on every startup
+    is safe and free for an already-indexed DB.
+
+    Source of truth for index definitions:
+        src/archiverr/infrastructure/database/pymongo_persistence.py:_create_indexes
+
+    Sync and async definitions intentionally duplicate (small surface, rule
+    of three not yet hit). When adding a new index, update both.
+    """
+    try:
+        # runs
+        await db["runs"].create_index("id", unique=True)
+        await db["runs"].create_index("created_at")
+        await db["runs"].create_index("status.state")
+
+        # jobs - migration: drop legacy non-unique before creating unique
+        try:
+            await db["jobs"].drop_index("run_id_1_index_1")
+        except Exception:
+            pass  # absent or differently named; safe to ignore
+
+        await db["jobs"].create_index([("run_id", 1), ("index", 1)], unique=True)
+        await db["jobs"].create_index("id", unique=True)
+        await db["jobs"].create_index("run_id")
+
+        # plugins
+        await db["plugins"].create_index(
+            [("job_id", 1), ("plugin_name", 1)], unique=True
+        )
+        await db["plugins"].create_index("run_id")
+        await db["plugins"].create_index("job_id")
+
+        # plugin_executions (recovery surface)
+        await db["plugin_executions"].create_index(
+            [("job_id", 1), ("plugin_name", 1), ("attempt", 1)], unique=True
+        )
+        await db["plugin_executions"].create_index("run_id")
+        await db["plugin_executions"].create_index("state")
+        await db["plugin_executions"].create_index([("run_id", 1), ("state", 1)])
+
+        logger.info("MongoDB indexes ensured (canonical 4 collections)")
+    except Exception as e:
+        # Non-critical: log and continue; indexes are a perf concern, not a
+        # correctness one (writes still work without them).
+        logger.warning(f"ensure_indexes warning (non-critical): {e}")
+
+
 @asynccontextmanager
 async def mongodb_lifespan(app):
     """
     Lifespan context manager for MongoDB connection.
-    
+
     FastAPI-recommended pattern for managing database connections
     that need setup/teardown.
-    
+
     Usage:
         app = FastAPI(lifespan=mongodb_lifespan)
-    
+
     Sets:
         app.state.db: Database instance (or None if connection fails)
+
+    On successful connect, also runs ``ensure_indexes`` so the API path can
+    be used against a fresh Mongo without first having to start the CLI/
+    orchestrator (which calls the sync equivalent in PyMongoPersistence).
     """
     # Startup
     try:
         db = await AsyncMongoDB.connect()
         app.state.db = db
         logger.info("MongoDB ready in app.state.db (PyMongo Async)")
+        await ensure_indexes(db)
     except Exception as e:
         logger.warning(f"MongoDB connection failed: {e}")
         app.state.db = None
