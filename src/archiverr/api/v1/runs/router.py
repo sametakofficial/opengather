@@ -308,6 +308,11 @@ async def get_run_jobs(
                 total = await db["jobs"].count_documents({"run_id": variant})
                 break
 
+        # Drop Mongo's internal ObjectId (not JSON-serializable by FastAPI's
+        # default encoder). Canonical 'id' field is preserved.
+        for job in jobs:
+            job.pop("_id", None)
+
         return {
             "run_id": run_id,
             "total": total,
