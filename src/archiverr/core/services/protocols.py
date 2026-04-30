@@ -90,26 +90,6 @@ class StateService(Protocol):
         """
         ...
 
-    def save_plugin_data(
-        self,
-        job_id: str,
-        plugin_name: str,
-        stage: str,
-        data: dict[str, Any],
-        status: dict[str, Any] = None
-    ) -> None:
-        """
-        Save plugin execution result.
-        
-        Args:
-            job_id: Job ID
-            plugin_name: Plugin name
-            stage: Plugin stage (input|parse|data|output)
-            data: Plugin output data
-            status: Execution status dict (optional)
-        """
-        ...
-
 
 @runtime_checkable
 class EventService(Protocol):

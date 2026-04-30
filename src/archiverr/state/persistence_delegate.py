@@ -149,34 +149,3 @@ class PersistenceDelegate:
             self._log("error", "persistence", f"Unexpected error updating plugin doc: {e}")
             return False
 
-    def save_plugin_result(
-        self,
-        run_id: str,
-        job_index: int,
-        plugin_name: str,
-        result_data: dict[str, Any]
-    ) -> bool:
-        """
-        Save plugin result to persistence.
-        
-        Args:
-            run_id: Run ID
-            job_index: Job index
-            plugin_name: Plugin name
-            result_data: Result data dict
-            
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        if not self._persistence or not hasattr(self._persistence, 'save_plugin_result'):
-            return False
-
-        try:
-            self._persistence.save_plugin_result(run_id, job_index, plugin_name, result_data)
-            return True
-        except (OSError, ConnectionError) as e:
-            self._log("error", "persistence", f"Failed to save plugin result: {e}")
-            return False
-        except Exception as e:
-            self._log("error", "persistence", f"Unexpected error saving plugin result: {e}")
-            return False

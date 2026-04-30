@@ -243,25 +243,9 @@ class GlobalStateManager:
         """Get plugin data for a job. Delegates to PluginDataManager."""
         return self._plugin_manager.get_plugin_data(job_id, plugin_name)
 
-    def save_plugin_data(self, job_id: str, plugin_name: str, data: dict[str, Any]):
-        """Save plugin data for a job. Delegates to PluginDataManager."""
-        self._plugin_manager.save_plugin_data(
-            job_id, plugin_name, data,
-            get_job_func=self.get_job_by_id,
-            run_id=self._run.id if self._run else ""
-        )
-
     def get_all_plugin_data(self, job_id: str) -> dict[str, dict[str, Any]]:
         """Get all plugin data for a job. Delegates to PluginDataManager."""
         return self._plugin_manager.get_all_plugin_data(job_id)
-
-    def update_plugin_result(self, job_index: int, plugin_name: str, result):
-        """Update plugin result. Delegates to PluginDataManager."""
-        self._plugin_manager.update_plugin_result(
-            job_index, plugin_name, result,
-            get_job_func=self.get_job,
-            run_id=self._run.id if self._run else ""
-        )
 
     def mark_plugin_not_supported(self, job_index: int, plugin_name: str):
         """Mark plugin as skipped."""

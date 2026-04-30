@@ -27,10 +27,10 @@ class TestGlobalStateManagerLifecycle:
         mock = MagicMock()
         mock.save_run = MagicMock()
         mock.save_job = MagicMock()
-        mock.save_plugin_result = MagicMock()
-        mock.save_plugin_data = MagicMock()
+        mock.save_plugin = MagicMock()
+        mock.update_plugin_doc = MagicMock()
         return mock
-    
+
     @pytest.fixture
     def sample_config(self):
         """Sample config without real plugin names."""
@@ -160,69 +160,36 @@ class TestGlobalStateManagerPluginResults:
         manager.create_job("/path/to/file.mkv")
         return manager
     
-    def test_update_plugin_result_generic_plugin(self, state_with_match):
-        """Test plugin result with GENERIC plugin name."""
-        # Session 11: Import PluginResult from archiverr.state (not .models)
-        from archiverr.state import PluginResult
-        
-        # Use generic plugin name - NOT real plugin names
-        # Session 11: PluginResult is Pydantic model without plugin_name
-        result = PluginResult(
-            success=True,
-            started_at=datetime.now(),
-            finished_at=datetime.now(),
-            data={"key": "value", "nested": {"a": 1}}
-        )
-        
-        state_with_match.update_plugin_result(0, "generic_plugin", result)
-        
-        # Session 11: Use jobs (not _matches)
+    def test_update_plugin_generic_plugin(self, state_with_match):
+        """Test plugin data write via canonical update_plugin path."""
+        # Plugin data flows: services.update_plugin -> GlobalStateManager.update_plugin
+        # -> PluginDataManager.update_plugin -> _update_job_plugin -> save_plugin
         job = state_with_match.get_job(0)
+        state_with_match.update_plugin(job.id, "generic_plugin", {"key": "value", "nested": {"a": 1}})
+
         assert "generic_plugin" in job.plugins
-    
-    def test_update_multiple_plugin_results(self, state_with_match):
-        """Test multiple plugins can update same match."""
-        # Session 11: Import PluginResult from archiverr.state
-        from archiverr.state import PluginResult
-        
-        # Multiple generic plugins
-        for plugin_name in ["plugin_a", "plugin_b", "plugin_c"]:
-            # Session 11: PluginResult without plugin_name field
-            result = PluginResult(
-                success=True,
-                started_at=datetime.now(),
-                finished_at=datetime.now(),
-                data={f"{plugin_name}_data": True}
-            )
-            state_with_match.update_plugin_result(0, plugin_name, result)
-        
-        # Session 11: Use jobs (not _matches)
+        assert job.plugins["generic_plugin"]["key"] == "value"
+
+    def test_update_multiple_plugins(self, state_with_match):
+        """Test multiple plugins write to the same job via update_plugin."""
         job = state_with_match.get_job(0)
+        for plugin_name in ["plugin_a", "plugin_b", "plugin_c"]:
+            state_with_match.update_plugin(job.id, plugin_name, {f"{plugin_name}_data": True})
+
         assert len(job.plugins) == 3
         assert "plugin_a" in job.plugins
         assert "plugin_b" in job.plugins
         assert "plugin_c" in job.plugins
-    
-    def test_plugin_result_error_handling(self, state_with_match):
-        """Test plugin result with error."""
-        # Session 11: Import PluginResult from archiverr.state
-        from archiverr.state import PluginResult
-        
-        # Session 11: PluginResult without plugin_name field
-        result = PluginResult(
-            success=False,
-            started_at=datetime.now(),
-            finished_at=datetime.now(),
-            error="Something went wrong",
-            data={}
-        )
-        
-        state_with_match.update_plugin_result(0, "failing_plugin", result)
-        
-        # Session 19: Plugin status is tracked in job.status.plugins dict
+
+    def test_update_plugin_with_empty_data(self, state_with_match):
+        """Test update_plugin handles error/empty data scenario."""
         job = state_with_match.get_job(0)
-        # Plugin data should be stored in job.plugins
+        # Plugins record their own success/failure via job.status.plugins;
+        # update_plugin only writes the data payload.
+        state_with_match.update_plugin(job.id, "failing_plugin", {})
+
         assert "failing_plugin" in job.plugins
+        assert job.plugins["failing_plugin"] == {}
 
 
 class TestGlobalStateManagerPersistence:
@@ -232,11 +199,10 @@ class TestGlobalStateManagerPersistence:
     def mock_persistence(self):
         """Create mock persistence."""
         mock = MagicMock()
-        # Session 11: New API uses save_run/save_job
         mock.save_run = MagicMock()
         mock.save_job = MagicMock()
-        mock.save_plugin_result = MagicMock()
-        mock.save_plugin_data = MagicMock()
+        mock.save_plugin = MagicMock()
+        mock.update_plugin_doc = MagicMock()
         return mock
     
     @pytest.fixture
@@ -284,26 +250,19 @@ class TestGlobalStateManagerTemplateContext:
     @pytest.fixture
     def state_with_data(self):
         """State manager with sample data."""
-        from archiverr.state import GlobalStateManager, PluginResult
-        
+        from archiverr.state import GlobalStateManager
+
         manager = GlobalStateManager()
         manager.reset()
         manager.start_run({"options": {"debug": False}})
-        
-        # Add jobs with generic plugin results
+
+        # Add jobs with generic plugin data via canonical update_plugin path
         for i in range(3):
             manager.create_job(f"/path/file{i}.mkv")
-            
-            # Session 11: PluginResult without plugin_name
-            result = PluginResult(
-                success=True,
-                started_at=datetime.now(),
-                finished_at=datetime.now(),
-                data={"index": i, "processed": True}
-            )
-            manager.update_plugin_result(i, "generic_plugin", result)
+            job = manager.get_job(i)
+            manager.update_plugin(job.id, "generic_plugin", {"index": i, "processed": True})
             manager.complete_job(i)
-        
+
         manager.complete_run()
         return manager
     
