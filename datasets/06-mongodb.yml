@@ -75,12 +75,12 @@ known_unwired:
   # Collections that exist conceptually but have no live writer today.
   # Listed here (not under top-level schema) so a casual reader does not
   # mistake them for canonical surfaces.
-  diagnostics:
-    reason: "DiagnosticsLogger never instantiated; api/v1/system/router.py reads an always-empty collection."
-    decision: "Wire it OR delete the reader. AGENT.md §'no defensive try/catch around impossible paths'."
   plugin_docs:
     reason: "Removed in session 36 PASS 3; was zero-reader write amplification. plugins collection covers cross-job query."
     status: "deleted from PyMongoPersistence (commit bd3840b)"
+  diagnostics:
+    reason: "DiagnosticsLogger and /api/v1/system/diagnostics endpoint archived in S37 PASS 4."
+    status: ".deleted/s37-diagnostics/ — never instantiated, always-empty collection."
 
 backends:
   pymongo_persistence: PersistenceInterface

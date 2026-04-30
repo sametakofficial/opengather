@@ -45,13 +45,13 @@ class DebugSystem:
     - Plugin-agnostic (any component can log)
     - Structured context fields
     - ISO8601 timestamps
-    - Optional MongoDB diagnostics logging
+    - Local stderr structured output
     - Circular buffer to prevent memory leaks
     """
 
     MAX_BUFFER_SIZE = 10000  # Prevent unbounded memory growth
 
-    def __init__(self, enabled: bool = False, level: int = None, diagnostics_logger = None):
+    def __init__(self, enabled: bool = False, level: int = None):
         self.enabled = enabled
         if level is not None:
             self.level = level
@@ -62,16 +62,11 @@ class DebugSystem:
 
         self.log_buffer: list[dict[str, Any]] = []
         self._buffer_lock = threading.Lock()  # Thread safety for log buffer
-        self._diagnostics_logger = diagnostics_logger
         self._execution_id: str | None = None
 
     def set_execution_id(self, execution_id: str) -> None:
         """Set current execution ID for log correlation"""
         self._execution_id = execution_id
-
-    def set_diagnostics_logger(self, logger) -> None:
-        """Set MongoDB diagnostics logger"""
-        self._diagnostics_logger = logger
 
     def _timestamp(self) -> str:
         """ISO8601 timestamp with timezone"""
@@ -132,19 +127,6 @@ class DebugSystem:
             # Prevent memory leak: trim buffer if it exceeds max size
             if len(self.log_buffer) > self.MAX_BUFFER_SIZE:
                 self.log_buffer = self.log_buffer[-self.MAX_BUFFER_SIZE:]
-
-        # Write to MongoDB diagnostics if configured
-        if self._diagnostics_logger is not None:
-            try:
-                self._diagnostics_logger.log(
-                    level,
-                    component,
-                    message,
-                    execution_id=self._execution_id,
-                    **fields
-                )
-            except Exception:
-                pass  # Don't let diagnostics failures break the app
 
         # Print to console (stderr) - level already filtered above!
         context = " ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
@@ -215,14 +197,6 @@ class DebugSystem:
         """Clear log buffer (thread-safe)"""
         with self._buffer_lock:
             self.log_buffer.clear()
-
-    def flush_diagnostics(self) -> None:
-        """Flush diagnostics buffer to MongoDB"""
-        if self._diagnostics_logger is not None:
-            try:
-                self._diagnostics_logger.flush()
-            except Exception:
-                pass
 
 
 # Global instance

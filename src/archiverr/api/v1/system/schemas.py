@@ -52,20 +52,8 @@ class VersionResponse(BaseModel):
     platform: str
 
 
-class DiagnosticsEntry(BaseModel):
-    """Single diagnostics log entry"""
-    timestamp: str
-    level: str = Field(..., description="Log level: DEBUG | INFO | WARNING | ERROR")
-    component: str = Field(..., description="Source component")
-    message: str
-    fields: dict[str, Any] = Field(default_factory=dict)
-
-
-class DiagnosticsResponse(BaseModel):
-    """Diagnostics logs response"""
-    total_entries: int
-    entries: list[DiagnosticsEntry] = Field(default_factory=list)
-
+# DiagnosticsEntry / DiagnosticsResponse models archived in S37 PASS 4
+# (.deleted/s37-diagnostics/) — endpoint never wired, collection never written.
 
 class ConfigResponse(BaseModel):
     """Configuration response (sanitized)"""

@@ -62,7 +62,7 @@ and git-like versioning for execution history.
 | `/api/v1/runs` | RESTful CRUD over runs (in-process orchestrator) |
 | `/api/v1/jobs` | Read jobs by run / by id |
 | `/api/v1/plugins` | Cross-job plugin output query |
-| `/api/v1/system` | Health, version, diagnostics |
+| `/api/v1/system` | Health, version, status |
         """,
         version="1.0.0",
         lifespan=mongodb_lifespan,  # Industry best practice

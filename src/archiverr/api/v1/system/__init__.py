@@ -1,4 +1,4 @@
-"""System domain - Health checks, status, diagnostics"""
+"""System domain - Health checks, status, version"""
 
 from .router import router
 

@@ -16,7 +16,8 @@ router.include_router(jobs_router, prefix="/jobs", tags=["Jobs"])
 router.include_router(plugins_router, prefix="/plugins", tags=["Plugins"])
 router.include_router(run_router, prefix="/run", tags=["Run"])
 router.include_router(system_router, prefix="/system", tags=["System"])
-# system_router exposes /system/{health,status,version,diagnostics}.
+# system_router exposes /system/{health,status,version}.
 # Inline /system/health and /system/info defined here previously were
 # redundant and shadowed the richer system_router endpoints. Removed in
 # S36 PASS 6.D after audit found system/router.py was never included.
+# /system/diagnostics archived in S37 PASS 4 (.deleted/s37-diagnostics/).

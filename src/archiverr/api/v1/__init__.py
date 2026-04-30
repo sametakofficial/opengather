@@ -6,7 +6,7 @@ Includes all v1 routers:
 - runs   (canonical RESTful CRUD over runs)
 - jobs   (read jobs by run / by id)
 - plugins (cross-job plugin output query)
-- system (health, version, diagnostics)
+- system (health, version)
 """
 
 from .router import router
