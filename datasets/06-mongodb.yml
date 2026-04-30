@@ -116,3 +116,9 @@ interface:
 #   claim_plugin_execution     -- 11-recovery.yml#out_of_scope (slim contract)
 #   heartbeat_plugin_execution -- ditto
 #   get_plugin_executions      -- exposed only as get_unfinished_plugin_executions
+# REMOVED 2026-04-30 (S36 PASS 2/3, zero callers / write amplification):
+#   save_plugin_result         -- ghost: never abstract, hasattr-guard sleeper
+#   update_plugin_result       -- 0 production callers (state.update_plugin canonical)
+#   save_plugin_data           -- 0 production callers (state.update_plugin canonical)
+#   update_plugin_doc          -- plugin_docs collection dropped (zero readers)
+#   get_plugin_doc             -- ditto

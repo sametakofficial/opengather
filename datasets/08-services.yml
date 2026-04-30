@@ -13,7 +13,9 @@ StateService:
   get_all_jobs: "() -> [JobState]"
   get_run: "() -> RunState"
   get_plugin_data: "(job_id, plugin_name) -> dict"
-  save_plugin_data: "(job_id, plugin_name, stage, data, status) -> None"
+  update_plugin: "(target_id: str, plugin_name: str, data: dict) -> None"
+  # REMOVED 2026-04-30 (S36 PASS 2): save_plugin_data ghost method on Protocol
+  # had zero implementors; canonical writer is update_plugin (above).
 
 EventService:
   # READ-ONLY for plugins per 2026-04-29 audit and protocols.py:117-122

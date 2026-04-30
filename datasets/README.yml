@@ -75,6 +75,41 @@ dead_schema_removed_2026-04-30:
   - 10-aliases.yml: scopes.manifest, manifest_sample (PluginManifest schema does not accept aliases)
   - 12-safety.yml: audit.events_emitted (plugin.side_effect), audit.mongodb_trace (zero implementation)
 
+session_36_changes_2026-04-30:
+  # 8 PASS sub-iterations / 11 commits / ~500 LOC removed
+  PASS_1:
+    - core/orchestrator.py: deleted _register_event_handlers (REAL BUG: garbage doc upsert)
+    - pymongo_persistence.py: dropped runs.started_at dead indexes; merged _create_indexes
+    - 11-recovery.yml: plugin_executions.started_at -> created_at (slim contract = today's truth)
+  PASS_2:
+    - core/services/protocols.py: removed StateService.save_plugin_data ghost
+    - state/persistence_delegate.py: removed save_plugin_result hasattr-guard sleeper
+    - state/plugin_data_manager.py: removed save_plugin_data + update_plugin_result wrappers
+    - state/manager.py: removed GlobalStateManager.save_plugin_data + update_plugin_result
+  PASS_3:
+    - pymongo_persistence.py: removed PLUGIN_DOCS constant + indexes + update_plugin_doc + get_plugin_doc
+    - state/persistence_delegate.py: removed update_plugin_doc wrapper
+    - state/plugin_data_manager.py: _update_run_plugin/_update_job_plugin no longer call update_plugin_doc
+  PASS_4:
+    - api/v1/run/router.py: full stderr/stdout logger on subprocess failure
+    - api/v1/system/router.py + api/deps/common.py: canonical runs/jobs/plugins stats keys
+    - 06-mongodb.yml: known_unwired section (diagnostics, plugin_docs)
+    - 09-api-fastapi.yml: documented /run/ vs /runs/ as two distinct execution models
+  PASS_5:
+    - api/main.py: replaced misleading endpoint table with actual route surface
+    - api/v1/run/schemas.py: dropped phantom websocket_url + poll_url fields
+  PASS_6_A:
+    - tests/unit/core/test_plugin_agnostic.py: rewired to canonical update_plugin path;
+      _legacy_skip marker + decorators removed; 12 SKIPPED -> 14 PASSED
+  PASS_6_B:
+    - api/v1/{runs,jobs,plugins}/router.py: PyMongoError base class for 503 handling
+      (catches AutoReconnect, NetworkTimeout, ConnectionFailure, ServerSelectionTimeoutError)
+  PASS_6_C:
+    - api/v1/{runs,jobs,plugins}/router.py: dropped legacy executions/matches/plugin_results
+      reader fallbacks; canonical-only read paths
+    - api/deps/common.py: dropped AsyncPersistenceWrapper.EXECUTIONS section entirely
+    - tests/test_integration.py: get_recent_executions -> get_runs (guarded by hasattr)
+
 v1_direction:
   - single path-based interpolation model (see 10-aliases.yml)
   - plugin 3-layer merge: _manifest / _defaults / user -> resolved (see 02-manifest.yml)

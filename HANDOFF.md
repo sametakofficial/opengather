@@ -5,17 +5,40 @@
 
 ## TL;DR (Session 36)
 
-5 PASS, 5 commits, ~280 LOC removed, 0 LOC of canonical writers touched.
-Validated by parallel architecture-researcher + architecture-reviewer + simplifier
-against AGENT.md.
+8 PASS sub-iterations, 11 commits, ~500 LOC removed, 0 LOC of canonical
+writers touched. Validated by 2 hostile audit rounds + parallel
+architecture-researcher + architecture-reviewer + simplifier against AGENT.md.
 
 ```
-1d364ec  PASS 5: kill misleading docstring + phantom URL fields (Y2, Y6)
-83a42d0  PASS 4: API hygiene + dataset alignment (Y1, Y3, N7, N8)
-bd3840b  PASS 3: drop plugin_docs collection chain (F4)
-68f55f9  PASS 2: drop dead save_plugin_result chain (F3)
-3ebbdb7  PASS 1: kill orchestrator garbage upsert + dead indexes + plugin_executions rename (F1, F2, F5)
+dcf380c  PASS 6.C: drop legacy executions/matches/plugin_results readers (N6)
+55fe4bf  PASS 6.B: broaden PyMongo exception handling to 503 (partial)
+5dbf851  PASS 6.A: rewire test_plugin_agnostic to canonical API (recover 12 tests)
+e07c970  prep:    datasets cleanup + template context canonical move
+827e91a  doc:     ONEMLI/mongodb-audit.md annotate
+5d7cf22  doc:     HANDOFF.md update
+1d364ec  PASS 5:  kill misleading docstring + phantom URL fields (Y2, Y6)
+83a42d0  PASS 4:  API hygiene + dataset alignment (Y1, Y3, N7, N8)
+bd3840b  PASS 3:  drop plugin_docs collection chain (F4)
+68f55f9  PASS 2:  drop dead save_plugin_result chain (F3)
+3ebbdb7  PASS 1:  kill orchestrator garbage upsert + dead indexes (F1, F2, F5)
 ```
+
+### Round 2 audit fixes (PASS 6.A/B/C)
+
+PASS 6.A — test_plugin_agnostic rewire: 12 SKIPPED tests recovered.
+  AGENT.md ZERO TOLERANCE plugin-agnostic invariant runtime guard restored.
+  Test count 498 -> 510.
+
+PASS 6.B — Mongo connection error handling: PyMongoError base class catches
+  AutoReconnect, NetworkTimeout, etc. Mongo-down now returns 503 (was 500
+  for unhandled subclasses). Suite-level test cluster flakiness deferred to
+  6.D (state leakage between test_api.py and test_endpoints.py — pre-existing
+  fixture/lifespan issue, not in this commit).
+
+PASS 6.C — Legacy fallback purge: ~120 net LOC removed from runs/jobs/
+  plugins routers. Read paths now strict-canonical (runs, jobs, plugins
+  collections only). delete_run cascade strict-canonical. AsyncPersistence
+  Wrapper EXECUTIONS section deleted entirely (zero non-test callers).
 
 ### Session 36 changes
 
