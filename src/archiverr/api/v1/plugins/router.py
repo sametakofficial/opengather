@@ -11,15 +11,23 @@ from archiverr.api.deps import DatabaseDep
 
 from .schemas import PluginData, PluginDataListResponse, PluginInfo, PluginListResponse
 
-# Import PyMongo exceptions for specific error handling
+# Import PyMongo exceptions for specific error handling.
+# AGENT.md §5: connectivity errors (AutoReconnect, NetworkTimeout,
+# ConnectionFailure, ServerSelectionTimeoutError) all inherit PyMongoError.
 try:
-    from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
+    from pymongo.errors import (
+        ConnectionFailure,
+        OperationFailure,
+        PyMongoError,
+        ServerSelectionTimeoutError,
+    )
     PYMONGO_AVAILABLE = True
 except ImportError:
     PYMONGO_AVAILABLE = False
     ConnectionFailure = Exception
     ServerSelectionTimeoutError = Exception
     OperationFailure = Exception
+    PyMongoError = Exception
 
 router = APIRouter()
 
@@ -62,10 +70,10 @@ async def list_plugins(db: DatabaseDep):
             # Fallback: return empty list
             return PluginListResponse(items=[], total=0)
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -114,10 +122,10 @@ async def list_plugin_data(
             page_size=page_size
         )
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -150,10 +158,10 @@ async def get_plugins_by_run(run_id: str, db: DatabaseDep):
             for doc in docs
         ]
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -189,9 +197,9 @@ async def get_plugin_info(plugin_name: str, db: DatabaseDep):
 
     except HTTPException:
         raise
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

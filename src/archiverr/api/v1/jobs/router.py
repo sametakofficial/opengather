@@ -6,15 +6,23 @@ from fastapi import APIRouter, HTTPException, Query
 
 from archiverr.api.deps import DatabaseDep
 
-# Import PyMongo exceptions for specific error handling
+# Import PyMongo exceptions for specific error handling.
+# AGENT.md §5: connectivity errors (AutoReconnect, NetworkTimeout,
+# ConnectionFailure, ServerSelectionTimeoutError) all inherit PyMongoError.
 try:
-    from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
+    from pymongo.errors import (
+        ConnectionFailure,
+        OperationFailure,
+        PyMongoError,
+        ServerSelectionTimeoutError,
+    )
     PYMONGO_AVAILABLE = True
 except ImportError:
     PYMONGO_AVAILABLE = False
     ConnectionFailure = Exception
     ServerSelectionTimeoutError = Exception
     OperationFailure = Exception
+    PyMongoError = Exception
 
 from .schemas import (
     InputData,
@@ -129,10 +137,10 @@ async def list_jobs(
             page_size=page_size
         )
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -169,10 +177,10 @@ async def get_jobs_by_run(run_id: str, db: DatabaseDep):
 
         return [_doc_to_job_response(doc) for doc in jobs]
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -201,10 +209,10 @@ async def get_job(job_id: str, db: DatabaseDep):
 
     except HTTPException:
         raise
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -253,10 +261,10 @@ async def get_job_plugins(job_id: str, db: DatabaseDep):
             for p in plugins
         ]
 
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -312,9 +320,9 @@ async def get_job_plugin(job_id: str, plugin_name: str, db: DatabaseDep):
 
     except HTTPException:
         raise
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except OperationFailure as e:
         raise HTTPException(status_code=500, detail=f"Database operation failed: {e}")
+    except PyMongoError as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
