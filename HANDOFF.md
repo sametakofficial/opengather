@@ -5,22 +5,27 @@
 
 ## TL;DR (Session 36)
 
-8 PASS sub-iterations, 11 commits, ~500 LOC removed, 0 LOC of canonical
-writers touched. Validated by 2 hostile audit rounds + parallel
-architecture-researcher + architecture-reviewer + simplifier against AGENT.md.
+10 PASS sub-iterations, 14 commits, ~500 LOC removed, 0 LOC of canonical
+writers touched, **all tests green (527/0/15)**. Validated by 2 hostile audit
+rounds + parallel architecture-researcher + architecture-reviewer + simplifier
+against AGENT.md. Pre-existing 8-fail suite cluster fully resolved.
 
 ```
+7f440c3  PASS 6.E: cache-after-ping fix in deps/database.py (root-cause
+                   of 9-test suite-level flakiness; 527/0/15 green)
+feec863  PASS 6.D: include orphaned system_router in v1 router
+426e10b  doc:      dataset + HANDOFF alignment for PASS 6.A/B/C
 dcf380c  PASS 6.C: drop legacy executions/matches/plugin_results readers (N6)
 55fe4bf  PASS 6.B: broaden PyMongo exception handling to 503 (partial)
 5dbf851  PASS 6.A: rewire test_plugin_agnostic to canonical API (recover 12 tests)
-e07c970  prep:    datasets cleanup + template context canonical move
-827e91a  doc:     ONEMLI/mongodb-audit.md annotate
-5d7cf22  doc:     HANDOFF.md update
-1d364ec  PASS 5:  kill misleading docstring + phantom URL fields (Y2, Y6)
-83a42d0  PASS 4:  API hygiene + dataset alignment (Y1, Y3, N7, N8)
-bd3840b  PASS 3:  drop plugin_docs collection chain (F4)
-68f55f9  PASS 2:  drop dead save_plugin_result chain (F3)
-3ebbdb7  PASS 1:  kill orchestrator garbage upsert + dead indexes (F1, F2, F5)
+e07c970  prep:     datasets cleanup + template context canonical move
+827e91a  doc:      ONEMLI/mongodb-audit.md annotate
+5d7cf22  doc:      HANDOFF.md update
+1d364ec  PASS 5:   kill misleading docstring + phantom URL fields (Y2, Y6)
+83a42d0  PASS 4:   API hygiene + dataset alignment (Y1, Y3, N7, N8)
+bd3840b  PASS 3:   drop plugin_docs collection chain (F4)
+68f55f9  PASS 2:   drop dead save_plugin_result chain (F3)
+3ebbdb7  PASS 1:   kill orchestrator garbage upsert + dead indexes (F1, F2, F5)
 ```
 
 ### Round 2 audit fixes (PASS 6.A/B/C)
@@ -75,9 +80,9 @@ PASS 6.C — Legacy fallback purge: ~120 net LOC removed from runs/jobs/
 
 ### Test status (Session 36 end)
 
-498 unit tests pass. 4 pre-existing API failures are mongo-dependent
-(`tests/unit/api/test_endpoints.py` legacy executions/matches endpoints; mongo localhost:27017
-not running). Re-run after `docker compose up -d mongodb` for smoke test.
+**527 passed, 0 failed, 15 skipped** (skipped = legacy-removed feature
+markers, intentional). All previously-flaky API endpoint tests now stable
+in both single-test and suite mode. Smoke-test ready.
 
 ### Open work (deferred / awaiting user input)
 
