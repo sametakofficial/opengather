@@ -129,6 +129,17 @@ class AsyncMongoDB:
         """Check if database is connected."""
         return cls.client is not None
 
+    @classmethod
+    def reset_for_test(cls) -> None:
+        """Reset class-level singleton state. Test-only. (S37 PASS 8)
+
+        Replaces the legacy ``reset_connections()`` async branch in
+        api/deps/database.py — the async pool is now exclusively owned by
+        this singleton + mongodb_lifespan.
+        """
+        cls.client = None
+        cls.db = None
+
 
 async def ensure_indexes(db: AsyncDatabase) -> None:
     """

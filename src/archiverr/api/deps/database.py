@@ -2,18 +2,27 @@
 Database Dependencies
 
 Provides database connection dependencies for FastAPI.
-Supports both async (PyMongo AsyncMongoClient) and sync (PyMongo MongoClient) connections.
+
+Architecture (S37 PASS 8):
+    - Async path: single source of truth = AsyncMongoDB singleton +
+      mongodb_lifespan (infrastructure/database/async_client.py).
+      Every request reads request.app.state.db. The previous
+      module-globals shadow path (_async_db / _async_client cache,
+      env-driven AsyncMongoClient construction) was archived to
+      .deleted/s37-async-mongo-globals/ — it duplicated the connection
+      pool with no current requirement.
+    - Sync path: separate concern. Used by sync endpoints (e.g.
+      /api/v1/run subprocess flow) that cannot await. Kept unchanged.
 
 MIGRATION NOTICE (2025-11):
-    Motor was deprecated in May 2025 and replaced with PyMongo's native AsyncMongoClient.
-    This module now uses PyMongo 4.10+ for all async operations.
-    Performance improvement: 20-140% faster than Motor.
+    Motor was deprecated in May 2025 and replaced with PyMongo's native
+    AsyncMongoClient. This module uses PyMongo 4.10+ for all async ops.
 
 Usage:
-    from archiverr.api.deps import get_async_db, get_sync_db
-    
+    from archiverr.api.deps import DatabaseDep
+
     @router.get("/")
-    async def endpoint(db = Depends(get_async_db)):
+    async def endpoint(db: DatabaseDep):
         result = await db.collection.find_one({})
 """
 
@@ -24,96 +33,36 @@ from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
-# Connection state
+# Sync connection state (async lives on AsyncMongoDB singleton).
 _pymongo_client = None
 _pymongo_db = None
-_async_client = None
-_async_db = None
 
 
 # ============================================================================
-# ASYNC DATABASE (PyMongo AsyncMongoClient)
+# ASYNC DATABASE — thin wrapper around AsyncMongoDB singleton
 # ============================================================================
 
 async def get_async_db():
+    """Return the AsyncMongoDB singleton's db handle, or None if not connected.
+
+    Connection lifecycle is owned by ``mongodb_lifespan`` (FastAPI startup);
+    this function never opens its own client. If lifespan failed to connect,
+    ``app.state.db`` is None and so is this return value -- callers should
+    treat None as "Mongo unavailable" and 503 the request.
     """
-    Get async MongoDB connection using PyMongo's AsyncMongoClient.
-    
-    Creates connection on first call, reuses afterwards.
-    Best for async endpoints.
-    
-    Note: Replaces Motor (deprecated May 2025) with PyMongo Async.
-    Performance: 20-140% faster than Motor.
-    
-    Returns:
-        AsyncDatabase or None if connection fails
-    """
-    global _async_client, _async_db
-
-    if _async_db is not None:
-        return _async_db
-
-    # IMPORTANT: cache (_async_db) only after successful ping. Otherwise a
-    # failed ping leaves a dead AsyncDatabase reference cached and every
-    # subsequent call returns it without retrying. (S36 PASS 6.E)
-    client = None
-    try:
-        from pymongo import AsyncMongoClient
-
-        uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-        database = os.getenv("MONGODB_DATABASE", "archiverr")
-
-        client = AsyncMongoClient(
-            uri,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-            maxPoolSize=50,
-            minPoolSize=5,
-        )
-        db = client[database]
-
-        # Verify connection BEFORE caching
-        await db.command('ping')
-        logger.info(f"PyMongo async connection established: {database}")
-
-        _async_client = client
-        _async_db = db
-        return _async_db
-
-    except Exception as e:
-        logger.error(f"PyMongo async connection failed: {e}")
-        # Ensure no half-initialized state lingers (close is async on AsyncMongoClient)
-        if client is not None:
-            try:
-                await client.close()
-            except Exception:
-                pass
-        _async_client = None
-        _async_db = None
-        return None
+    from archiverr.infrastructure.database.async_client import AsyncMongoDB
+    return AsyncMongoDB.db  # may be None pre-lifespan or after failed startup
 
 
 async def get_database(request: Request):
-    """
-    FastAPI dependency for database access via app.state.
-    
-    Prefers app.state.db (set by lifespan), falls back to direct connection.
-    
-    Usage:
-        @router.get("/")
-        async def endpoint(db = Depends(get_database)):
-            ...
-    """
-    # First try app.state (set by lifespan)
-    db = getattr(request.app.state, 'db', None)
-    if db is not None:
-        return db
+    """FastAPI dependency for async database access via app.state.
 
-    # Fallback to direct connection
-    db = await get_async_db()
+    Source of truth: ``request.app.state.db`` (set by mongodb_lifespan).
+    503 if Mongo is unavailable.
+    """
+    db = getattr(request.app.state, 'db', None)
     if db is None:
         raise HTTPException(status_code=503, detail="Database not available")
-
     return db
 
 
@@ -177,14 +126,8 @@ def get_sync_db():
 # ============================================================================
 
 async def close_connections():
-    """Close all database connections."""
-    global _async_client, _async_db, _pymongo_client, _pymongo_db
-
-    if _async_client is not None:
-        _async_client.close()
-        _async_client = None
-        _async_db = None
-        logger.info("PyMongo async connection closed")
+    """Close all database connections (sync side; async is owned by lifespan)."""
+    global _pymongo_client, _pymongo_db
 
     if _pymongo_client is not None:
         _pymongo_client.close()
@@ -192,11 +135,15 @@ async def close_connections():
         _pymongo_db = None
         logger.info("PyMongo sync connection closed")
 
+    # Async is owned by AsyncMongoDB singleton (mongodb_lifespan); call its
+    # disconnect for symmetry when called from non-lifespan teardown.
+    from archiverr.infrastructure.database.async_client import AsyncMongoDB
+    await AsyncMongoDB.disconnect()
+
 
 def reset_connections():
-    """Reset connection state (for testing)."""
-    global _async_client, _async_db, _pymongo_client, _pymongo_db
-    _async_client = None
-    _async_db = None
+    """Reset sync connection state (for testing). Async is reset via
+    ``AsyncMongoDB.reset_for_test()``."""
+    global _pymongo_client, _pymongo_db
     _pymongo_client = None
     _pymongo_db = None
