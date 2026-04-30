@@ -632,7 +632,7 @@ media_categories:
   - season
 
 id_formats:
-  run: run_{uuid8}
+  run: uuid4_string
   job: job_{run_id}_{index}
   example_run: run_abc12345
   example_job: job_run_abc12345_0

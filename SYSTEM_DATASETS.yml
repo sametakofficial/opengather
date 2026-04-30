@@ -147,7 +147,7 @@ enums:
   - input
   - output
   id_format:
-    run: run_{uuid8}
+    run: uuid4_string
     job: job_{run_id}_{index}
     example_run: run_abc12345
     example_job: job_run_abc12345_0
@@ -304,7 +304,7 @@ manifest:
   - plugin.<name>   -> plugin.<name>
 run_state:
   run:
-    id: run_{uuid8}
+    id: uuid4_string
     status:
       state: pending | running | success | failed | partial | cancelled
       success: bool
@@ -322,7 +322,7 @@ run_state:
   job:
     id: job_{run_id}_{index}
     index: int
-    run_id: run_{uuid8}
+    run_id: uuid4_string
     input:
       value: string
       data: {}
@@ -518,7 +518,7 @@ events:
 mongodb:
   runs:
     _id: ObjectId
-    id: run_{uuid8}
+    id: uuid4_string
     status:
       state: string
       success: bool
@@ -541,7 +541,7 @@ mongodb:
   jobs:
     _id: ObjectId
     id: job_{run_id}_{index}
-    run_id: run_{uuid8}
+    run_id: uuid4_string
     index: int
     input:
       value: string
@@ -562,7 +562,7 @@ mongodb:
     updated_at: ISODate
   plugins:
     _id: ObjectId
-    run_id: run_{uuid8}
+    run_id: uuid4_string
     job_id: job_{run_id}_{index}
     job_index: int
     plugin_name: string
@@ -909,7 +909,7 @@ services:
   - execute_run(services) | execute(job, services)
 api_fastapi:
   RunResponse:
-    id: run_{uuid8}
+    id: uuid4_string
     status:
       state: pending | running | success | failed | partial | cancelled
       success: bool
@@ -1027,7 +1027,7 @@ recovery:
   collections_additions:
     plugin_executions:
       _id: ObjectId
-      run_id: run_{uuid8}
+      run_id: uuid4_string
       job_id: job_{run_id}_{index}
       plugin_name: string
       attempt: int
@@ -1042,7 +1042,7 @@ recovery:
       output_fingerprint: string | null
     checkpoints:
       _id: ObjectId
-      run_id: run_{uuid8}
+      run_id: uuid4_string
       job_id: job_{run_id}_{index}
       plugin_name: string
       attempt: int

@@ -254,9 +254,13 @@ class TaskerPlugin(OutputPlugin):
         """
         job_id = getattr(job, 'id', 'unknown')
 
-        # Add task results to tasker plugin data
-        if 'tasker' in plugins_data:
-            plugins_data['tasker']['data']['tasks'] = task_results
+        # Add task results to tasker plugin data.
+        # Defensive setdefault: services.update_plugin(data=...) above this
+        # call already populated plugins_data['tasker']['data'], but the
+        # plugins map can pre-exist as a bare {} on virtual-path/dry-run jobs
+        # where the snapshot was taken before update_plugin landed. (S37)
+        if 'tasker' in plugins_data and isinstance(plugins_data['tasker'], dict):
+            plugins_data['tasker'].setdefault('data', {})['tasks'] = task_results
 
         self._run_output[job_id] = {
             'job_id': job_id,
