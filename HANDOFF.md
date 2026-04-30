@@ -8,8 +8,10 @@
 End-to-end sprint: bring Mongo up, prove FastAPI ↔ MongoDB integration runs,
 finalize structures + communications, surface persistence-mode honestly.
 
-**8 PASS commits**, 514/12 unit tests green, ZERO TOLERANCE plugin-agnostic
-guard 14/14 PASS, full smoke E2E verified (CLI + FastAPI + Mongo).
+**8 PASS commits + a0992c6 followup**. Test baseline: **651 passed / 23 skipped /
+2 failed / 1 error** — the 2 failures + 1 error are **pre-existing** (S30 `test_full_pipeline.py::test_full_execution_cli` assertion-logic bug; pre-S37 `test_real_api.py::test_quick_api_health` 404 + `test_concurrent_requests` subprocess error). Plugin-agnostic guard scope is dict-mapping-only by design;
+conditional pattern (`if name == "x"`) is **not** caught (see Risk #1 below).
+Full smoke E2E verified (CLI + FastAPI + Mongo, all three persistence_mode paths).
 
 ```
 69f7398  PASS 8: unify async Mongo on AsyncMongoDB singleton (drop deps globals)
@@ -59,7 +61,17 @@ deee042  PASS 1: lifespan ensures Mongo indexes idempotently
 - B7: Pydantic dead schema cleanup (`reactive`, `capabilities`, `hooks`, `listens_to` — kullanıcı confirme etmemiş)
 - B8: `/api/v1/run/` long-term plan (no removal needed; canonical=`/runs/`, /run/ = blackbox proxy as designed)
 - Pre-existing: 764 ruff style errors (whitespace, docstring formatting); 8 auto-fixable. Not S37 introduced.
-- Tasker plugin `'data'` KeyError on virtual-path scan (pipeline records error and continues — non-blocking, plugin issue not core)
+- ~~Tasker plugin `'data'` KeyError~~ → **fixed in a0992c6** (`setdefault('data', {})` defensive). Tasker now `state=completed` in plugin_executions. ffprobe still fails on virtual-path config (no real file), unrelated.
+
+### Plugin-phase readiness (audit 2026-04-30, post a0992c6)
+
+Verdict: **GO-WITH-CONDITIONS**. All 8 PASS + followup verified line-by-line in code (audit artifact: `.claude/session-artifacts/cc2d270d/agent-architecture-reviewer-23.md`). Three minor cleanups recommended before plugin authoring:
+
+1. Plugin-agnostic guard regex is dict-mapping-only; add conditional/in-list pattern (`tests/unit/core/test_plugin_agnostic.py:33-35`). ~45 min.
+2. Pre-existing 2 fail + 1 error tests should be `@pytest.mark.skip` so plugin-phase regressions are visible (`tests/test_full_pipeline.py`, `tests/test_real_api.py`). ~30 min.
+3. `runs/router.py:92` `backend="PyMongoPersistence"` literal — only relevant if alternate backend ever introduced. Defer.
+
+Plugin authoring may proceed; the above are scaffolding-quality, not blockers.
 
 ---
 

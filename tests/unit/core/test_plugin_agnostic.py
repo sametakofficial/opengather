@@ -34,6 +34,21 @@ HARDCODED_MAP_PATTERN = re.compile(
     r"""['"](%s)['"]\s*:\s*['"]""" % '|'.join(re.escape(n) for n in KNOWN_PLUGIN_NAMES)
 )
 
+# Pattern: equality conditional against a known plugin name string.
+# e.g. ``if name == "tmdb":`` or ``"tmdb" == plugin_name`` (S37 audit
+# extension — the dict-mapping guard alone missed if-ladder sneak-ins).
+_PLUGIN_NAME_ALT = '|'.join(re.escape(n) for n in KNOWN_PLUGIN_NAMES)
+HARDCODED_EQUALITY_PATTERN = re.compile(
+    rf"""(?:==|!=)\s*['"]({_PLUGIN_NAME_ALT})['"]|['"]({_PLUGIN_NAME_ALT})['"]\s*(?:==|!=)"""
+)
+
+# Pattern: ``in (...)`` / ``in [...]`` / ``in {...}`` membership test against
+# a literal containing a known plugin name string. Catches set/list/tuple
+# literals like ``if name in ("tmdb", "tvdb"):`` (S37 audit extension).
+HARDCODED_MEMBERSHIP_PATTERN = re.compile(
+    rf"""\bin\s*[\(\[\{{][^\)\]\}}\n]*['"]({_PLUGIN_NAME_ALT})['"]"""
+)
+
 CORE_DIR = Path(__file__).resolve().parents[3] / "src" / "archiverr" / "core"
 
 
@@ -43,15 +58,21 @@ class TestCorePluginAgnosticGuard:
     def _get_core_python_files(self) -> list[Path]:
         return sorted(CORE_DIR.rglob("*.py"))
 
-    def test_no_hardcoded_plugin_name_maps_in_core(self):
-        """Core must not contain dict mappings from known plugin names to values."""
+    def _scan_core_for_pattern(self, pattern: re.Pattern) -> list[str]:
+        """Scan core/ files for a regex pattern, skipping docstrings & comments.
+
+        Returns a list of formatted ``rel:line -> match`` strings. Used by all
+        three guard tests below so the docstring-tracking loop stays in one
+        place (S37 audit extension).
+        """
         violations = []
         for path in self._get_core_python_files():
             rel = path.relative_to(CORE_DIR)
             in_docstring = False
             for i, line in enumerate(path.read_text().splitlines(), 1):
                 stripped = line.lstrip()
-                # Track triple-quoted docstrings
+                # Track triple-quoted docstrings (single-line docstrings via
+                # paired """ on the same line do NOT toggle state).
                 if '"""' in stripped or "'''" in stripped:
                     count = stripped.count('"""') + stripped.count("'''")
                     if count == 1:
@@ -59,14 +80,46 @@ class TestCorePluginAgnosticGuard:
                     continue
                 if in_docstring or stripped.startswith('#'):
                     continue
-                match = HARDCODED_MAP_PATTERN.search(line)
+                match = pattern.search(line)
                 if match:
                     violations.append(f"  {rel}:{i} -> {match.group(0)!r}")
+        return violations
 
+    def test_no_hardcoded_plugin_name_maps_in_core(self):
+        """Core must not contain dict mappings from known plugin names to values."""
+        violations = self._scan_core_for_pattern(HARDCODED_MAP_PATTERN)
         assert not violations, (
-            "Hardcoded plugin name mappings found in core:\n"
+            "Hardcoded plugin name dict-mappings found in core:\n"
             + "\n".join(violations)
             + "\n\nPlugins must declare stage/provides in their manifest.yml."
+        )
+
+    def test_no_hardcoded_plugin_name_equality_in_core(self):
+        """Core must not branch on equality against a hardcoded plugin name.
+
+        Catches ``if name == "tmdb":`` / ``plugin == 'tasker'`` style sneaks
+        that the dict-mapping pattern alone missed (S37 audit extension).
+        """
+        violations = self._scan_core_for_pattern(HARDCODED_EQUALITY_PATTERN)
+        assert not violations, (
+            "Hardcoded plugin-name equality conditionals found in core:\n"
+            + "\n".join(violations)
+            + "\n\nDispatch generically via manifest stage/provides; do not "
+              "branch on plugin name string."
+        )
+
+    def test_no_hardcoded_plugin_name_membership_in_core(self):
+        """Core must not test membership in a literal list/tuple/set of plugin names.
+
+        Catches ``if name in ('tmdb', 'tvdb'):`` style sneaks (S37 audit
+        extension). KNOWN_PLUGIN_NAMES set inside the test module itself is
+        fine — the scanner skips test files (only ``CORE_DIR`` is walked).
+        """
+        violations = self._scan_core_for_pattern(HARDCODED_MEMBERSHIP_PATTERN)
+        assert not violations, (
+            "Hardcoded plugin-name membership literals found in core:\n"
+            + "\n".join(violations)
+            + "\n\nResolve dispatch by manifest stage/provides, not by name set."
         )
 
     def test_manifest_normalizer_has_no_plugin_stage_map(self):
