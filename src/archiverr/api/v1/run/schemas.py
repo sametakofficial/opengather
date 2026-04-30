@@ -53,14 +53,6 @@ class RunResponse(BaseModel):
         default=None,
         description="Full API response with all match data"
     )
-    poll_url: str | None = Field(
-        default=None,
-        description="URL to poll for status updates"
-    )
-    websocket_url: str | None = Field(
-        default=None,
-        description="WebSocket URL for real-time updates"
-    )
     error: str | None = Field(
         default=None,
         description="Error message if execution failed"

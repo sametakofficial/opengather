@@ -58,10 +58,11 @@ and git-like versioning for execution history.
 
 | Endpoint | Description |
 |----------|-------------|
-| `/api/v1/run` | Execute processing pipeline |
-| `/api/v1/executions` | Execution CRUD operations |
-| `/api/v1/matches` | Query processed matches |
-| `/api/v1/system` | Health and system status |
+| `/api/v1/run` | Subprocess CLI proxy (blackbox trigger; full-process isolation) |
+| `/api/v1/runs` | RESTful CRUD over runs (in-process orchestrator) |
+| `/api/v1/jobs` | Read jobs by run / by id |
+| `/api/v1/plugins` | Cross-job plugin output query |
+| `/api/v1/system` | Health, version, diagnostics |
         """,
         version="1.0.0",
         lifespan=mongodb_lifespan,  # Industry best practice
