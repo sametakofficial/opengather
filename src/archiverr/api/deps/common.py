@@ -49,53 +49,9 @@ class AsyncPersistenceWrapper:
             "plugins": await self._db["plugins"].count_documents({})
         }
 
-    # ========================================================================
-    # EXECUTIONS
-    # ========================================================================
-
-    def get_recent_executions(self, limit: int = 10) -> list[dict]:
-        """Sync stub - returns empty list."""
-        return []
-
-    async def get_recent_executions_async(self, limit: int = 10) -> list[dict]:
-        """Get recent executions asynchronously."""
-        cursor = self._db["executions"].find().sort("started_at", -1).limit(limit)
-        return await cursor.to_list(length=limit)
-
-    def get_execution(self, execution_id: str) -> dict | None:
-        """Sync stub - returns None."""
-        return None
-
-    async def get_execution_async(self, execution_id: str) -> dict | None:
-        """Get execution by ID asynchronously."""
-        exec_id = self._normalize_exec_id(execution_id)
-        return await self._db["executions"].find_one({"_id": exec_id})
-
-    def delete_execution(self, execution_id: str) -> bool:
-        """Sync stub - returns False."""
-        return False
-
-    async def delete_execution_async(self, execution_id: str) -> bool:
-        """Delete execution and related data asynchronously."""
-        exec_id = self._normalize_exec_id(execution_id)
-
-        # Delete related data
-        await self._db["plugin_results"].delete_many({"execution_id": exec_id})
-        await self._db["matches"].delete_many({"execution_id": exec_id})
-
-        # Delete execution
-        result = await self._db["executions"].delete_one({"_id": exec_id})
-        return result.deleted_count > 0
-
-    # ========================================================================
-    # HELPERS
-    # ========================================================================
-
-    def _normalize_exec_id(self, execution_id: str) -> str:
-        """Ensure execution ID has correct prefix."""
-        if not execution_id.startswith("exec_"):
-            return f"exec_{execution_id}"
-        return execution_id
+    # Legacy executions/matches/plugin_results methods removed in S36 PASS 6.C.
+    # Canonical surfaces: api/v1/runs/, api/v1/jobs/, api/v1/plugins/ routers
+    # operating directly on runs/jobs/plugins collections.
 
 
 async def get_persistence():

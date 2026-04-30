@@ -117,17 +117,10 @@ async def list_runs(
         # Calculate skip
         skip = (page - 1) * page_size
 
-        # Query both 'runs' and 'executions' collections for backward compat
-        # Try 'runs' first (new), fallback to 'executions' (legacy)
-        collection_name = "runs"
-        count = await db[collection_name].count_documents({})
-        if count == 0:
-            collection_name = "executions"
-
-        cursor = db[collection_name].find(query).sort("created_at", -1).skip(skip).limit(page_size)
+        # Canonical collection: 'runs' (legacy 'executions' fallback dropped in S36 PASS 6.C)
+        cursor = db["runs"].find(query).sort("created_at", -1).skip(skip).limit(page_size)
         docs = await cursor.to_list(length=page_size)
-
-        total = await db[collection_name].count_documents(query)
+        total = await db["runs"].count_documents(query)
 
         return RunListResponse(
             items=[_doc_to_run_response(doc) for doc in docs],
@@ -152,22 +145,15 @@ async def get_run(run_id: str, db: DatabaseDep):
     Supports both new 'run_' and legacy 'exec_' ID formats.
     """
     try:
-        # Try multiple ID formats
+        # Canonical: 'runs' collection, 'id' field. Allow bare-id input
+        # (without 'run_' prefix) for convenience.
         ids_to_try = [run_id]
-        if run_id.startswith("run_"):
-            ids_to_try.append(run_id.replace("run_", "exec_"))
-        elif not run_id.startswith("exec_"):
-            ids_to_try.extend([f"run_{run_id}", f"exec_{run_id}"])
+        if not run_id.startswith("run_"):
+            ids_to_try.append(f"run_{run_id}")
 
         doc = None
-        for collection in ["runs", "executions"]:
-            for id_variant in ids_to_try:
-                doc = await db[collection].find_one({"_id": id_variant})
-                if doc:
-                    break
-                doc = await db[collection].find_one({"id": id_variant})
-                if doc:
-                    break
+        for id_variant in ids_to_try:
+            doc = await db["runs"].find_one({"id": id_variant})
             if doc:
                 break
 
@@ -212,10 +198,8 @@ async def create_run(body: RunCreate, db: DatabaseDep):
 
         result = await run_in_threadpool(_run_orchestrator)
 
-        # Get run from database
+        # Get run from canonical 'runs' collection
         doc = await db["runs"].find_one({"id": result.run_id})
-        if not doc:
-            doc = await db["executions"].find_one({"_id": f"exec_{result.run_id}"})
 
         if doc:
             return _doc_to_run_response(doc)
@@ -249,33 +233,28 @@ async def delete_run(run_id: str, db: DatabaseDep):
     Delete a run and its associated data.
     """
     try:
-        # Find the run first
+        # Find the run by id (canonical 'runs' collection)
+        ids_to_try = [run_id]
+        if not run_id.startswith("run_"):
+            ids_to_try.append(f"run_{run_id}")
+
         doc = None
         actual_id = run_id
-
-        for collection in ["runs", "executions"]:
-            for id_variant in [run_id, f"run_{run_id}", f"exec_{run_id}"]:
-                doc = await db[collection].find_one({"_id": id_variant})
-                if doc:
-                    actual_id = id_variant
-                    break
+        for id_variant in ids_to_try:
+            doc = await db["runs"].find_one({"id": id_variant})
             if doc:
+                actual_id = id_variant
                 break
 
         if not doc:
             raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
-        # Delete associated jobs/matches
+        # Cascade delete on canonical collections (no-delete policy: caller must
+        # ensure prod backup; this is the API surface for run lifecycle removal)
         await db["jobs"].delete_many({"run_id": actual_id})
-        await db["matches"].delete_many({"execution_id": actual_id})
-
-        # Delete associated plugins
         await db["plugins"].delete_many({"run_id": actual_id})
-        await db["plugin_results"].delete_many({"execution_id": actual_id})
-
-        # Delete run
-        await db["runs"].delete_one({"_id": actual_id})
-        await db["executions"].delete_one({"_id": actual_id})
+        await db["plugin_executions"].delete_many({"run_id": actual_id})
+        await db["runs"].delete_one({"id": actual_id})
 
     except HTTPException:
         raise
@@ -315,30 +294,19 @@ async def get_run_jobs(
     Get jobs for a specific run.
     """
     try:
-        # Build query for both new and legacy formats
+        # Canonical: 'jobs' collection, 'run_id' field. Allow bare-id input.
         run_id_variants = [run_id]
-        if run_id.startswith("run_"):
-            run_id_variants.append(run_id.replace("run_", "exec_"))
+        if not run_id.startswith("run_"):
+            run_id_variants.append(f"run_{run_id}")
 
         jobs = []
         total = 0
-
-        # Try jobs collection first
         for variant in run_id_variants:
             cursor = db["jobs"].find({"run_id": variant}).skip(offset).limit(limit)
             jobs = await cursor.to_list(length=limit)
             if jobs:
                 total = await db["jobs"].count_documents({"run_id": variant})
                 break
-
-        # Fallback to matches collection
-        if not jobs:
-            for variant in run_id_variants:
-                cursor = db["matches"].find({"execution_id": variant}).skip(offset).limit(limit)
-                jobs = await cursor.to_list(length=limit)
-                if jobs:
-                    total = await db["matches"].count_documents({"execution_id": variant})
-                    break
 
         return {
             "run_id": run_id,

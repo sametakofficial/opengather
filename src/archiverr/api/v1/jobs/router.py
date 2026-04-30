@@ -104,31 +104,22 @@ async def list_jobs(
     try:
         query = {}
 
-        # Handle run_id filter
         if run_id:
-            # Support both new and legacy formats
-            query["$or"] = [
-                {"run_id": run_id},
-                {"execution_id": run_id},
-                {"run_id": run_id.replace("run_", "exec_")},
-                {"execution_id": run_id.replace("run_", "exec_")}
-            ]
+            # Allow bare-id input (without 'run_' prefix)
+            run_ids = [run_id]
+            if not run_id.startswith("run_"):
+                run_ids.append(f"run_{run_id}")
+            query["run_id"] = {"$in": run_ids}
 
         if state:
             query["status.state"] = state.value
 
         skip = (page - 1) * page_size
 
-        # Try jobs collection first, fallback to matches
-        collection_name = "jobs"
-        count = await db[collection_name].count_documents({})
-        if count == 0:
-            collection_name = "matches"
-
-        cursor = db[collection_name].find(query).sort("created_at", -1).skip(skip).limit(page_size)
+        # Canonical: 'jobs' collection
+        cursor = db["jobs"].find(query).sort("created_at", -1).skip(skip).limit(page_size)
         docs = await cursor.to_list(length=page_size)
-
-        total = await db[collection_name].count_documents(query)
+        total = await db["jobs"].count_documents(query)
 
         return JobListResponse(
             items=[_doc_to_job_response(doc) for doc in docs],
@@ -151,29 +142,17 @@ async def get_jobs_by_run(run_id: str, db: DatabaseDep):
     Get all jobs for a specific run.
     """
     try:
-        # Build query for multiple ID formats
+        # Canonical: 'jobs' collection. Allow bare-id input.
         run_id_variants = [run_id]
-        if run_id.startswith("run_"):
-            run_id_variants.append(run_id.replace("run_", "exec_"))
-        elif not run_id.startswith("exec_"):
-            run_id_variants.extend([f"run_{run_id}", f"exec_{run_id}"])
+        if not run_id.startswith("run_"):
+            run_id_variants.append(f"run_{run_id}")
 
         jobs = []
-
-        # Try jobs collection
         for variant in run_id_variants:
             cursor = db["jobs"].find({"run_id": variant})
             jobs = await cursor.to_list(length=1000)
             if jobs:
                 break
-
-        # Fallback to matches
-        if not jobs:
-            for variant in run_id_variants:
-                cursor = db["matches"].find({"execution_id": variant})
-                jobs = await cursor.to_list(length=1000)
-                if jobs:
-                    break
 
         return [_doc_to_job_response(doc) for doc in jobs]
 
@@ -191,16 +170,10 @@ async def get_job(job_id: str, db: DatabaseDep):
     Get a specific job by ID.
     """
     try:
-        doc = None
-
-        # Try jobs collection
+        # Canonical: 'jobs' collection. Try both _id and id field.
         doc = await db["jobs"].find_one({"_id": job_id})
         if not doc:
             doc = await db["jobs"].find_one({"id": job_id})
-
-        # Fallback to matches
-        if not doc:
-            doc = await db["matches"].find_one({"_id": job_id})
 
         if not doc:
             raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
@@ -223,23 +196,17 @@ async def get_job_plugins(job_id: str, db: DatabaseDep):
     Get all plugin data for a job.
     """
     try:
-        # Try plugins collection
+        # Canonical: 'plugins' collection (cross-job plugin output).
         cursor = db["plugins"].find({"job_id": job_id})
         plugins = await cursor.to_list(length=100)
 
-        # Fallback to plugin_results
-        if not plugins:
-            cursor = db["plugin_results"].find({"match_id": job_id})
-            plugins = await cursor.to_list(length=100)
-
-        # Also check job document itself
+        # Fallback to embedded jobs.plugins (some plugins write only embedded)
         if not plugins:
             job_doc = await db["jobs"].find_one({"_id": job_id})
             if not job_doc:
-                job_doc = await db["matches"].find_one({"_id": job_id})
+                job_doc = await db["jobs"].find_one({"id": job_id})
 
             if job_doc and "plugins" in job_doc:
-                # Convert embedded plugins to list
                 plugins = [
                     {
                         "job_id": job_id,
@@ -275,24 +242,17 @@ async def get_job_plugin(job_id: str, plugin_name: str, db: DatabaseDep):
     Get specific plugin data for a job.
     """
     try:
-        # Try plugins collection
+        # Canonical: 'plugins' collection by (job_id, plugin_name)
         doc = await db["plugins"].find_one({
             "job_id": job_id,
             "plugin_name": plugin_name
         })
 
-        # Fallback to plugin_results
-        if not doc:
-            doc = await db["plugin_results"].find_one({
-                "match_id": job_id,
-                "plugin_name": plugin_name
-            })
-
-        # Check embedded in job
+        # Fallback to embedded jobs.plugins
         if not doc:
             job_doc = await db["jobs"].find_one({"_id": job_id})
             if not job_doc:
-                job_doc = await db["matches"].find_one({"_id": job_id})
+                job_doc = await db["jobs"].find_one({"id": job_id})
 
             if job_doc:
                 plugin_data = job_doc.get("plugins", {}).get(plugin_name)

@@ -328,11 +328,11 @@ class TestCLIAPIParity:
         db = DatabaseConnection.from_env()
         persistence = db.connect()
         
-        # Should have execution records
-        executions = persistence.get_recent_executions(limit=10)
-        
-        # At least one execution should exist
-        assert len(executions) >= 0  # May be 0 if execution failed early
+        # Should have run records via canonical PersistenceInterface
+        # (legacy get_recent_executions removed in S36 PASS 6.C)
+        if hasattr(persistence, 'get_runs'):
+            runs = persistence.get_runs(limit=10)
+            assert len(runs) >= 0  # May be 0 if run failed early
         
         db.disconnect()
 

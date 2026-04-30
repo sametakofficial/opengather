@@ -136,19 +136,15 @@ async def get_plugins_by_run(run_id: str, db: DatabaseDep):
     Get all plugin data for a specific run.
     """
     try:
+        # Canonical: 'plugins' collection
         cursor = db["plugins"].find({"run_id": run_id})
         docs = await cursor.to_list(length=1000)
-
-        # Fallback to legacy collection
-        if not docs:
-            cursor = db["plugin_results"].find({"execution_id": run_id})
-            docs = await cursor.to_list(length=1000)
 
         return [
             PluginData(
                 id=str(doc.get("_id", "")),
-                job_id=doc.get("job_id", doc.get("match_id", "")),
-                run_id=doc.get("run_id", doc.get("execution_id", "")),
+                job_id=doc.get("job_id", ""),
+                run_id=doc.get("run_id", ""),
                 plugin_name=doc.get("plugin_name", ""),
                 stage=doc.get("stage", ""),
                 data=doc.get("data", {}),
