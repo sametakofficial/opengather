@@ -96,14 +96,13 @@ class PluginDataManager:
         run_id = target_id if target_id.startswith("run_") else f"run_{target_id}"
 
         if run:
-            # Store directly in RunState.plugins
+            # Store directly in RunState.plugins (canonical embedded surface)
             run.plugins[plugin_name] = data
 
             # Store in unified context plugins map
             self._context._all_plugins.setdefault(run_id, {})[plugin_name] = data
 
-            # Persist via delegate
-            self._persistence.update_plugin_doc(run_id, plugin_name, data)
+            # Persist via canonical save_run (runs.plugins embedded)
             self._persistence.save_run(run)
 
         self._log("debug", "plugin_data",
@@ -126,9 +125,6 @@ class PluginDataManager:
 
             # Store in unified context plugins map
             self._context._all_plugins.setdefault(job_id, {})[plugin_name] = data
-
-            # Persist via delegate
-            self._persistence.update_plugin_doc(job_id, plugin_name, data)
 
             # Keep current job plugin view in sync
             if self._context._current_job and self._context._current_job.id == job_id:

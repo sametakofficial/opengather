@@ -64,7 +64,6 @@ class PyMongoPersistence(PersistenceInterface):
     RUNS = "runs"
     JOBS = "jobs"
     PLUGINS = "plugins"
-    PLUGIN_DOCS = "plugin_docs"
     PLUGIN_EXECUTIONS = "plugin_executions"
 
     TERMINAL_STATES = {"completed", "failed", "skipped", "crashed"}
@@ -175,10 +174,6 @@ class PyMongoPersistence(PersistenceInterface):
             self._db[self.PLUGINS].create_index("run_id")
             self._db[self.PLUGINS].create_index("job_id")
 
-            # plugin_docs indexes (_id is target_id, unique by default)
-            self._db[self.PLUGIN_DOCS].create_index("created_at")
-            self._db[self.PLUGIN_DOCS].create_index("updated_at")
-
             # plugin_executions indexes (recovery surface)
             self._db[self.PLUGIN_EXECUTIONS].create_index(
                 [("job_id", 1), ("plugin_name", 1), ("attempt", 1)],
@@ -264,29 +259,6 @@ class PyMongoPersistence(PersistenceInterface):
         except OperationFailure as e:
             logger.error(f"Failed to save plugin: {e}")
             raise
-
-    def update_plugin_doc(self, target_id: str, plugin_name: str, data: dict[str, Any]) -> None:
-        """Update target-level plugin document."""
-        if not target_id:
-            raise ValueError("target_id is required")
-        if not plugin_name:
-            raise ValueError("plugin_name is required")
-
-        self._db[self.PLUGIN_DOCS].update_one(
-            {"_id": target_id},
-            {
-                "$set": {plugin_name: data or {}},
-                "$setOnInsert": {"created_at": datetime.utcnow()},
-                "$currentDate": {"updated_at": True}
-            },
-            upsert=True
-        )
-
-    def get_plugin_doc(self, target_id: str) -> dict[str, Any] | None:
-        """Get target-level plugin document by target_id."""
-        if not target_id:
-            return None
-        return self._db[self.PLUGIN_DOCS].find_one({"_id": target_id})
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         """Get run by ID."""
