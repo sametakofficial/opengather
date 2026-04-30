@@ -1,3 +1,81 @@
+# Handoff - Session 36 (MongoDB + FastAPI cleanup sprint)
+
+**Date:** April 30, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 36)
+
+5 PASS, 5 commits, ~280 LOC removed, 0 LOC of canonical writers touched.
+Validated by parallel architecture-researcher + architecture-reviewer + simplifier
+against AGENT.md.
+
+```
+1d364ec  PASS 5: kill misleading docstring + phantom URL fields (Y2, Y6)
+83a42d0  PASS 4: API hygiene + dataset alignment (Y1, Y3, N7, N8)
+bd3840b  PASS 3: drop plugin_docs collection chain (F4)
+68f55f9  PASS 2: drop dead save_plugin_result chain (F3)
+3ebbdb7  PASS 1: kill orchestrator garbage upsert + dead indexes + plugin_executions rename (F1, F2, F5)
+```
+
+### Session 36 changes
+
+**MongoDB cleanup (canonical 4 collections: `runs`, `jobs`, `plugins`, `plugin_executions`)**
+- Removed `_register_event_handlers` from `core/orchestrator.py` (REAL BUG: garbage doc upsert
+  on every job.completed event due to filter shape mismatch `{"id": ""}`).
+- Merged `_create_indexes` + `_create_new_indexes`; dropped dead `runs.started_at` indexes
+  (top-level field never written by `RunState.to_dict`).
+- Dropped `plugin_docs` collection chain entirely (zero readers, pure write amplification).
+  Per-job plugin data canonical surface = `jobs.plugins` embedded + `plugins` collection
+  (cross-job query, MongoDB Extended Reference pattern).
+- Dropped dead `save_plugin_result` / `update_plugin_result` / `save_plugin_data` chain
+  (zero production callers; canonical writer is `services.update_plugin -> save_plugin`).
+- Renamed `plugin_executions` schema field `started_at` -> `created_at` to match code
+  (slim contract = today's truth).
+
+**FastAPI hygiene**
+- `/api/v1/run/`: full stderr/stdout logged at error level; response keeps 500-char
+  truncation for clients (AGENT.md §5: no silent failures).
+- `/api/v1/system/` + `/api/deps/common.py`: stats now report canonical `runs/jobs/plugins`
+  counts (was: legacy `executions/matches/plugin_results`).
+- `/api/v1/run/` schemas: dropped phantom `websocket_url` and `poll_url` (never set anywhere).
+
+**Datasets**
+- `06-mongodb.yml` adds `known_unwired` block (`diagnostics`, `plugin_docs`).
+- `09-api-fastapi.yml` documents `/run/` (subprocess proxy) vs `/runs/` (canonical CRUD)
+  as TWO distinct execution models (NOT duplicates).
+- `11-recovery.yml`: schema aligned to code field names.
+
+**Tests**
+- `tests/unit/state/test_state_manager.py`: 3 tests rewired from dead `update_plugin_result`
+  to canonical `update_plugin(target_id, plugin_name, data)` rotation. Coverage moves from
+  dead chain to live writer.
+
+### Test status (Session 36 end)
+
+498 unit tests pass. 4 pre-existing API failures are mongo-dependent
+(`tests/unit/api/test_endpoints.py` legacy executions/matches endpoints; mongo localhost:27017
+not running). Re-run after `docker compose up -d mongodb` for smoke test.
+
+### Open work (deferred / awaiting user input)
+
+1. `plugin_docs` Mongo collection migration (no-delete policy: `mkdir -p .deleted &&
+   mongoexport > .deleted/`) — not done because no live mongo to migrate.
+2. Legacy collection fallback cleanup (`executions`/`matches`/`plugin_results` readers
+   in api/v1/runs/ + jobs/) — observable bug-free; defer until prod data status confirmed.
+3. Per-run plugins recording into `plugin_executions` (E1/K6 from kritik-bulgular.md) —
+   recovery contract genişletme kararı, kullanıcı onayı bekliyor.
+4. SSE/WebSocket for live run progress — defer until UI consumer exists.
+
+### Audit references
+
+- `ONEMLI/mongodb-audit.md` — comprehensive Mongo audit (15-item plan, before reduction)
+- `ONEMLI/kritik-bulgular.md` — broader gap analysis
+- `.claude/session-artifacts/ef30ac79/agent-architecture-researcher-26.md` — industry pattern evidence
+- `.claude/session-artifacts/ef30ac79/agent-architecture-reviewer-29.md` — hostile re-audit
+- `.claude/session-artifacts/ef30ac79/agent-simplifier-31.md` — YAGNI filter pass
+
+---
+
 # Handoff - Session 33
 
 **Date:** April 10, 2026
