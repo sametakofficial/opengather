@@ -53,29 +53,43 @@ async def get_async_db():
     if _async_db is not None:
         return _async_db
 
+    # IMPORTANT: cache (_async_db) only after successful ping. Otherwise a
+    # failed ping leaves a dead AsyncDatabase reference cached and every
+    # subsequent call returns it without retrying. (S36 PASS 6.E)
+    client = None
     try:
         from pymongo import AsyncMongoClient
 
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
 
-        _async_client = AsyncMongoClient(
+        client = AsyncMongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=5000,
             maxPoolSize=50,
             minPoolSize=5,
         )
-        _async_db = _async_client[database]
+        db = client[database]
 
-        # Verify connection
-        await _async_db.command('ping')
+        # Verify connection BEFORE caching
+        await db.command('ping')
         logger.info(f"PyMongo async connection established: {database}")
 
+        _async_client = client
+        _async_db = db
         return _async_db
 
     except Exception as e:
         logger.error(f"PyMongo async connection failed: {e}")
+        # Ensure no half-initialized state lingers (close is async on AsyncMongoClient)
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                pass
+        _async_client = None
+        _async_db = None
         return None
 
 
@@ -122,28 +136,39 @@ def get_sync_db():
     if _pymongo_db is not None:
         return _pymongo_db
 
+    # Cache only after successful ping (mirror of get_async_db fix, S36 PASS 6.E).
+    client = None
     try:
         from pymongo import MongoClient
 
         uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         database = os.getenv("MONGODB_DATABASE", "archiverr")
 
-        _pymongo_client = MongoClient(
+        client = MongoClient(
             uri,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=5000,
             maxPoolSize=10
         )
-        _pymongo_db = _pymongo_client[database]
+        db = client[database]
 
-        # Verify connection
-        _pymongo_db.command('ping')
+        # Verify connection BEFORE caching
+        db.command('ping')
         logger.info(f"PyMongo sync connection established: {database}")
 
+        _pymongo_client = client
+        _pymongo_db = db
         return _pymongo_db
 
     except Exception as e:
         logger.error(f"PyMongo connection failed: {e}")
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+        _pymongo_client = None
+        _pymongo_db = None
         return None
 
 

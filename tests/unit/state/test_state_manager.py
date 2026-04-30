@@ -28,7 +28,6 @@ class TestGlobalStateManagerLifecycle:
         mock.save_run = MagicMock()
         mock.save_job = MagicMock()
         mock.save_plugin = MagicMock()
-        mock.update_plugin_doc = MagicMock()
         return mock
 
     @pytest.fixture
@@ -202,7 +201,6 @@ class TestGlobalStateManagerPersistence:
         mock.save_run = MagicMock()
         mock.save_job = MagicMock()
         mock.save_plugin = MagicMock()
-        mock.update_plugin_doc = MagicMock()
         return mock
     
     @pytest.fixture

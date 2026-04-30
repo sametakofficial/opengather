@@ -79,10 +79,10 @@ def verify_flat_structure():
         logger.error("Plugin data not found in persistence")
         return False
         
-    # DatabaseConnection stores what is passed to save_plugin
-    # state.save_plugin_data calls save_plugin with the flat data (plus metadata wrappers if modified)
-    # Let's check how Manager saves it.
-    # Manager.save_plugin_data -> persistence.save_plugin(plugin_doc)
+    # DatabaseConnection stores what is passed to save_plugin.
+    # Canonical writer chain (S36 PASS 2): services.update_plugin
+    #   -> GlobalStateManager.update_plugin -> PluginDataManager._update_job_plugin
+    #   -> persistence.save_plugin(plugin_doc)
     # plugin_doc has keys: job_id, plugin_name, data, run_id, job_index
     
     logger.info(f"Persisted plugin doc: {persisted_plugin}")
