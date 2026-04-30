@@ -80,25 +80,21 @@ class TestCorePluginAgnosticGuard:
 
 
 # ============================================================================
-# Legacy test suite (skipped if old API removed)
+# Plugin-agnostic runtime guard test suite (rewired to canonical API in S36)
 # ============================================================================
 
-_LEGACY_SKIP = not hasattr(GlobalStateManager, "start_execution")
-_legacy_skip = pytest.mark.skipif(_LEGACY_SKIP, reason="Legacy GlobalStateManager execution API removed")
 
-
-@_legacy_skip
 class TestPluginAgnosticExecution:
-    """Test execution flow without real plugins."""
-    
+    """Test execution flow without real plugins (canonical API)."""
+
     def test_state_manager_with_mock_plugin(self, mock_input_plugin, mock_output_plugin):
-        """Test GlobalStateManager works with generic plugin data."""
-        from archiverr.state import GlobalStateManager, PluginResult
-        
+        """GlobalStateManager works with generic plugin data via canonical update_plugin path."""
+        from archiverr.state import GlobalStateManager
+
         state = GlobalStateManager()
         state.reset()
-        
-        # Start execution
+
+        # Start run with generic plugin config
         config = {
             "options": {"debug": False},
             "plugins": {
@@ -106,85 +102,63 @@ class TestPluginAgnosticExecution:
                 mock_output_plugin["name"]: {"enabled": True}
             }
         }
-        
-        exec_id = state.start_execution(config)
-        assert exec_id is not None
-        
-        # Register match
-        match = state.register_match(0, "/path/test.mkv")
-        assert match.index == 0
-        
-        # Update with mock plugin results (generic names)
-        from datetime import datetime
-        now = datetime.now()
-        
-        # Session 11: PluginResult without plugin_name and duration_ms in constructor
-        input_result = PluginResult(
-            success=True,
-            started_at=now,
-            finished_at=now,
-            data={"matches": ["/path/test.mkv"]}
-        )
-        state.update_plugin_result(0, mock_input_plugin["name"], input_result)
-        
-        output_result = PluginResult(
-            success=True,
-            started_at=now,
-            finished_at=now,
-            data={"processed": True}
-        )
-        state.update_plugin_result(0, mock_output_plugin["name"], output_result)
-        
+        run_id = state.start_run(config)
+        assert run_id is not None
+
+        # Create job (replaces legacy register_match)
+        state.create_job("/path/test.mkv")
+        job = state.get_job(0)
+        assert job.index == 0
+
+        # Write generic plugin data via canonical writer
+        # (services.update_plugin -> GlobalStateManager.update_plugin -> _update_job_plugin -> save_plugin)
+        state.update_plugin(job.id, mock_input_plugin["name"], {"matches": ["/path/test.mkv"]})
+        state.update_plugin(job.id, mock_output_plugin["name"], {"processed": True})
+
         # Complete
-        state.complete_match(0)
-        run_state = state.complete_execution()
-        
-        # Session 11: Use run.status.total_jobs instead of execution.total_matches
+        state.complete_job(0)
+        run_state = state.complete_run()
+
         assert run_state.status.total_jobs == 1
         assert run_state.status.completed == 1
-    
+
     def test_plugin_result_generic_structure(self, mock_output_plugin):
-        """Test PluginResult works with any plugin data."""
+        """PluginResult works with any plugin data (no plugin name coupling)."""
         from archiverr.state import PluginResult
         from datetime import datetime, timedelta
-        
+
         start = datetime.now()
         finish = start + timedelta(milliseconds=100)
-        
-        # Session 11: PluginResult without plugin_name, duration_ms is computed
+
         result = PluginResult(
             success=True,
             started_at=start,
             finished_at=finish,
             data=mock_output_plugin["execute_result"]["data"]
         )
-        
+
         assert result.success is True
         assert result.duration_ms >= 100  # Computed property
         assert "title" in result.data
-    
+
     def test_match_state_plugins_are_generic(self, mock_match_data):
-        """Test JobState plugins dict is plugin-agnostic."""
-        # Session 11: Use JobState from archiverr.state (not MatchState from models)
+        """JobState.plugins dict is plugin-agnostic (string keys)."""
         from archiverr.state import JobState, InputData
-        
+
         job = JobState(
             index=mock_match_data["index"],
             run_id="test-123",
             input=InputData(value=mock_match_data["input_path"])
         )
-        
-        # Add plugins using generic names from fixture
+
         for plugin_name, plugin_data in mock_match_data["plugins"].items():
             job.plugins[plugin_name] = plugin_data
-        
-        # Verify generically
+
         assert len(job.plugins) == 2
         for plugin_name in mock_match_data["plugins"]:
             assert plugin_name in job.plugins
 
 
-@_legacy_skip
 class TestPluginAgnosticConfiguration:
     """Test configuration without hardcoded plugin names."""
     
@@ -205,7 +179,6 @@ class TestPluginAgnosticConfiguration:
             assert isinstance(plugin_name, str)
 
 
-@_legacy_skip
 class TestPluginAgnosticMetadata:
     """Test plugin metadata handling without specific plugins."""
     
@@ -232,7 +205,6 @@ class TestPluginAgnosticMetadata:
         assert len(output_meta["depends_on"]) > 0
 
 
-@_legacy_skip
 class TestPluginAgnosticDiscovery:
     """Test plugin discovery with mock data."""
     
@@ -272,7 +244,6 @@ class TestPluginAgnosticDiscovery:
         assert input_index <= output_index, "Input should execute before output"
 
 
-@_legacy_skip
 class TestNoHardcodedPluginNames:
     """Verify tests don't use hardcoded plugin names."""
     
