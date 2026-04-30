@@ -15,6 +15,22 @@ contract: |
   These remain documented below as the future-work shape so the
   slim recovery does not paint us into a corner; they are unwired.
 
+out_of_scope:
+  per_run_plugin_executions: |
+    per_run plugins (input stage: scanner, file-reader, etc.) do NOT
+    write to plugin_executions today. The slim contract keys on
+    (job_id, plugin_name, attempt) and per_run plugins precede any
+    job_id existence. Wiring them would require a schema decision
+    (sentinel job_id="" OR target_id polymorphism) — not earned by
+    today's requirement.
+    Consequence: the recovery startup scan does NOT auto-detect crashed
+    per_run executions. If a per_run plugin crashes, the only marker is
+    runs.status.state=failed. Deliberate scope-out (S37 PASS 5) — slim
+    contract = today's truth.
+    Code markers: core/orchestrator.py per_run executor and
+    core/plugins/stage_executor.py save_plugin_execution callsite
+    cross-reference this block.
+
 collections_additions:
   plugin_executions:
     _id: ObjectId

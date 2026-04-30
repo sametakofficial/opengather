@@ -393,6 +393,10 @@ class StageExecutor:
         first time they occur per run (then counted) — execution state is
         auxiliary so the pipeline keeps running, but operators must see
         that recovery bookkeeping is degraded.
+
+        SCOPE NOTE: this is the per_job recovery surface. Per_run input
+        plugins do NOT write plugin_executions (they precede job_id).
+        See datasets/11-recovery.yml#out_of_scope.per_run_plugin_executions.
         """
         persistence = getattr(self._state, "persistence", None)
         if persistence is None:

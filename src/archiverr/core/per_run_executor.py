@@ -17,7 +17,13 @@ if TYPE_CHECKING:
 
 
 class PerRunPluginExecutor:
-    """Executes per_run mode plugins (like scanner) before stage execution."""
+    """Executes per_run mode plugins (input stage) before stage execution.
+
+    SCOPE NOTE (S37 PASS 5): per_run plugins do NOT write to the
+    plugin_executions recovery surface today. See
+    datasets/11-recovery.yml#out_of_scope.per_run_plugin_executions —
+    deliberate scope-out, slim contract = today's truth.
+    """
 
     def __init__(
         self,
