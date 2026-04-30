@@ -18,7 +18,7 @@ contract: |
 collections_additions:
   plugin_executions:
     _id: ObjectId
-    run_id: run_{uuid8}
+    run_id: uuid4_string
     job_id: job_{run_id}_{index}
     plugin_name: string
     attempt: int
@@ -34,7 +34,7 @@ collections_additions:
     output_fingerprint: string | null
   checkpoints: # future-work; no current writers
     _id: ObjectId
-    run_id: run_{uuid8}
+    run_id: uuid4_string
     job_id: job_{run_id}_{index}
     plugin_name: string
     attempt: int

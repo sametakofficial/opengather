@@ -1,5 +1,5 @@
 run:
-  id: run_{uuid8}
+  id: uuid4_string
   status:
     state: pending | running | success | failed | partial | cancelled
     success: bool
@@ -18,7 +18,7 @@ run:
 job:
   id: job_{run_id}_{index}
   index: int
-  run_id: run_{uuid8}
+  run_id: uuid4_string
   input:
     value: string
     data: {}

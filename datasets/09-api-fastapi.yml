@@ -1,5 +1,5 @@
 RunResponse:
-  id: run_{uuid8}
+  id: uuid4_string
   status:
     state: pending | running | success | failed | partial | cancelled
     success: bool
@@ -20,6 +20,11 @@ RunResponse:
   options: {}
   created_at: ISO8601
   completed_at: ISO8601
+  persistence:
+    # S37 PASS 2: persistence visibility per 11-recovery.yml#persistence_mode_contract
+    mode: full | degraded | off
+    backend: PyMongoPersistence | NullPersistence
+    persisted: bool  # True iff run was actually written to Mongo
 
 RunListResponse:
   items: [RunResponse]

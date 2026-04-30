@@ -153,7 +153,7 @@ class JobState:
 
 @dataclass
 class RunState:
-    """Execution-level state. ID Format: run_{uuid8}"""
+    """Execution-level state. ID is a bare UUID4 string (state/manager.py:130-132)."""
     id: str
     status: RunStatus = field(default_factory=RunStatus)
     config: dict[str, Any] = field(default_factory=dict)

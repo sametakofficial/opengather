@@ -1,6 +1,6 @@
 runs:
   _id: ObjectId
-  id: run_{uuid8}
+  id: uuid4_string  # bare UUID4 (state/manager.py:130-132); NOT prefixed
   status:
     state: string
     success: bool
@@ -19,12 +19,12 @@ runs:
   plugins: {}
   created_at: ISODate
   updated_at: ISODate
-  persistence_mode: full | degraded | off
+  persistence_mode: full | degraded | off  # written by state/manager.py (S37 PASS 2)
 
 jobs:
   _id: ObjectId
   id: job_{run_id}_{index}
-  run_id: run_{uuid8}
+  run_id: uuid4_string  # bare UUID4
   index: int
   input:
     value: string
@@ -44,19 +44,13 @@ jobs:
   updated_at: ISODate
 
 plugins:
+  # Per-plugin output for cross-job query. Per-plugin status (state, error,
+  # duration) lives in plugin_executions (recovery surface), not here.
   _id: ObjectId
-  run_id: run_{uuid8}
+  run_id: uuid4_string
   job_id: job_{run_id}_{index}
   job_index: int
   plugin_name: string
-  stage: input | parse | data | output
-  status:
-    state: completed | failed | skipped
-    success: bool
-    started_at: ISODate
-    finished_at: ISODate
-    duration_ms: int
-    error: string | null
   data: {}
   created_at: ISODate
 

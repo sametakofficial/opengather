@@ -54,7 +54,8 @@ plugin_category:
   - output
 
 id_format:
-  run: run_{uuid8}
+  # Generated in state/manager.py:130-132 via str(uuid4()); no prefix.
+  run: uuid4_string
   job: job_{run_id}_{index}
-  example_run: run_abc12345
-  example_job: job_run_abc12345_0
+  example_run: 8f7ecdc4-9c8c-4abb-8447-62df70baaaa4
+  example_job: job_8f7ecdc4-9c8c-4abb-8447-62df70baaaa4_0
