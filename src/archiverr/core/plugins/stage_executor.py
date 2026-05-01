@@ -137,6 +137,10 @@ class StageExecutor:
         self._run_safety = run_safety
         # _save_exec_state failure counter (warn-once-per-run discipline)
         self._exec_state_failures = 0
+        # Lazy-initialised core RenderEngine (S39 R15 §H2). Threaded into
+        # every PluginServices instance so plugins can resolve their own
+        # config templates via ``services.get_runtime_config()`` (§H3).
+        self._render_engine = None
 
     def _register_provides_from_manifests(self) -> None:
         """Register all plugin provides from manifests into the ProvidesRegistry."""
@@ -615,18 +619,18 @@ class StageExecutor:
     def _create_services(self, plugin_name: str, job_id: str = None) -> PluginServices:
         """
         Create PluginServices for a plugin ().
-        
+
         Args:
             plugin_name: Plugin name
             job_id: Current job ID (for per_job plugins)
-            
+
         Returns:
             PluginServices instance with context set
         """
         # Determine mode based on job_id
         mode = "per_job" if job_id else "per_run"
 
-        # Create services with context
+        # Create services with context (S39 R15 §H2 — render_engine threaded)
         services = PluginServices(
             state=self._state,
             event_bus=self._event_bus,
@@ -637,9 +641,17 @@ class StageExecutor:
             current_plugin_name=plugin_name,
             provides_registry=self._provides_registry,
             run_safety=self._run_safety,
+            render_engine=self._get_render_engine(),
         )
 
         return services
+
+    def _get_render_engine(self):
+        """Lazy-init shared ConfigRenderEngine (S39 R15 §H2)."""
+        if self._render_engine is None:
+            from archiverr.core.render import ConfigRenderEngine
+            self._render_engine = ConfigRenderEngine()
+        return self._render_engine
 
     def _get_all_jobs(self) -> list[JobState]:
         """Get all jobs from state"""

@@ -42,6 +42,17 @@ class PerRunPluginExecutor:
         self._debugger = debugger
         self._provides_registry = provides_registry
         self._run_safety = run_safety
+        # Lazy-initialised core RenderEngine (S39 R15 §H2). Shared across
+        # per_run plugin invocations so they can call
+        # ``services.get_runtime_config()`` (§H3).
+        self._render_engine = None
+
+    def _get_render_engine(self):
+        """Lazy-init shared ConfigRenderEngine (S39 R15 §H2)."""
+        if self._render_engine is None:
+            from archiverr.core.render import ConfigRenderEngine
+            self._render_engine = ConfigRenderEngine()
+        return self._render_engine
 
     def execute(self) -> dict[str, Any]:
         """
@@ -81,6 +92,7 @@ class PerRunPluginExecutor:
                     current_plugin_name=plugin_name,
                     provides_registry=self._provides_registry,
                     run_safety=self._run_safety,
+                    render_engine=self._get_render_engine(),  # S39 R15 §H2
                 )
 
                 result = plugin_instance.execute_run(services)

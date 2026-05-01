@@ -11,6 +11,7 @@ Methods:
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from archiverr.core.render import ConfigRenderEngine
     from archiverr.events import EventBus
     from archiverr.state.manager import GlobalStateManager
     from archiverr.utils.debug import Debugger
@@ -30,6 +31,7 @@ class PluginServices:
         current_plugin_name: str | None = None,
         provides_registry: 'Any' = None,
         run_safety: dict[str, bool] | None = None,
+        render_engine: 'ConfigRenderEngine | None' = None,
     ):
         """
         Initialize Plugin Services.
@@ -47,6 +49,12 @@ class PluginServices:
                 ({"dry_run", "hardlink", "no_delete"}). Required - must be
                 resolved once at run start by the orchestrator via
                 ``core.safety.resolve_run_safety``.
+            render_engine: Optional ``ConfigRenderEngine`` instance
+                (S39 R15 §H2). When provided, plugins can call
+                ``services.get_runtime_config()`` to get their config
+                block rendered against the live template context. When
+                None (test fixtures, stub paths), ``get_runtime_config``
+                falls back to returning the raw frozen config block.
         """
         self._state = state
         self._event_bus = event_bus
@@ -57,6 +65,7 @@ class PluginServices:
         self._current_plugin_name = current_plugin_name
         self._provides_registry = provides_registry
         self._run_safety = run_safety
+        self._render_engine = render_engine
         self._event_service = None
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:
