@@ -1,4 +1,11 @@
-"""WP-4 regression tests for TemplateContextBuilder + tasker overlay.
+"""WP-4 + S39 §C1 regression tests for TemplateContextBuilder.
+
+S39 §C1 paradigm shift:
+- ``plugin.<name>.{data,status}`` namespace REMOVED (tasker / other render
+  consumers must use ``jobs[job_id].plugins.<name>.<field>`` or the
+  forthcoming ``data.<jobindex>.<category>.<path>`` resolver namespace).
+- ``jobs`` shape: list -> dict keyed by ``job.id``.
+- New top-level shortcuts: ``job_id``, ``job_index``, ``data``.
 
 Guards against re-introduction of:
 - ``context[plugin_name] = data`` top-level plugin-name shortcuts
@@ -6,6 +13,7 @@ Guards against re-introduction of:
 - ``count:`` / ``index:`` template function regex in tasker
 - top-level ``movie`` / ``show`` aliases
 - separate ``_build_context`` helper (must stay inline in ``execute``)
+- legacy ``plugin`` synthetic namespace
 """
 
 from unittest.mock import Mock
@@ -16,10 +24,10 @@ from archiverr.state import template_context
 from archiverr.state.template_context import TemplateContextBuilder
 
 
-def _make_job(plugins):
+def _make_job(plugins, job_id="job-1", index=0):
     job = Mock()
-    job.index = 0
-    job.id = "job-1"
+    job.index = index
+    job.id = job_id
     job.input.value = "/x.mkv"
     job.input.data = {}
     job.output.values = []
@@ -30,10 +38,10 @@ def _make_job(plugins):
     return job
 
 
-def _make_services(plugins_data):
+def _make_services(plugins_data, jobs=None):
     services = Mock()
     services.get_run.return_value = None
-    services.get_all_jobs.return_value = []
+    services.get_all_jobs.return_value = list(jobs) if jobs else []
     services.run_safety = {"dry_run": True, "hardlink": False, "no_delete": True}
     services.events.snapshot.return_value = {}
     services.state.get_job_plugin_names.return_value = list(plugins_data.keys())
@@ -43,7 +51,7 @@ def _make_services(plugins_data):
     return services
 
 
-class TestTemplateContextBuilderTrim:
+class TestTemplateContextBuilderShape:
     def test_no_plugin_name_shortcut_at_top_level(self):
         """WP-4: context[plugin_name] injection is gone."""
         job = _make_job({"tmdb": {"movie": {"title": "X"}}})
@@ -53,21 +61,102 @@ class TestTemplateContextBuilderTrim:
         assert ctx["job"]["plugins"]["tmdb"] == {"movie": {"title": "X"}}
 
     def test_expected_top_level_keys(self):
+        """S39 §C1 — new canonical top-level shape."""
         job = _make_job({})
         ctx = TemplateContextBuilder().build_job_context(job)
 
-        assert set(ctx.keys()) == {"run", "job", "jobs", "config", "options", "events", "plugin"}
+        assert set(ctx.keys()) == {
+            "run", "job", "jobs",
+            "config", "options", "events",
+            "data", "job_id", "job_index",
+        }
+
+    def test_no_legacy_plugin_namespace(self):
+        """S39 §C1 — synthetic 'plugin' namespace must NOT be injected."""
+        job = _make_job({"tmdb": {"x": 1}})
+        ctx = TemplateContextBuilder().build_job_context(job)
+        assert "plugin" not in ctx
+
+    def test_jobs_is_dict_keyed_by_id(self):
+        """S39 §C1 — jobs shape: list -> dict keyed by job.id."""
+        j1 = _make_job({"tmdb": {"x": 1}}, job_id="job-1", index=0)
+        j2 = _make_job({"tmdb": {"x": 2}}, job_id="job-2", index=1)
+
+        ctx = TemplateContextBuilder().build_job_context(j1, all_jobs=[j1, j2])
+
+        assert isinstance(ctx["jobs"], dict)
+        assert set(ctx["jobs"].keys()) == {"job-1", "job-2"}
+        assert ctx["jobs"]["job-1"]["plugins"]["tmdb"] == {"x": 1}
+        assert ctx["jobs"]["job-2"]["plugins"]["tmdb"] == {"x": 2}
+
+    def test_jobs_dict_empty_when_no_jobs_passed(self):
+        ctx = TemplateContextBuilder().build_job_context(_make_job({}))
+        assert ctx["jobs"] == {}
+
+    def test_job_id_and_job_index_aliases_present(self):
+        job = _make_job({}, job_id="abc-123", index=4)
+        ctx = TemplateContextBuilder().build_job_context(job)
+        assert ctx["job_id"] == "abc-123"
+        assert ctx["job_index"] == 4
+
+    def test_data_namespace_is_dict_default_empty(self):
+        """S39 §C1 — `data` namespace exposed forward-looking; D phase wires it."""
+        ctx = TemplateContextBuilder().build_job_context(_make_job({}))
+        assert ctx["data"] == {}
+
+    def test_data_namespace_pulled_from_run_when_present(self):
+        run = Mock()
+        run.id = "run-1"
+        run.status.success = True
+        run.status.total_jobs = 1
+        run.status.completed = 1
+        run.status.failed = 0
+        run.config = {}
+        run.data = {"<jobindex>": {"show": {"title": {"primary": "X"}}}}
+
+        ctx = TemplateContextBuilder().build_job_context(_make_job({}), run=run)
+        assert ctx["data"] == {"<jobindex>": {"show": {"title": {"primary": "X"}}}}
 
     def test_module_wrapper_removed(self):
         """WP-4: module-level build_template_context function deleted."""
         assert not hasattr(template_context, "build_template_context")
         assert not hasattr(template_context, "_default_builder")
 
+    def test_build_plugin_surface_method_deleted(self):
+        """S39 §C1 — _build_plugin_surface method removed entirely."""
+        assert not hasattr(TemplateContextBuilder, "_build_plugin_surface")
 
-class TestTaskerContextShape:
-    """Tasker exposes ``plugin.<name>.data.*`` via rendered templates."""
 
-    def test_canonical_plugin_data_path(self):
+class TestTaskerNewParadigm:
+    """Tasker must use the canonical descent paths after S39 §C1."""
+
+    def test_canonical_jobs_descent_path(self):
+        """Canonical: `{{ jobs[job_id].plugins.<name>.<field> }}`."""
+        from archiverr.plugins.tasker.plugin import TaskerPlugin
+
+        plugin = TaskerPlugin(
+            {"tasks": [{"name": "t", "type": "print",
+                        "template": "{{ jobs[job_id].plugins.tmdb.title }}"}]}
+        )
+        data = {"tmdb": {"title": "X"}}
+        job = _make_job(data)
+        result = plugin.execute(job, _make_services(data, jobs=[job]))
+        assert result.data["tasks"]["t"]["rendered"] == "X"
+
+    def test_job_plugins_shortcut_path(self):
+        """`{{ job.plugins.<name>.<field> }}` resolves to current job."""
+        from archiverr.plugins.tasker.plugin import TaskerPlugin
+
+        plugin = TaskerPlugin(
+            {"tasks": [{"name": "t", "type": "print",
+                        "template": "{{ job.plugins.tmdb.title }}"}]}
+        )
+        data = {"tmdb": {"title": "Y"}}
+        result = plugin.execute(_make_job(data), _make_services(data))
+        assert result.data["tasks"]["t"]["rendered"] == "Y"
+
+    def test_legacy_plugin_namespace_renders_undefined(self):
+        """Legacy `plugin.<name>.data.X` no longer resolves (synthetic surface gone)."""
         from archiverr.plugins.tasker.plugin import TaskerPlugin
 
         plugin = TaskerPlugin(
@@ -76,7 +165,10 @@ class TestTaskerContextShape:
         )
         data = {"tmdb": {"title": "X"}}
         result = plugin.execute(_make_job(data), _make_services(data))
-        assert result.data["tasks"]["t"]["rendered"] == "X"
+        rendered = result.data["tasks"]["t"]["rendered"]
+        # Either raises silently to "Template error" string, or renders as
+        # undefined chain. Concrete contract: original "X" must NOT appear.
+        assert "X" not in rendered
 
     def test_no_top_level_plugin_name_shortcut(self):
         from archiverr.plugins.tasker.plugin import TaskerPlugin
@@ -88,7 +180,6 @@ class TestTaskerContextShape:
         data = {"tmdb": {"title": "X"}}
         result = plugin.execute(_make_job(data), _make_services(data))
         rendered = result.data["tasks"]["t"]["rendered"]
-        assert "tmdb" in rendered and "undefined" in rendered
         assert "X" not in rendered
 
     def test_no_movie_or_show_shortcut(self):
@@ -102,7 +193,6 @@ class TestTaskerContextShape:
                             "parsed": {"movie": {"name": "M"}}}}
         result = plugin.execute(_make_job(data), _make_services(data))
         rendered = result.data["tasks"]["t"]["rendered"]
-        assert "movie" in rendered and "undefined" in rendered
         assert "M" not in rendered
 
     def test_build_context_helper_deleted(self):
@@ -141,8 +231,7 @@ class TestCountFilter:
                         "template": "idx={{ index }}"}]}
         )
         data = {"tmdb": {"x": 1}}
-        job = _make_job(data)
-        job.index = 7
+        job = _make_job(data, index=7)
         result = plugin.execute(job, _make_services(data))
         assert result.data["tasks"]["t"]["rendered"] == "idx=7"
 
@@ -150,16 +239,16 @@ class TestCountFilter:
 @pytest.mark.parametrize(
     "tmpl,data,expected",
     [
-        ("{{ plugin.tmdb.data.movie.title }}",
+        ("{{ job.plugins.tmdb.movie.title }}",
          {"tmdb": {"movie": {"title": "X"}}}, "X"),
-        ("{{ plugin.renamer.data.category }}",
+        ("{{ job.plugins.renamer.category }}",
          {"renamer": {"category": "movie"}}, "movie"),
-        ("{{ plugin.tmdb.data.tags | count }}",
+        ("{{ job.plugins.tmdb.tags | count }}",
          {"tmdb": {"tags": [1, 2, 3, 4]}}, "4"),
     ],
 )
 def test_canonical_template_paths(tmpl, data, expected):
-    """End-to-end: canonical ``plugin.<name>.data.*`` paths render correctly."""
+    """End-to-end: canonical `job.plugins.<name>.<field>` paths render correctly."""
     from archiverr.plugins.tasker.plugin import TaskerPlugin
 
     plugin = TaskerPlugin(

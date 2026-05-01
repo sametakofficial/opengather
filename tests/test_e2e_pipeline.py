@@ -347,7 +347,7 @@ class TestFullPipeline:
                     {
                         "name": "test_output",
                         "type": "print",
-                        "template": "Parsed: {{ plugin.renamer.data.category }}",
+                        "template": "Parsed: {{ job.plugins.renamer.category }}",
                     }
                 ],
             },

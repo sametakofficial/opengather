@@ -1,7 +1,26 @@
 """Template Context Builder - Extracted from GlobalStateManager.
 
 This module handles building Jinja2 template contexts from state objects.
-Follows Single Responsibility Principle by separating context building from state management.
+Follows Single Responsibility Principle by separating context building from
+state management.
+
+Session 39 R15 §C1 — paradigm shift:
+
+* The legacy ``plugin.<name>.{data,status}`` injected namespace has been
+  removed (``_build_plugin_surface`` method deleted). Templates must now use
+  full descent paths: ``{{ jobs[job_id].plugins.<name>.<field> }}`` or the
+  ``data.<jobindex>.<category>.<path>`` resolver namespace populated by
+  Phase D (``state/data_resolver.py`` + ``RunState.data``).
+* ``jobs`` shape changed from a list of summaries to a dict keyed by
+  ``job.id``. ``{{ jobs[job_id] }}`` lookup is now O(1) and matches the
+  canonical ``data.<jobindex>...`` paradigm where the resolver substitutes
+  ``<jobindex>`` from the live state context.
+* New top-level shortcuts ``job_id`` and ``job_index`` mirror the active
+  job for ergonomic templates.
+* ``data`` namespace is exposed forward-looking; until Phase D wires
+  ``RunState.data`` and ``_recompute_data_envelope``, it returns an empty
+  dict (callers see undefined paths gracefully via ChainableUndefined once
+  Phase H lands).
 """
 
 from typing import TYPE_CHECKING, Any, Optional
@@ -29,15 +48,18 @@ class TemplateContextBuilder:
         Build Jinja2 template context for a job.
 
         Args:
-            job: Current job state
-            run: Optional run state for run-level context
-            all_jobs: Optional list of all jobs for jobs array
+            job: Current job state.
+            run: Optional run state for run-level context.
+            all_jobs: Optional list of all jobs. Surfaced as a dict
+                ``{job.id: summary}`` (Session 39 R15 §C1; previously a list).
             events: Optional event-bus snapshot
                 (``EventBus.get_history_dict()`` shape) injected as
                 ``{{ events }}`` per datasets/04-template-context.yml.
 
         Returns:
-            Complete template context dict
+            Complete template context dict. Top-level keys:
+            ``run``, ``job``, ``jobs`` (dict by id), ``config``, ``options``,
+            ``events``, ``data`` (Phase D), ``job_id``, ``job_index``.
         """
         # Run context
         run_context = self._build_run_context(run)
@@ -45,39 +67,31 @@ class TemplateContextBuilder:
         # Job context with status breakdown
         job_context = self._build_job_context_dict(job)
 
+        # Jobs surface — dict keyed by job.id (R15 §C1; was list).
+        jobs_by_id = {
+            j.id: self._job_to_summary(j) for j in (all_jobs or [])
+        }
+
+        # Forward-looking data namespace (Phase D wires RunState.data).
+        run_data = getattr(run, 'data', {}) if run else {}
+
         return {
             "run": run_context,
             "job": job_context,
-            "jobs": [self._job_to_summary(j) for j in (all_jobs or [])],
+            "jobs": jobs_by_id,
             "config": run.config if run else {},
             "options": run.config.get('options', {}) if run else {},
             "events": events or {},
-            "plugin": self._build_plugin_surface(job),
+            "data": run_data,
+            "job_id": getattr(job, 'id', None),
+            "job_index": getattr(job, 'index', 0),
         }
 
-    def _build_plugin_surface(self, job: 'JobState') -> dict[str, Any]:
-        """Build canonical ``plugin.<name>.{data,status}`` surface.
-
-        Per ``datasets/04-template-context.yml``:
-        - ``source: TemplateContextBuilder only``
-        - ``forbidden_sources: tasker local _build_context``
-
-        ``data`` comes from ``job.plugins[name]`` (flat plugin output dict).
-        ``status`` comes from ``job.status.plugins[name]`` (state/success/timing).
-        """
-        plugins = getattr(job, 'plugins', {}) or {}
-        statuses = (
-            job.status.plugins
-            if hasattr(job, 'status') and getattr(job.status, 'plugins', None) is not None
-            else {}
-        )
-        return {
-            name: {
-                "data": pdata if isinstance(pdata, dict) else {},
-                "status": statuses.get(name, {}),
-            }
-            for name, pdata in plugins.items()
-        }
+    # NOTE (R15 §C1): ``_build_plugin_surface`` has been deleted.
+    # The synthetic ``plugin.<name>.{data,status}`` namespace it built
+    # is replaced by direct descent through ``jobs[job_id].plugins.<name>``
+    # and the ``data.<jobindex>.<category>`` resolver (Phase D). Tasker
+    # and any other render consumer must adopt the new paradigm.
 
     def _build_run_context(self, run: Optional['RunState']) -> dict[str, Any]:
         """Build run-level context dict."""
@@ -144,7 +158,7 @@ class TemplateContextBuilder:
         return executed, failed, skipped
 
     def _job_to_summary(self, job: 'JobState') -> dict[str, Any]:
-        """Convert job to summary context dict for jobs array."""
+        """Convert job to summary context dict for jobs dict (by id)."""
         return {
             "index": job.index,
             "id": job.id,
@@ -154,5 +168,3 @@ class TemplateContextBuilder:
             },
             "plugins": job.plugins
         }
-
-
