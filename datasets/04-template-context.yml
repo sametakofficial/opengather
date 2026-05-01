@@ -7,16 +7,51 @@ render_time_context:
 context_shape:
   run: run_state_projection
   job: job_state_projection
-  jobs: [job_summary]
-  plugin:
-    <plugin_name>:
-      status: plugin_status
-      data: plugin_data
+  jobs:
+    description: |
+      Dict keyed by job.id (S39 R15 §C1 — was list[summary]).
+      Lookup: ``{{ jobs[job_id] }}`` => ``job_summary`` for that id.
+    type: dict[str, job_summary]
   config: frozen_config
   options: config.options
   events: event_bus_snapshot
+  data:
+    description: |
+      Resolver-driven data envelope (S39 R15 Phase D).
+      Top-level keys are job indices (``<jobindex>`` substituted by the
+      DataResolver from the live state context) and the literal string
+      ``"run"`` for per_run plugin scope.
+      Shape after Phase D wires ``RunState.data``:
+        data:
+          0:                          # job index
+            show:
+              title: {primary: ...}
+              identifiers: {tmdb_id: ...}
+            movie: ...
+          1: ...
+          run:                        # per_run plugins (scanner, etc.)
+            scanner: {count: ..., targets: [...]}
+      Until Phase D lands the value is ``{}``.
+    type: dict[str|int, any]
+  job_id:
+    description: Active job id alias. Equals ``job.id``.
+    type: str
+  job_index:
+    description: Active job index alias. Equals ``job.index``.
+    type: int
+
+# REMOVED 2026-05-01 (S39 R15 §C1):
+#   plugin.<name>.{data, status}    -- the synthetic ``plugin`` namespace
+#                                      injected by ``_build_plugin_surface``
+#                                      has been deleted. Templates must use
+#                                      ``jobs[job_id].plugins.<name>`` or
+#                                      ``job.plugins.<name>`` for direct
+#                                      access, or the ``data.<jobindex>...``
+#                                      resolver namespace populated by
+#                                      Phase D for priority-based lookup.
+#
 # REMOVED 2026-04-30 (TemplateContextBuilder.build_job_context does not emit them):
-#   plugins (top-level array)         -- use job.plugins or plugin.<name>.data
+#   plugins (top-level array)         -- use job.plugins
 #   provides (registry snapshot)      -- ProvidesRegistry is plugin-DI only,
 #                                        not exposed in render-time context
 #   index (top-level)                 -- only job.index is emitted; tasker adds a
@@ -25,11 +60,18 @@ context_shape:
 #                                        copied to context root
 
 canonical_access_path:
-  current_plugin_data: plugin.<name>.data
-  current_plugin_status: plugin.<name>.status
+  current_job_plugin_data: job.plugins.<name>.<field>
+  any_job_plugin_data: jobs[job_id].plugins.<name>.<field>
+  resolver_priority: data.<jobindex>.<category>.<dotted.path>
+  per_run_resolver_priority: data.run.<category>.<dotted.path>
+  active_job_aliases:
+    - job_id     # equals ``{{ job.id }}``
+    - job_index  # equals ``{{ job.index }}``
+  removed_in_s39_c1:
+    - plugin.<name>.data         # synthetic surface deleted
+    - plugin.<name>.status       # synthetic surface deleted
   deprecated_shortcuts:
-    - plugin.<name>            # (missing .data / .status)
-    - context[<plugin_name>]   # top-level plugin-name shortcut
+    - context[<plugin_name>]     # top-level plugin-name shortcut, never resurrected
 
 run_state_projection:
   id: string
@@ -55,6 +97,33 @@ job_state_projection:
     executed: [string]
     failed: [string]
     skipped: [string]
+  plugins:
+    description: |
+      Per-job plugin data dict, keyed by plugin name. The shape under
+      each plugin equals the most recent ``services.update_plugin(data=...)``
+      payload merged into ``state.runs[*].jobs[*].plugins.<name>``.
+    type: dict[str, any]
+
+job_summary:
+  index: int
+  id: string
+  input:
+    value: string
+    data: {}
+  plugins: dict[str, any]
+
+migration_examples:
+  legacy_to_canonical:
+    # Old:                                       # New (S39 §C1+):
+    "{{ plugin.tmdb.data.movie.title }}":        "{{ job.plugins.tmdb.movie.title }}"
+    "{{ plugin.renamer.data.parsed.show.name }}": "{{ job.plugins.renamer.parsed.show.name }}"
+    "{{ plugin.tmdb.data.show.title.primary }}": "{{ jobs[job_id].plugins.tmdb.show.title.primary }}"
+  legacy_to_resolver:
+    # When a path is declared in `data_priority` (Phase D) and at least one
+    # plugin in the priority list emits it (manifest.emits), the resolver
+    # picks the highest-priority hit:
+    "{{ plugin.tmdb.data.show.title.primary }}": "{{ data.<jobindex>.show.title.primary }}"
+    "{{ plugin.scanner.data.count }}":           "{{ data.run.scanner.count }}"
 
 alias_resolution:
   phase: config-load-time (see 10-aliases.yml)
@@ -74,7 +143,9 @@ jinja_features_forbidden:
 # Note: there is no enforcement layer for forbidden features today;
 # tasker uses a default Jinja Environment and forbidden features will
 # fail at render time with the standard Jinja error rather than a
-# pre-flight check.
+# pre-flight check. After H4a (S39), tasker will lose its own Jinja2
+# import and rely on the core RenderEngine (H1) which uses
+# ChainableUndefined for graceful descent.
 
 custom_filters:
   registered_in: src/archiverr/plugins/tasker/plugin.py
@@ -85,6 +156,8 @@ custom_filters:
     - format      # Jinja built-in (registered as filter alias in tasker/plugin.py:36)
   # tojson is a Jinja built-in available without registration
   # `index` filter was previously documented but is NOT registered; removed 2026-04-30
+  # NOTE (S39 H4a planned): filters will move to core RenderEngine when
+  # tasker drops its Jinja2 import.
 
 pipeline:
   1_build_context: TemplateContextBuilder(job, run, all_jobs, events)
