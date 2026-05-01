@@ -7,5 +7,13 @@ importing jinja2 directly.
 """
 
 from .render_engine import ConfigRenderEngine
+from .template_dependency_validator import (
+    ValidationWarning,
+    validate_plugin_template_refs,
+)
 
-__all__ = ["ConfigRenderEngine"]
+__all__ = [
+    "ConfigRenderEngine",
+    "ValidationWarning",
+    "validate_plugin_template_refs",
+]

@@ -199,6 +199,64 @@ class PluginRegistry:
             stages={s.value: len(p) for s, p in self._plugins_by_stage.items() if p}
         )
 
+        # S39 R15 §I1: parse-time WARN scan on every plugin's effective
+        # config. We can't fail the load — historical configs may have
+        # stale references — but we surface the gap so operators see it.
+        self._validate_template_dependencies()
+
+    def _validate_template_dependencies(self) -> None:
+        """Walk plugin configs and WARN on undeclared template refs.
+
+        For each plugin's effective (merged) config, parse Jinja
+        templates and check the plugins they reference against the
+        plugin's ``manifest.requires``. Mismatches produce WARN-level
+        log entries on the debugger; the load otherwise proceeds.
+
+        Self-references and references to the plugin itself are
+        ignored. References to plugin names not in the registry are
+        flagged as a likely typo.
+        """
+        try:
+            from archiverr.core.render import (
+                ConfigRenderEngine, validate_plugin_template_refs,
+            )
+        except Exception as exc:  # noqa: BLE001 — engine optional
+            self._debugger.debug(
+                "registry",
+                "render engine unavailable; skipping template validation",
+                error=str(exc),
+            )
+            return
+
+        engine = ConfigRenderEngine()
+        plugins_block = self._config.get('plugins', {}) if isinstance(self._config, dict) else {}
+        if not isinstance(plugins_block, dict):
+            return
+
+        known_plugins = list(self._all_plugins.keys())
+        for plugin_name in known_plugins:
+            cfg = plugins_block.get(plugin_name, {}) if isinstance(plugins_block, dict) else {}
+            if not isinstance(cfg, dict):
+                continue
+            manifest = self._all_manifests.get(plugin_name, {})
+            requires = manifest.get('requires', []) if isinstance(manifest, dict) else []
+            warnings = validate_plugin_template_refs(
+                plugin_name=plugin_name,
+                plugin_config=cfg,
+                declared_requires=requires,
+                known_plugins=known_plugins,
+                render_engine=engine,
+            )
+            for w in warnings:
+                self._debugger.warn(
+                    "registry",
+                    "template-dependency mismatch",
+                    plugin=w.plugin,
+                    references=w.referenced_plugin,
+                    location=w.location,
+                    detail=w.message,
+                )
+
     def _determine_stage(self, manifest: dict[str, Any]) -> Stage | None:
         stage_str = manifest.get('stage')
         if not stage_str:
