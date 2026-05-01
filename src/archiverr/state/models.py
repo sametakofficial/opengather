@@ -162,6 +162,12 @@ class RunState:
     # mode they ran under (forensic value when investigating partial state).
     # Schema declared in datasets/06-mongodb.yml line 22; writer wired here.
     persistence_mode: str = "degraded"
+    # S39 R15 §D2: priority-resolved data envelope.
+    # Shape: ``{<jobindex|"run">: {<category>: {<dotted.path>: <value>}, ...}}``
+    # Populated by ``_recompute_data_envelope`` (D3) on every
+    # update_plugin call so the resolver-priority view stays consistent
+    # with the latest plugin write. Persisted under ``runs.data`` (Mongo).
+    data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -170,6 +176,7 @@ class RunState:
             "config": self.config,
             "plugins": self.plugins,
             "persistence_mode": self.persistence_mode,
+            "data": self.data,
         }
 
     def start(self):
