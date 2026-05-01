@@ -162,6 +162,96 @@ class PluginServices:
         """Get frozen config (read-only for all plugins)."""
         return self._config
 
+    def get_runtime_config(self, plugin_name: str | None = None) -> dict[str, Any]:
+        """Return the plugin's config block rendered against the live context.
+
+        S39 R15 §H3 — the "config canlı playground" entry point. Plugins call
+        this to read their own config with Jinja markers resolved against the
+        active run/job state, instead of inspecting ``self.config`` (which
+        was frozen at construction-time before any state existed). Plain
+        string values pass through unchanged; only strings containing
+        ``{{`` or ``{%`` trigger a render pass.
+
+        Args:
+            plugin_name: Plugin name. Defaults to the current plugin set on
+                this services instance.
+
+        Returns:
+            Rendered config dict for the plugin (empty dict if the plugin
+            has no config block). When the engine is not wired (test
+            fixtures), returns the raw frozen config block.
+        """
+        pname = plugin_name or self._current_plugin_name
+        if not pname:
+            raise ValueError("No plugin_name and no current plugin context")
+
+        plugins_block = self._config.get('plugins', {}) if isinstance(self._config, dict) else {}
+        plugin_config = plugins_block.get(pname, {}) if isinstance(plugins_block, dict) else {}
+        if not isinstance(plugin_config, dict):
+            return plugin_config
+
+        if self._render_engine is None:
+            # No engine wired (stub / test fixture) — return raw block.
+            return plugin_config
+
+        ctx = self._build_render_context()
+        return self._render_engine.render_value(plugin_config, ctx)
+
+    def _build_render_context(self) -> dict[str, Any]:
+        """Build the Jinja context for ``get_runtime_config`` (S39 R15 §H3).
+
+        Reuses ``TemplateContextBuilder`` for the per_job branch so the
+        shape is identical to what tasker / config-render consumers see.
+        For per_run plugins (no active job), constructs a minimal context
+        with the same top-level keys but empty ``job`` / ``jobs`` and a
+        synthesised ``job_id=None`` / ``job_index=None`` so chain access
+        still resolves gracefully under ChainableUndefined.
+        """
+        from archiverr.state.template_context import TemplateContextBuilder
+
+        run = self._state.run if hasattr(self._state, 'run') else None
+        all_jobs = list(self._state.jobs) if hasattr(self._state, 'jobs') else []
+        events = {}
+        if self._event_bus is not None:
+            try:
+                events = self._event_bus.get_history_dict()
+            except Exception:  # noqa: BLE001 — events are auxiliary
+                events = {}
+
+        current_job = self._state.job if hasattr(self._state, 'job') else None
+        if current_job is not None:
+            return TemplateContextBuilder().build_job_context(
+                current_job, run=run, all_jobs=all_jobs, events=events,
+            )
+
+        # per_run scope — no active job. Mirror the top-level shape but
+        # OMIT ``job_id`` / ``job_index`` so ChainableUndefined renders
+        # them to "" gracefully (instead of the literal string "None"
+        # that we'd get if we explicitly set the keys to ``None``).
+        run_proj = (
+            {
+                "id": run.id,
+                "status": {
+                    "success": run.status.success,
+                    "total_jobs": run.status.total_jobs,
+                    "completed": run.status.completed,
+                    "failed": run.status.failed,
+                },
+                "config": run.config,
+            }
+            if run is not None
+            else {"id": "", "status": {}, "config": {}}
+        )
+        return {
+            "run": run_proj,
+            "job": {},
+            "jobs": {},
+            "config": run.config if run is not None else self._config,
+            "options": (run.config.get('options', {}) if run is not None else {}),
+            "events": events,
+            "data": getattr(run, 'data', {}) if run is not None else {},
+        }
+
     def get_current_job(self):
         """
         Get current job.
