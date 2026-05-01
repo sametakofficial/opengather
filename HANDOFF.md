@@ -1,3 +1,153 @@
+# Handoff - Session 39 (Data Resolver Namespace + Render Refactor)
+
+**Date:** May 02, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 39)
+
+Implemented R15 plan: 23 commits across 7 phases. Introduced the
+`data.<jobindex>.<category>.<dotted.path>` resolver namespace,
+moved Jinja2 rendering out of `tasker` into a plugin-agnostic
+`core/render` engine, demolished the synthetic `plugin.<name>`
+template namespace, standardised TMDb on a flat show/movie shape,
+and wired a parse-time WARN that catches templates referencing
+plugins not declared in `manifest.requires`.
+
+Test baseline: **687 passed / 13 skipped / 0 fails**
+(unit + plugin_agnostic + e2e + e2e_pipeline subset).
+Plugin-agnostic guard: 9/9 pass (no plugin name leaks to core).
+Real E2E confirmed: Breaking Bad S01E01 fixture renders flat
+shape correctly; `runs.data` envelope persisted to Mongo
+(`db.runs.find().data["0"].show.title.primary == "Breaking Bad"`).
+
+```
+a34e662  G1   real E2E sanity proof + fix int-keys persistence bug
+ca8412c  F2   tests/e2e/test_data_envelope_e2e.py — full envelope flow
+f3f9341  F1   annotate state_dumper.plugins flat index as debug-only
+fdad625  E2   refresh datasets/13-plugin-system-overview.yml
+420997f  E1   add docs/PLUGIN_CONVENTIONS.md
+a5c47d9  D5   real data_priority block in config.yml + dataset schema
+5f77fd7  D4   registry exposes data_priority + emits_map; orchestrator wiring
+296a280  D3   _recompute_data_envelope + threading.Lock + save_run fix
+396497e  D2   add RunState.data envelope field
+a82270f  D1   DataResolver + DataResolverProxy
+70b383c  C5   rewrite config.yml tasker tasks for new paradigm
+fa0c714  B1+B2 TMDb flat shape — show/movie only ana keys
+07340a8  I1+I2 parse-time template dependency validator + AST walker
+c53b14f  H4b+c scanner + file-reader read via services.get_runtime_config
+9f95d2d  H4a  tasker minimalize — drops jinja2 import; uses core engine
+6b7263d  H3   PluginServices.get_runtime_config public API
+e28ab6c  H2   thread ConfigRenderEngine into PluginServices via executors
+a87e318  H1   ConfigRenderEngine in core/render with ChainableUndefined
+579ad6d  C2   document new render context shape in 04-template-context.yml
+e9cb4a9  C1   drop _build_plugin_surface; jobs list->dict; new shape
+475ddc0  A3   declare emits in tmdb/omdb/tvmaze/tvdb manifests
+f7ab26b  A2   document emits schema in 02-manifest.yml + deprecate categories
+0f5a9ed  A1   add emits field to PluginManifest schema
+```
+
+### What's new (S39)
+
+- **`manifest.emits`** field — plugins declare what they emit grouped
+  by category. tmdb/omdb/tvmaze/tvdb declare paths; opt-out by
+  leaving emits unset.
+- **`core/render/`** package — `ConfigRenderEngine` (Jinja2 +
+  ChainableUndefined), `_ast_walker.py` for plugin-name extraction,
+  `template_dependency_validator.py` for parse-time WARN.
+- **`services.render_engine`** + **`services.get_runtime_config()`** —
+  plugins read their own config rendered against the live state via
+  this API; tasker uses it for `template`/`condition` rendering and
+  no longer imports jinja2 directly.
+- **`state/data_resolver.py`** — `DataResolver` (longest-prefix
+  priority match) + `DataResolverProxy` (Jinja-friendly chain).
+- **`RunState.data`** envelope — eager-recomputed on every
+  `update_plugin` via `_recompute_data_envelope`. Persisted under
+  `runs.data` in Mongo (G1 fix: int job-index keys stringified at
+  the persistence boundary, not in-memory).
+- **TMDb flat shape (B1+B2)** — top-level result keys are ONLY
+  `show` and `movie`. Episode/season info baked flat into show
+  (`episode_title`, `season_number`, `episode_people`, etc.).
+  `validation` field removed; legacy `_perform_validation` deleted.
+- **`config.yml` data_priority block (D5)** — operator-supplied
+  priority map; tmdb wins for shows/movies, episode-specific paths
+  resolve from tmdb only (post-B1 flat shape).
+- **`docs/PLUGIN_CONVENTIONS.md`** — author-facing soft-rules guide.
+
+### What's gone (S39)
+
+- `_build_plugin_surface` method + the synthetic
+  `plugin.<name>.{data,status}` Jinja namespace.
+- `tasker.env`, `_filter_count`, `_filter_truncate`,
+  `_render_template`, `_evaluate_condition` (filters live in
+  `core.render` now; tasker is print/save dispatcher only).
+- `tmdb` plugin: `_perform_validation`, `_validate_duration`,
+  `result['validation']` injection, `normalize_episode`,
+  `normalize_season`, `media_type` field.
+
+### Audit blockers fixed (R15 §21.1)
+
+- **H10** — AST walker for nested plugin refs (`_ast_walker.py`)
+- **H11** — `jobs` shape list -> dict by job.id (`template_context.py`)
+- **H12** — `_update_job_plugin` now calls `save_run`
+  (`plugin_data_manager.py:182-183`)
+- **H13** — Tasker condition core-rendered via `render_to_bool`;
+  no jinja2 import in tasker
+
+### Render context shape (post-S39)
+
+```python
+{
+    "run":     {id, status, config},
+    "job":     {index, id, input, output, status, plugins},
+    "jobs":    {<job.id>: <job_summary>, ...},   # dict, not list
+    "config":  ...,
+    "options": ...,
+    "events":  ...,
+    "data":    <run.data envelope>,
+    "job_id":  <active job.id>,
+    "job_index": <active job.index>,
+}
+```
+
+`plugin` key REMOVED. Templates use `jobs[job_id].plugins.<name>` /
+`job.plugins.<name>` / `data.<jobindex>.<category>...` /
+`data.run.<category>...`.
+
+### Known still-open (carry-over)
+
+- omdb / tvmaze / tvdb plugins: declared CURRENT shape in `emits`;
+  not migrated to TMDb's flat shape this sprint. Convention
+  alignment deferred — they participate in resolver as-is.
+- Untracked artifacts in `AI/`, `ONEMLI/`, `user-prompts/`,
+  `datasets/15-runtime-state-example.json` — decide commit /
+  .gitignore / .deleted/.
+- B1-B6 carry-over from S37 still relevant.
+
+### Risks / smell (S39)
+
+- `_recompute_data_envelope` reaches into `context._jobs`
+  (private). Minor coupling; if `ExecutionContext` refactors, could
+  break silently.
+- `_recompute_data_envelope` constructs a fresh `DataResolver` per
+  call. Cheap but unnecessary; could cache on
+  `set_resolver_config`.
+- `_recompute_data_envelope` enumerates ALL emit paths under a
+  category root even when the priority key is sub-path-specific
+  (e.g. `data.<jobindex>.show.episode_title`). Resolver still
+  produces correct results via longest-prefix; just duplicate
+  work. Not a bug.
+
+### Next session
+
+1. Run architecture-compliance + memory-bank-sync agents (S39 wrap).
+2. Decide on omdb/tvmaze/tvdb migration to flat shape — or accept
+   as-is and document the divergence.
+3. Address the smells above (private member access, resolver
+   caching, sub-path enumeration).
+4. Pick from the carry-over backlog.
+
+---
+
 # Handoff - Session 37 (MongoDB + FastAPI End-to-End Sprint)
 
 **Date:** April 30, 2026 (afternoon, post Session 36)
