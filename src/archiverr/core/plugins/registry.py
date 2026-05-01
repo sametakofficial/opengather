@@ -393,6 +393,90 @@ class PluginRegistry:
             self.discover_and_load()
         return self._all_manifests.copy()
 
+    @property
+    def data_priority(self) -> dict[str, list[str]]:
+        """Top-level ``data_priority`` config block (S39 R15 §D4).
+
+        Returns a copy of the operator-supplied priority map (or an
+        empty dict when unset). Consumed by the state manager to
+        configure the resolver envelope.
+        """
+        if not isinstance(self._config, dict):
+            return {}
+        priority = self._config.get('data_priority')
+        if isinstance(priority, dict):
+            return dict(priority)
+        return {}
+
+    @property
+    def emits_map(self) -> dict[str, dict[str, list[str]]]:
+        """Aggregated ``manifest.emits`` view across loaded plugins.
+
+        Shape: ``{plugin_name: {<category>: [<dotted.path>, ...]}}``.
+        Plugins that didn't declare ``emits`` are absent (not present
+        as empty dicts) so the resolver knows they opt out of the
+        data namespace.
+        """
+        if not self._loaded:
+            self.discover_and_load()
+        out: dict[str, dict[str, list[str]]] = {}
+        for name, manifest in self._all_manifests.items():
+            if not isinstance(manifest, dict):
+                continue
+            emits = manifest.get('emits')
+            if not isinstance(emits, dict) or not emits:
+                continue
+            # Defensive shallow copy so callers can't mutate manifests.
+            out[name] = {
+                cat: list(paths) if isinstance(paths, list) else []
+                for cat, paths in emits.items()
+            }
+        return out
+
+    def validate_data_priority(self) -> list[str]:
+        """Sanity-check ``data_priority`` against loaded plugins (S39 §D4).
+
+        Returns a list of human-readable WARN strings when:
+        * a plugin in a priority list isn't registered (typo / disabled);
+        * a plugin in a priority list doesn't declare ``emits`` for the
+          path's category root, so it can never satisfy the lookup.
+
+        The orchestrator logs these via the debugger; the load itself
+        proceeds — operators can still run with imperfect priority
+        tables (the resolver simply skips non-emitting plugins).
+        """
+        warnings: list[str] = []
+        priority = self.data_priority
+        if not priority:
+            return warnings
+        emits = self.emits_map
+        known = set(self._all_plugins.keys())
+        for key, plugin_list in priority.items():
+            if not isinstance(plugin_list, list):
+                continue
+            stripped = key
+            if stripped.startswith("data."):
+                stripped = stripped[len("data."):]
+            if "." not in stripped:
+                continue
+            _scope, _, category_path = stripped.partition(".")
+            cat_root = category_path.split(".", 1)[0] if category_path else ""
+            for plugin_name in plugin_list:
+                if plugin_name not in known:
+                    warnings.append(
+                        f"data_priority[{key!r}] lists '{plugin_name}' "
+                        "but plugin is not registered (typo or disabled)."
+                    )
+                    continue
+                plugin_emits = emits.get(plugin_name) or {}
+                if cat_root and cat_root not in plugin_emits:
+                    warnings.append(
+                        f"data_priority[{key!r}] lists '{plugin_name}' "
+                        f"but {plugin_name}.manifest.emits has no '{cat_root}' "
+                        "category — it cannot satisfy this priority entry."
+                    )
+        return warnings
+
     def get_requires(self, name: str) -> list[str]:
         """Get requires list for a plugin."""
         info = self.get_plugin_info(name)

@@ -251,6 +251,12 @@ class Orchestrator:
         self._run_id = self._state.start_run(self._config)
         self._log("debug", f"Run started: {self._run_id}")
 
+        # S39 R15 §D4: configure the data namespace resolver. Pulls
+        # data_priority from config (D5) and emits aggregated from
+        # every plugin's manifest. Runs are valid even with empty
+        # priority — the envelope is then a no-op.
+        self._configure_data_resolver()
+
         # Startup recovery scan — only in mode=full.
         # Marks any non-terminal plugin_executions from previous runs as
         # ``crashed`` so operators can see what died mid-plugin.
@@ -397,6 +403,38 @@ class Orchestrator:
             "options": self._config.get("options", {}),
             "enabled_plugins": self._plugin_registry.enabled_plugins
         }
+
+    def _configure_data_resolver(self) -> None:
+        """Wire data resolver into state (S39 R15 §D4).
+
+        Pulls ``data_priority`` from registry (which reads
+        ``config.yml``) and the aggregated ``emits_map`` from every
+        loaded plugin's manifest, then hands them to
+        ``GlobalStateManager.configure_resolver`` so subsequent
+        ``update_plugin`` calls recompute ``run.data``.
+
+        WARN-level diagnostics from ``validate_data_priority`` are
+        surfaced via the debugger; the load itself proceeds even
+        with imperfect priority tables.
+        """
+        try:
+            data_priority = self._plugin_registry.data_priority
+            emits_map = self._plugin_registry.emits_map
+        except Exception as exc:  # noqa: BLE001 — registry contract
+            self._log(
+                "debug",
+                f"data_priority/emits_map lookup failed; resolver disabled: {exc}",
+            )
+            return
+
+        if hasattr(self._state, "configure_resolver"):
+            self._state.configure_resolver(data_priority, emits_map)
+        else:
+            self._log("debug", "state has no configure_resolver; skipping wiring")
+            return
+
+        for warning in self._plugin_registry.validate_data_priority():
+            self._log("warn", warning)
 
     def _emit_error(self, error: Exception, critical: bool) -> None:
         """Emit error event."""
