@@ -1,15 +1,18 @@
 """
-Tasker Plugin - Session 12 with Main Branch Template Logic
+Tasker Plugin — minimal print/save engine.
 
-Combines:
-- Session 12 plugin architecture (per_run, stages, state)
-- Main branch template rendering (Jinja2, $ syntax, smart routing)
+S39 R15 §H4a: Tasker no longer imports Jinja2. Template + condition
+rendering is delegated to the core ``ConfigRenderEngine`` accessed via
+``services.render_engine``. The plugin itself just iterates tasks and
+dispatches to print or save backends.
+
+If ``services.render_engine`` is None (test fixture / stub), the plugin
+self-instantiates a fallback engine so behaviour stays consistent across
+test paths.
 """
 
 from datetime import datetime
 from typing import Any
-
-from jinja2 import BaseLoader, Environment
 
 from archiverr.core.plugins.sdk import OutputPlugin
 from archiverr.core.plugins.sdk import PluginResult as SDKPluginResult
@@ -17,7 +20,7 @@ from archiverr.core.safety import safe_copy
 
 
 class TaskerPlugin(OutputPlugin):
-    """Task execution plugin with full Jinja2 + state access."""
+    """Task execution plugin (print/save)."""
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
@@ -27,13 +30,10 @@ class TaskerPlugin(OutputPlugin):
         # ``output_dir``; the run-output JSON path was never wired to a
         # caller. Run-state persistence already lives in MongoDB.
 
-        # Jinja2 environment. ``count`` is Jinja's built-in alias for
-        # ``length``; we register it explicitly so the dependency is
-        # visible and cannot be shadowed by a future env reset.
-        self.env = Environment(loader=BaseLoader())
-        self.env.filters['truncate'] = self._filter_truncate
-        self.env.filters['format'] = lambda fmt, *args: fmt % args
-        self.env.filters['count'] = self._filter_count
+        # S39 H4a: ``self.env`` is gone. Filter implementations and the
+        # Jinja2 ``Environment`` live in ``archiverr.core.render``.
+        # Older test code that did ``plugin.env.from_string(...)`` should
+        # consume ``ConfigRenderEngine`` directly instead.
 
     def execute(self, job: Any, services: Any) -> SDKPluginResult:
         """Execute tasks for job, returning a modern PluginResult."""
@@ -48,8 +48,8 @@ class TaskerPlugin(OutputPlugin):
         hardlink = run_safety["hardlink"]
 
         # Canonical template context comes from TemplateContextBuilder per
-        # datasets/04-template-context.yml. Tasker no longer mutates the
-        # render-time context (plugin.<name>.data surface lives upstream).
+        # datasets/04-template-context.yml. Tasker does not mutate the
+        # render-time context.
         run = services.get_run() if hasattr(services, "get_run") else None
         all_jobs = list(services.get_all_jobs()) if hasattr(services, "get_all_jobs") else []
         events_snapshot = services.events.snapshot() if hasattr(services, "events") else {}
@@ -62,12 +62,18 @@ class TaskerPlugin(OutputPlugin):
         context["index"] = getattr(job, "index", 0)
         context["total"] = len(all_jobs) if all_jobs else 1
 
+        # S39 H4a: pull (or self-instantiate) the core render engine.
+        engine = self._resolve_render_engine(services)
+
         # Execute tasks
         task_results = {}
         output_values = []
 
         for task in self.tasks:
-            result = self._execute_task(task, context, dry_run=dry_run, hardlink=hardlink)
+            result = self._execute_task(
+                task, context, engine,
+                dry_run=dry_run, hardlink=hardlink,
+            )
             if result:
                 task_name = result.get('name', 'unnamed')
                 task_results[task_name] = result
@@ -84,15 +90,11 @@ class TaskerPlugin(OutputPlugin):
             # Store task results in output.data under 'tasks' key
             services.update_job(key="output.data", value={"tasks": task_results})
 
-        # Also store in plugin data (plugin.tasker.data)
+        # Also store in plugin data
         services.update_plugin(data={
             "tasks": task_results,
             "output_values": output_values
         })
-
-        # Session 38 B4: dead ``_track_run_output`` + ``save_run_output``
-        # path removed; nothing in the orchestrator ever invoked the JSON
-        # writer. State persistence is handled by MongoDB now.
 
         return SDKPluginResult(
             success=True,
@@ -104,10 +106,29 @@ class TaskerPlugin(OutputPlugin):
             finished_at=datetime.now(),
         )
 
+    @staticmethod
+    def _resolve_render_engine(services: Any):
+        """Return the shared engine, or create a local fallback.
+
+        Plugin tests sometimes pass a Mock ``services`` whose
+        ``render_engine`` attribute is itself a Mock. We detect that
+        case and self-instantiate to keep behaviour consistent.
+        """
+        engine = getattr(services, "render_engine", None)
+        # ``None`` and Mock objects without a real ``render_string``
+        # method both fall back to a fresh engine.
+        if engine is None or not hasattr(engine, "render_string") \
+                or not callable(getattr(engine, "render_string", None)) \
+                or type(engine).__name__ == "Mock":
+            from archiverr.core.render import ConfigRenderEngine
+            return ConfigRenderEngine()
+        return engine
+
     def _execute_task(
         self,
         task: dict[str, Any],
         context: dict[str, Any],
+        engine: Any,
         *,
         dry_run: bool,
         hardlink: bool,
@@ -117,16 +138,19 @@ class TaskerPlugin(OutputPlugin):
         task_type = task.get('type', 'print')
         condition = task.get('condition')
 
-        # Check condition
-        if condition and not self._evaluate_condition(condition, context):
+        # Check condition via core engine.
+        if condition and not engine.render_to_bool(condition, context):
             return None
 
         # Execute by type
         try:
             if task_type == 'print':
-                return self._execute_print(task, context, task_name)
+                return self._execute_print(task, context, engine, task_name)
             elif task_type == 'save':
-                return self._execute_save(task, context, task_name, dry_run=dry_run, hardlink=hardlink)
+                return self._execute_save(
+                    task, context, engine, task_name,
+                    dry_run=dry_run, hardlink=hardlink,
+                )
             else:
                 return None
         except Exception as e:
@@ -138,13 +162,19 @@ class TaskerPlugin(OutputPlugin):
                 'error': str(e)
             }
 
-    def _execute_print(self, task: dict[str, Any], context: dict[str, Any], task_name: str) -> dict[str, Any] | None:
+    def _execute_print(
+        self,
+        task: dict[str, Any],
+        context: dict[str, Any],
+        engine: Any,
+        task_name: str,
+    ) -> dict[str, Any] | None:
         """Execute print task."""
         template = task.get('template', '')
         if not template:
             return None
 
-        rendered = self._render_template(template, context)
+        rendered = engine.render_string(template, context)
         print(rendered)
 
         return {
@@ -158,6 +188,7 @@ class TaskerPlugin(OutputPlugin):
         self,
         task: dict[str, Any],
         context: dict[str, Any],
+        engine: Any,
         task_name: str,
         *,
         dry_run: bool,
@@ -173,7 +204,7 @@ class TaskerPlugin(OutputPlugin):
         if not source:
             return None
 
-        destination = self._render_template(destination_template, context)
+        destination = engine.render_string(destination_template, context)
         if not destination:
             return None
 
@@ -194,46 +225,3 @@ class TaskerPlugin(OutputPlugin):
             'dry_run': dry_run,
             'planned_operation': planned.to_dict(),
         }
-
-    def _render_template(self, template: str, context: dict[str, Any]) -> str:
-        """Render Jinja2 template.
-
-        Uses canonical Jinja syntax: ``{{ plugin.<name>.data.<field> }}``,
-        ``{{ plugin.<name>.data.items | count }}``, ``{{ index }}``.
-        """
-        try:
-            tmpl = self.env.from_string(template)
-            return tmpl.render(**context)
-        except Exception as e:
-            error_msg = str(e)
-            if "has no attribute" in error_msg:
-                return ""
-            return f"Template error: {error_msg}"
-
-    def _evaluate_condition(self, condition: str, context: dict[str, Any]) -> bool:
-        """Evaluate Jinja2 condition."""
-        if not condition:
-            return True
-
-        try:
-            result = self._render_template(condition, context)
-            return bool(result.strip()) and not result.startswith("Template error")
-        except Exception:
-            return False
-
-    def _filter_truncate(self, value: str, length: int = 50, end: str = '...') -> str:
-        """Truncate filter."""
-        if not value or len(value) <= length:
-            return value
-        return value[:length - len(end)] + end
-
-    @staticmethod
-    def _filter_count(value: Any) -> int:
-        """Count filter: number of items in a list/dict/string, else 0."""
-        if value is None:
-            return 0
-        try:
-            return len(value)
-        except TypeError:
-            return 0
-

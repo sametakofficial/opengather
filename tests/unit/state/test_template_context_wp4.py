@@ -202,19 +202,48 @@ class TestTaskerNewParadigm:
 
 
 class TestCountFilter:
-    def test_count_filter_on_list(self):
+    """S39 §H4a: filter implementations live in core.render now;
+    these guard rails track what the tasker plugin must NOT carry."""
+
+    def test_count_filter_lives_in_core_engine(self):
+        """Filter coverage moved to ConfigRenderEngine; smoke check via core."""
+        from archiverr.core.render import ConfigRenderEngine
+
+        engine = ConfigRenderEngine()
+        assert engine.render_string("{{ items | count }}",
+                                    {"items": ["a", "b", "c"]}) == "3"
+        assert engine.render_string("{{ missing | count }}",
+                                    {"missing": None}) == "0"
+
+    def test_tasker_does_not_import_jinja2(self):
+        """S39 §H4a: tasker source must not import jinja2 directly."""
+        import inspect
+
+        from archiverr.plugins.tasker import plugin as tasker_mod
+        src = inspect.getsource(tasker_mod)
+        assert "from jinja2" not in src
+        assert "import jinja2" not in src
+
+    def test_tasker_has_no_local_filter_methods(self):
+        """S39 §H4a: filter shims relocated; tasker no longer owns them."""
+        from archiverr.plugins.tasker.plugin import TaskerPlugin
+
+        assert not hasattr(TaskerPlugin, "_filter_count")
+        assert not hasattr(TaskerPlugin, "_filter_truncate")
+
+    def test_tasker_has_no_local_render_methods(self):
+        """S39 §H4a: rendering goes through services.render_engine."""
+        from archiverr.plugins.tasker.plugin import TaskerPlugin
+
+        assert not hasattr(TaskerPlugin, "_render_template")
+        assert not hasattr(TaskerPlugin, "_evaluate_condition")
+
+    def test_tasker_has_no_env_attribute(self):
+        """S39 §H4a: tasker does not own a Jinja Environment."""
         from archiverr.plugins.tasker.plugin import TaskerPlugin
 
         plugin = TaskerPlugin({"tasks": []})
-        tmpl = plugin.env.from_string("{{ items | count }}")
-        assert tmpl.render(items=["a", "b", "c"]) == "3"
-
-    def test_count_filter_on_none(self):
-        from archiverr.plugins.tasker.plugin import TaskerPlugin
-
-        plugin = TaskerPlugin({"tasks": []})
-        tmpl = plugin.env.from_string("{{ missing | count }}")
-        assert tmpl.render(missing=None) == "0"
+        assert not hasattr(plugin, "env")
 
     def test_no_more_legacy_function_regex(self):
         from archiverr.plugins.tasker import plugin as tasker_mod

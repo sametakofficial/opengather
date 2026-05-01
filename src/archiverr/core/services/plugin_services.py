@@ -277,6 +277,19 @@ class PluginServices:
         return self._state.plugins
 
     @property
+    def render_engine(self):
+        """Shared core ``ConfigRenderEngine`` (S39 R15 §H2/§H3).
+
+        Plugins that need to render arbitrary template strings (e.g.
+        tasker rendering each task's ``template`` / ``condition`` field)
+        consume this property instead of importing ``jinja2`` themselves.
+        Returns ``None`` when the engine was not wired (test fixtures);
+        callers should handle that branch (treat as render-disabled or
+        instantiate their own).
+        """
+        return self._render_engine
+
+    @property
     def mode(self) -> str:
         """Get plugin mode (per_run or per_job)."""
         return self._mode
