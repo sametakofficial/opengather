@@ -53,6 +53,15 @@ class StateDumper:
                 }
                 jobs_dict[job.id] = job_dict
 
+            # DEBUG-ONLY (S39 R15 §F1): the flat ``plugins`` index below is
+            # the debug projection of ``state.context._all_plugins``. It is
+            # NOT consumed by the runtime — the orchestrator, persistence
+            # layer, and render context all read directly from
+            # ``run.plugins`` / ``job.plugins`` and the ``run.data``
+            # envelope (Phase D). This index lives here to keep the
+            # state-dump JSON useful for human inspection. If a future
+            # sprint puts the dumper behind a debug flag, drop this whole
+            # block — nothing else relies on it.
             plugins_data = {}
             if hasattr(state, 'plugins') and isinstance(state.plugins, dict):
                 plugins_data = dict(state.plugins)
