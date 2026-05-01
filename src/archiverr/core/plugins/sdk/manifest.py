@@ -26,8 +26,22 @@ class PluginManifest(BaseModel):
     trigger_rule: VALID_TRIGGER_RULES | None = Field(default="all_success", description="When to run")
     reactive: bool = Field(default=False, description="Whether plugin reacts to events")
 
-    categories: list[str] = Field(default_factory=list, description="Supported media types (movie, show)")
+    categories: list[str] = Field(default_factory=list, description="DEPRECATED — UI-summary only; superseded by `emits` field. To be removed in a future sprint.")
     provides: list[str] = Field(default_factory=list, description="What this plugin provides")
+
+    # Data namespace contribution (S38 R15 §A1)
+    # Plugin declares which data paths it emits, grouped by category.
+    # Example: emits = {"show": ["title.primary", "identifiers.imdb_id"], "movie": ["title.primary"]}
+    # Used by:
+    #   - data_resolver (longest-prefix priority resolution in render context)
+    #   - template_dependency_validator (parse-time WARN if config references undeclared plugin)
+    # Optional — plugins can opt out of the data namespace by leaving this None/empty.
+    emits: dict[str, list[str]] | None = Field(
+        default=None,
+        description="Data paths this plugin emits, grouped by category. "
+                    "e.g. {'show': ['title.primary'], 'movie': ['title.primary']}. "
+                    "Optional; opt-in for participation in `data.*` resolver namespace."
+    )
 
     # Capability system
     capabilities: list[str] = Field(default_factory=list, description="Plugin capabilities")
