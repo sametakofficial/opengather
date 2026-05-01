@@ -19,9 +19,39 @@ manifest:
   categories:
     - movie
     - show
-  # categories: declared on most plugins but only consumed by
-  # models/response_builder.py:208-215 for UI summary; not used for
-  # pipeline routing today.
+  # categories: DEPRECATED 2026-05-01 (S38 R15) — UI-summary-only, no
+  # pipeline routing. Superseded by `emits` (below). To be removed in a
+  # future sprint after web frontend stops consuming it. Keep declaring
+  # for backward compatibility, but new plugins should rely on `emits`
+  # for the data namespace contribution.
+
+  emits:
+    <category>:
+      - <dotted.path>
+      - <dotted.path>
+  # emits: NEW 2026-05-01 (S38 R15) — opt-in data namespace contribution.
+  # Plugin declares which paths it writes (via update_plugin) under each
+  # category. Categories are plugin-defined (no core enum); the keys of
+  # this dict become the namespace's first-level segments.
+  # Example (tmdb):
+  #   emits:
+  #     show:
+  #       - title.primary
+  #       - identifiers.tmdb_id
+  #       - identifiers.imdb_id
+  #     movie:
+  #       - title.primary
+  #       - release.year
+  # Consumed by:
+  #   - DataResolver (state/data_resolver.py): longest-prefix priority
+  #     resolution against `data_priority` config; only plugins listed
+  #     in their emits for a path participate in the resolver namespace.
+  #   - template_dependency_validator (core/render/...): parse-time WARN
+  #     when config.yml template references plugin.X but X is not in
+  #     manifest.requires.
+  # Optional: leaving emits unset (None) opts out of the data namespace
+  # entirely; plugin still works, but `data.<cat>.<path>` cannot resolve
+  # to it. Direct access via `jobs[job_id].plugins.<name>...` always works.
 
   fs_lock:
     - <absolute_path>
