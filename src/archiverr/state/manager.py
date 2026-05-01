@@ -208,6 +208,21 @@ class GlobalStateManager:
             get_job_func=self.get_job_by_id
         )
 
+    def configure_resolver(
+        self,
+        data_priority: dict[str, list[str]],
+        emits_map: dict[str, dict[str, list[str]]],
+    ) -> None:
+        """Configure the data namespace resolver (S39 R15 §D3).
+
+        Called by the orchestrator after the registry has loaded
+        plugins (so ``emits_map`` is known) and the run config is
+        merged (so ``data_priority`` is known). Subsequent
+        ``update_plugin`` calls will recompute ``run.data``
+        accordingly.
+        """
+        self._plugin_manager.set_resolver_config(data_priority, emits_map)
+
     def get_job(self, index: int) -> JobState | None:
         """Get job by index. Delegates to JobManager."""
         return self._job_manager.get_job(index)
