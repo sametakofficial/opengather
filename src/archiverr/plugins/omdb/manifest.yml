@@ -11,6 +11,58 @@ provides:
   - http.request
 # Note: reads ffprobe.container.duration for optional validation (soft dependency)
 trigger_rule: all_success
+# DEPRECATED — UI-summary only, superseded by `emits` below (S39 R15 §A3).
 categories:
   - movie
   - show
+
+# Data namespace contribution (S39 R15 §A3) — current shape from
+# omdb/normalize/normalizer.py. OMDb is not part of B1/B2 sprint refactor;
+# convention alignment with tmdb deferred to a later sprint.
+emits:
+  movie:
+    - title.primary
+    - title.original
+    - identifiers.imdb_id
+    - release.date
+    - release.year
+    - release.dvd
+    - runtime
+    - overview
+    - genres
+    - content_rating
+    - ratings.imdb.score
+    - ratings.imdb.votes
+    - ratings.metacritic.score
+    - ratings.rotten_tomatoes.score
+    - people.director
+    - people.writer
+    - people.actors
+    - production.company
+    - production.country
+    - production.language
+    - financial.box_office
+    - awards
+    - website
+  show:
+    - title.primary
+    - title.original
+    - identifiers.imdb_id
+    - air_dates.first
+    - air_dates.year
+    - seasons.total
+    - runtime
+    - overview
+    - genres
+    - content_rating
+    - ratings.imdb.score
+    - ratings.imdb.votes
+    - ratings.metacritic.score
+    - ratings.rotten_tomatoes.score
+    - people.director
+    - people.writer
+    - people.actors
+    - production.country
+    - production.language
+    - awards
+    - website

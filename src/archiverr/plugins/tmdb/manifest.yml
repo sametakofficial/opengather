@@ -22,10 +22,70 @@ fs_lock: []
 
 trigger_rule: all_success
 
-# Supported media types
+# Supported media types (DEPRECATED — UI-summary only, superseded by `emits` below).
 categories:
   - movie
   - show
+
+# Data namespace contribution (S39 R15 §A3).
+# NOTE: This block declares the POST-B1/B2 flat shape. Until B1 (normalizer
+# refactor) and B2 (client.execute) land, runtime still writes the legacy
+# nested `episode`/`season`/`validation` ana keys; resolver will return
+# undefined for paths not yet written. Manifest is a contract about the
+# target shape, not a historical snapshot.
+emits:
+  show:
+    - title.primary
+    - title.original
+    - title.localized
+    - identifiers.tmdb_id
+    - identifiers.imdb_id
+    - air_dates.first
+    - air_dates.last
+    - air_dates.year
+    - status
+    - runtime
+    - overview
+    - genres
+    - ratings.tmdb.score
+    - ratings.tmdb.votes
+    - network.name
+    - network.id
+    - seasons.total
+    - episodes.total
+    - season_number
+    - episode_number
+    - episode_title
+    - episode_overview
+    - episode_air_date
+    - images.poster
+    - images.backdrop
+    - people.cast
+    - people.crew
+    - keywords
+    - videos
+  movie:
+    - title.primary
+    - title.original
+    - title.localized
+    - identifiers.tmdb_id
+    - identifiers.imdb_id
+    - release.date
+    - release.year
+    - release.status
+    - runtime
+    - overview
+    - genres
+    - ratings.tmdb.score
+    - ratings.tmdb.votes
+    - financial.budget
+    - financial.revenue
+    - images.poster
+    - images.backdrop
+    - people.cast
+    - people.crew
+    - keywords
+    - videos
 
 # Configuration schema with validation rules
 config_schema:

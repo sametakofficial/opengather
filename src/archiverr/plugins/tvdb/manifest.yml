@@ -11,6 +11,42 @@ provides:
   - http.request
 # Note: reads ffprobe.container.duration for optional validation (soft dependency)
 trigger_rule: all_success
+# DEPRECATED — UI-summary only, superseded by `emits` below (S39 R15 §A3).
 categories:
   - movie
   - show
+
+# Data namespace contribution (S39 R15 §A3) — current shape from
+# tvdb/normalize/normalizer.py. TheTVDB is not part of B1/B2 sprint
+# refactor; convention alignment deferred to a later sprint.
+emits:
+  movie:
+    - title.primary
+    - title.original
+    - identifiers.tvdb_id
+    - identifiers.imdb_id
+    - identifiers.tmdb_id
+    - release.year
+    - release.status
+    - runtime
+    - genres
+    - ratings.tvdb.score
+    - people.cast
+    - people.crew
+  show:
+    - title.primary
+    - title.original
+    - identifiers.tvdb_id
+    - identifiers.imdb_id
+    - identifiers.tmdb_id
+    - air_dates.first
+    - air_dates.last
+    - air_dates.year
+    - status
+    - runtime
+    - genres
+    - ratings.tvdb.score
+    - network.name
+    - network.id
+    - people.cast
+    - people.crew

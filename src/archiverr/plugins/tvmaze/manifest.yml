@@ -10,5 +10,39 @@ requires:
 provides:
   - http.request
 trigger_rule: all_success
+# DEPRECATED — UI-summary only, superseded by `emits` below (S39 R15 §A3).
 categories:
   - show
+
+# Data namespace contribution (S39 R15 §A3) — current shape from
+# tvmaze/normalize/normalizer.py and tvmaze/client.py. TVMaze is not part
+# of B1/B2 sprint refactor; convention alignment deferred. TVMaze is
+# show/episode-only (no movie endpoint).
+emits:
+  show:
+    - title.primary
+    - title.original
+    - identifiers.tvmaze_id
+    - air_dates.first
+    - air_dates.last
+    - air_dates.year
+    - status
+    - runtime
+    - genres
+    - ratings.tvmaze.score
+    - network.name
+    - network.id
+    - network.country
+    - people.cast
+    - people.crew
+  episode:
+    - title.primary
+    - title.original
+    - identifiers.tvmaze_id
+    - series.tvmaze_id
+    - season_number
+    - episode_number
+    - air_dates.first
+    - air_dates.year
+    - runtime
+    - overview
