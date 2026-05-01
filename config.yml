@@ -1,5 +1,9 @@
 # Archiverr Configuration
-# Templates use canonical ``plugin.<name>.data.*`` paths.
+# S39 R15 §C5: tasker templates rewritten to the new paradigm.
+# Canonical access:
+#   {{ jobs[job_id].plugins.<name>.<field> }}   (cross-job; full path)
+#   {{ job.plugins.<name>.<field> }}            (current-job shortcut)
+#   {{ data.<jobindex>.<category>.<path> }}     (resolver-priority — Phase D)
 # Use ``${alias:name}`` in manifests for scoped interpolation — see
 # ``core/config/interpolator.py``.
 
@@ -60,7 +64,7 @@ tasker:
       type: print
       template: |
 
-        ========== JOB {{ index }} ==========
+        ========== JOB {{ job_index }} ==========
 
     # Input info
     - name: print_input
@@ -68,48 +72,48 @@ tasker:
       template: |
         Input: {{ job.input.value }}
 
-    # Renamer output
+    # Renamer output (S39 §C5: jobs[job_id].plugins.<name> paradigm)
     - name: print_renamer
       type: print
       template: |
-        {% if plugin.renamer.data.parsed.movie %}MOVIE: {{ plugin.renamer.data.parsed.movie.name }} ({{ plugin.renamer.data.parsed.movie.year }}){% elif plugin.renamer.data.parsed.show %}SHOW: {{ plugin.renamer.data.parsed.show.name }} S{{ '%02d' | format(plugin.renamer.data.parsed.show.season) }}E{{ '%02d' | format(plugin.renamer.data.parsed.show.episode) }}{% endif %}
+        {% if jobs[job_id].plugins.renamer.parsed.movie %}MOVIE: {{ jobs[job_id].plugins.renamer.parsed.movie.name }} ({{ jobs[job_id].plugins.renamer.parsed.movie.year }}){% elif jobs[job_id].plugins.renamer.parsed.show %}SHOW: {{ jobs[job_id].plugins.renamer.parsed.show.name }} S{{ '%02d' | format(jobs[job_id].plugins.renamer.parsed.show.season) }}E{{ '%02d' | format(jobs[job_id].plugins.renamer.parsed.show.episode) }}{% endif %}
 
-    # TMDb metadata (Session 12 format)
+    # TMDb metadata (S39 §B1+B2: flat shape — episode info baked into show)
     - name: print_tmdb
       type: print
       template: |
-        {% if plugin.tmdb.data.movie %}TMDb Movie: {{ plugin.tmdb.data.movie.title.primary }} ({{ plugin.tmdb.data.movie.release.year }})
-        TMDb ID: {{ plugin.tmdb.data.movie.identifiers.tmdb_id }}
-        Overview: {{ plugin.tmdb.data.movie.overview | truncate(100) }}{% elif plugin.tmdb.data.show %}TMDb Show: {{ plugin.tmdb.data.show.title.primary }} ({{ plugin.tmdb.data.show.air_dates.year }})
-        TMDb ID: {{ plugin.tmdb.data.show.identifiers.tmdb_id }}{% if plugin.tmdb.data.episode %}
-        Episode: S{{ '%02d' | format(plugin.tmdb.data.episode.season_number) }}E{{ '%02d' | format(plugin.tmdb.data.episode.episode_number) }} - {{ plugin.tmdb.data.episode.title.primary }}
-        Overview: {{ plugin.tmdb.data.episode.overview | truncate(100) }}{% endif %}{% endif %}
+        {% if jobs[job_id].plugins.tmdb.movie %}TMDb Movie: {{ jobs[job_id].plugins.tmdb.movie.title.primary }} ({{ jobs[job_id].plugins.tmdb.movie.release.year }})
+        TMDb ID: {{ jobs[job_id].plugins.tmdb.movie.identifiers.tmdb_id }}
+        Overview: {{ jobs[job_id].plugins.tmdb.movie.overview | truncate(100) }}{% elif jobs[job_id].plugins.tmdb.show %}TMDb Show: {{ jobs[job_id].plugins.tmdb.show.title.primary }} ({{ jobs[job_id].plugins.tmdb.show.air_dates.year }})
+        TMDb ID: {{ jobs[job_id].plugins.tmdb.show.identifiers.tmdb_id }}{% if jobs[job_id].plugins.tmdb.show.episode_title %}
+        Episode: S{{ '%02d' | format(jobs[job_id].plugins.tmdb.show.season_number) }}E{{ '%02d' | format(jobs[job_id].plugins.tmdb.show.episode_number) }} - {{ jobs[job_id].plugins.tmdb.show.episode_title }}
+        Overview: {{ jobs[job_id].plugins.tmdb.show.episode_overview | truncate(100) }}{% endif %}{% endif %}
 
-    # Test conditional rendering
+    # Test conditional rendering (S39 §C5: condition core-rendered to bool)
     - name: test_condition
       type: print
-      condition: "{% if plugin.tmdb.data.movie.ratings.tmdb.score > 8 or plugin.tmdb.data.show.ratings.tmdb.score > 8 %}true{% endif %}"
+      condition: "{% if jobs[job_id].plugins.tmdb.movie.ratings.tmdb.score > 8 or jobs[job_id].plugins.tmdb.show.ratings.tmdb.score > 8 %}true{% endif %}"
       template: |
-        {% if plugin.tmdb.data.movie %}⭐ HIGH RATED: {{ plugin.tmdb.data.movie.ratings.tmdb.score }}/10{% elif plugin.tmdb.data.show %}⭐ HIGH RATED: {{ plugin.tmdb.data.show.ratings.tmdb.score }}/10{% endif %}
+        {% if jobs[job_id].plugins.tmdb.movie %}⭐ HIGH RATED: {{ jobs[job_id].plugins.tmdb.movie.ratings.tmdb.score }}/10{% elif jobs[job_id].plugins.tmdb.show %}⭐ HIGH RATED: {{ jobs[job_id].plugins.tmdb.show.ratings.tmdb.score }}/10{% endif %}
 
-    # Test count function
+    # Test count filter (works against jobs[job_id].plugins.<name> chains)
     - name: test_count
       type: print
       template: |
-        {% if plugin.tmdb.data.movie %}Genres: {{ plugin.tmdb.data.movie.genres | count }} | Cast: {{ plugin.tmdb.data.movie.people.cast | count }}{% elif plugin.tmdb.data.show %}Genres: {{ plugin.tmdb.data.show.genres | count }} | Cast: {{ plugin.tmdb.data.show.people.cast | count }}{% if plugin.tmdb.data.episode %} | Guest Stars: {{ plugin.tmdb.data.episode.people.guest_stars | count }}{% endif %}{% endif %}
+        {% if jobs[job_id].plugins.tmdb.movie %}Genres: {{ jobs[job_id].plugins.tmdb.movie.genres | count }} | Cast: {{ jobs[job_id].plugins.tmdb.movie.people.cast | count }}{% elif jobs[job_id].plugins.tmdb.show %}Genres: {{ jobs[job_id].plugins.tmdb.show.genres | count }} | Cast: {{ jobs[job_id].plugins.tmdb.show.people.cast | count }}{% if jobs[job_id].plugins.tmdb.show.episode_people %} | Guest Stars: {{ jobs[job_id].plugins.tmdb.show.episode_people.guest_stars | count }}{% endif %}{% endif %}
 
     # Test FFprobe (if available)
     - name: test_ffprobe
       type: print
-      condition: "{% if plugin.ffprobe.data %}true{% endif %}"
+      condition: "{% if jobs[job_id].plugins.ffprobe %}true{% endif %}"
       template: |
-        📹 Video: {{ plugin.ffprobe.data.format.format_long_name }} | Duration: {{ plugin.ffprobe.data.format.duration }}s
+        📹 Video: {{ jobs[job_id].plugins.ffprobe.format.format_long_name }} | Duration: {{ jobs[job_id].plugins.ffprobe.format.duration }}s
 
-    # Test missing data (should not error)
+    # Test missing data (should not error — ChainableUndefined renders to "")
     - name: test_missing
       type: print
       template: |
-        Missing test: {{ plugin.nonexistent.data.field | default('N/A') }}
+        Missing test: {{ jobs[job_id].plugins.nonexistent.field | default('N/A') }}
 
     # Summary
     - name: print_summary
