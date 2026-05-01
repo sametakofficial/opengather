@@ -20,6 +20,26 @@ options:
   dry_run: true
   hardlink: true
 
+# S39 R15 §D5 — data resolver priority map.
+# Templates can reach the resolver via ``{{ data.<jobindex>.<category>.<path> }}``
+# / ``{{ data.run.<category>.<path> }}``. The first plugin in each list that
+# emits the path (per its manifest.emits) wins; missing values fall through
+# to the next plugin. Longest-prefix match preferred. See state/data_resolver.py
+# and datasets/01-config.yml#data_priority_contract.
+data_priority:
+  # Show category — tmdb is the convention reference (B1+B2 flat shape);
+  # omdb / tvmaze / tvdb declared their current shape in A3 and can
+  # satisfy basic title/identifiers paths.
+  "data.<jobindex>.show":              [tmdb, omdb, tvmaze, tvdb]
+  # Episode-specific sub-paths only resolve from tmdb today (the only
+  # plugin whose manifest.emits covers `episode_title` etc. in flat form).
+  "data.<jobindex>.show.episode_title": [tmdb]
+  "data.<jobindex>.show.episode_overview": [tmdb]
+  "data.<jobindex>.show.season_number": [tmdb]
+  "data.<jobindex>.show.episode_number": [tmdb]
+  # Movie category — tmdb / omdb / tvdb (tvmaze is show-only).
+  "data.<jobindex>.movie": [tmdb, omdb, tvdb]
+
 scanner:
   enabled: true
   targets:

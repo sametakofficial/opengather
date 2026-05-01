@@ -8,11 +8,37 @@ config:
     no_delete: bool
     hardlink: bool
     persistence_mode: full | degraded | off
+  data_priority:
+    # S39 R15 §D5 — operator-supplied priority map for the
+    # ``data.<jobindex>.<category>.<dotted.path>`` resolver namespace.
+    # Shape: dict[priority_key, list[plugin_name]].
+    # Longest-prefix match wins; first non-None hit per (scope, path)
+    # populates ``run.data``. See state/data_resolver.py.
+    "data.<jobindex>.<category>": [<plugin>, <plugin>, ...]
+    "data.<jobindex>.<category>.<dotted.path>": [<plugin>, ...]
+    "data.run.<category>": [<plugin>, ...]
   <plugin_name>:
     enabled: bool
     aliases:
       <name>: <value>
     <plugin_specific_config>: any
+
+data_priority_contract:
+  scope_segment:
+    "<jobindex>": substituted by the active job's index at lookup time
+    "run":        per_run plugin scope (run.plugins.<plugin>)
+    numeric:      direct, e.g. "data.0.show" reads job index 0 only
+  resolution_order: longest_prefix_first
+  match_semantics: first_non_none_hit_in_priority_list
+  emits_required:
+    - plugins listed in a priority entry MUST declare matching
+      ``manifest.emits`` for the category root, otherwise registry
+      surfaces a WARN at load time (validate_data_priority).
+  unset_behaviour: |
+    When ``data_priority`` is empty or absent, ``run.data`` stays
+    ``{}`` and the resolver-priority namespace is effectively
+    disabled. Direct descent paths
+    (``{{ jobs[job_id].plugins.<name>.<field> }}``) are unaffected.
 
 options_contract:
   see: 12-safety.yml
