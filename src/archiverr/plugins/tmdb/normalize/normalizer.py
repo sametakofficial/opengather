@@ -4,27 +4,27 @@ TMDb Response Normalizer
 
 Converts RAW TMDb API responses to standardized normalized format.
 Uses normalized_schema.json for field mappings.
+
+S39 R15 §B1 — flat shape:
+- Top-level result objects are ONLY ``show`` and ``movie``.
+- ``episode`` / ``season`` are NOT separate top-level objects; the
+  episode info (``season_number``, ``episode_number``, ``episode_title``,
+  ``episode_overview``, ``episode_air_date``) is BAKED FLAT into the
+  ``show`` shape when an episode lookup happened.
+- ``media_type`` field removed (the ana key conveys the same info).
 """
-import json
-import os
 from typing import Any
 
 
 class TMDbNormalizer:
-    """Normalize TMDb API responses to community standard format"""
-
-    def __init__(self):
-        schema_path = os.path.join(os.path.dirname(__file__), 'schema.json')
-        with open(schema_path) as f:
-            self.schema = json.load(f)
+    """Normalize TMDb API responses to community standard format."""
 
     def normalize_movie(self, movie_data: dict[str, Any], extras: dict[str, Any] = None) -> dict[str, Any]:
-        """Normalize movie response"""
+        """Normalize movie response (S39 §B1 — flat shape, no media_type)."""
         if not movie_data:
             return {}
 
         normalized = {
-            'media_type': 'movie',
             'identifiers': {
                 'tmdb_id': str(movie_data.get('id', '')),
                 'imdb_id': movie_data.get('imdb_id')
@@ -74,14 +74,25 @@ class TMDbNormalizer:
 
         return normalized
 
-    def normalize_show(self, show_data: dict[str, Any], season_data: dict[str, Any] = None,
-                      episode_data: dict[str, Any] = None, extras: dict[str, Any] = None) -> dict[str, Any]:
-        """Normalize TV show response"""
+    def normalize_show(
+        self,
+        show_data: dict[str, Any],
+        season_data: dict[str, Any] | None = None,
+        episode_data: dict[str, Any] | None = None,
+        extras: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Normalize TV show response (S39 §B1 — flat shape).
+
+        Episode info is baked into the show object as flat fields:
+            ``season_number``, ``episode_number``, ``episode_title``,
+            ``episode_overview``, ``episode_air_date``.
+        Season info likewise: ``season_name``, ``season_overview``,
+            ``season_air_date``, ``season_episode_count``.
+        """
         if not show_data:
             return {}
 
         normalized = {
-            'media_type': 'show',
             'identifiers': {
                 'tmdb_id': str(show_data.get('id', ''))
             },
@@ -121,6 +132,32 @@ class TMDbNormalizer:
             }
         }
 
+        # S39 §B1: bake episode fields flat into show.
+        if episode_data:
+            normalized['season_number'] = episode_data.get('season_number')
+            normalized['episode_number'] = episode_data.get('episode_number')
+            normalized['episode_title'] = episode_data.get('name')
+            normalized['episode_overview'] = episode_data.get('overview')
+            normalized['episode_air_date'] = episode_data.get('air_date')
+            normalized['episode_runtime'] = episode_data.get('runtime')
+            ep_still = episode_data.get('still_path')
+            if ep_still:
+                normalized['images']['episode_still'] = ep_still
+
+        # S39 §B1: bake season fields flat into show.
+        if season_data:
+            normalized['season_name'] = season_data.get('name')
+            normalized['season_overview'] = season_data.get('overview')
+            normalized['season_air_date'] = season_data.get('air_date')
+            normalized['season_episode_count'] = (
+                len(season_data.get('episodes', []))
+                if isinstance(season_data.get('episodes'), list)
+                else season_data.get('episode_count')
+            )
+            season_poster = season_data.get('poster_path')
+            if season_poster:
+                normalized['images']['season_poster'] = season_poster
+
         # Add extras if provided
         if extras:
             if extras.get('tv_credits'):
@@ -135,48 +172,22 @@ class TMDbNormalizer:
             if extras.get('tv_keywords'):
                 normalized['keywords'] = self._normalize_keywords(extras['tv_keywords'])
 
-        return normalized
-
-    def normalize_episode(self, episode_data: dict[str, Any], extras: dict[str, Any] = None) -> dict[str, Any]:
-        """Normalize episode response"""
-        if not episode_data:
-            return {}
-
-        normalized = {
-            'media_type': 'episode',
-            'identifiers': {
-                'tmdb_id': str(episode_data.get('id', ''))
-            },
-            'title': {
-                'primary': episode_data.get('name'),
-                'original': episode_data.get('name'),
-                'localized': episode_data.get('name')
-            },
-            'season_number': episode_data.get('season_number'),
-            'episode_number': episode_data.get('episode_number'),
-            'air_date': episode_data.get('air_date'),
-            'runtime': episode_data.get('runtime'),
-            'ratings': {
-                'tmdb': {
-                    'score': episode_data.get('vote_average'),
-                    'votes': episode_data.get('vote_count')
-                }
-            },
-            'overview': episode_data.get('overview'),
-            'images': {
-                'still': episode_data.get('still_path')
-            }
-        }
-
-        # Add extras if provided
-        if extras:
+            # Episode-scoped extras still apply when an episode lookup
+            # happened — surface them flat under episode-prefixed keys.
             if extras.get('tv_episode_credits'):
-                normalized['people'] = self._normalize_episode_credits(extras['tv_episode_credits'])
-
+                normalized['episode_people'] = self._normalize_episode_credits(
+                    extras['tv_episode_credits']
+                )
             if extras.get('tv_episode_images'):
-                normalized['images'].update(self._normalize_episode_images(extras['tv_episode_images']))
+                normalized['images'].update(
+                    self._normalize_episode_images(extras['tv_episode_images'])
+                )
 
         return normalized
+
+    # S39 §B1: ``normalize_episode`` and ``normalize_season`` have been
+    # REMOVED. Episode/season info is now flat-merged into the ``show``
+    # object via ``normalize_show(season_data=..., episode_data=...)``.
 
     def _normalize_credits(self, credits: dict[str, Any]) -> dict[str, Any]:
         """Normalize cast and crew"""
@@ -204,7 +215,7 @@ class TMDbNormalizer:
         }
 
     def _normalize_episode_credits(self, credits: dict[str, Any]) -> dict[str, Any]:
-        """Normalize episode credits including guest stars"""
+        """Normalize episode credits including guest stars."""
         result = self._normalize_credits(credits)
         result['guest_stars'] = [
             {
@@ -219,7 +230,7 @@ class TMDbNormalizer:
         return result
 
     def _normalize_images(self, images: dict[str, Any]) -> dict[str, Any]:
-        """Normalize images"""
+        """Normalize images."""
         return {
             'posters': [
                 {
@@ -244,7 +255,7 @@ class TMDbNormalizer:
         }
 
     def _normalize_episode_images(self, images: dict[str, Any]) -> dict[str, Any]:
-        """Normalize episode stills"""
+        """Normalize episode stills."""
         return {
             'stills': [
                 {
@@ -258,7 +269,7 @@ class TMDbNormalizer:
         }
 
     def _normalize_videos(self, videos: dict[str, Any]) -> list[dict[str, Any]]:
-        """Normalize videos"""
+        """Normalize videos."""
         return [
             {
                 'id': v.get('id'),
@@ -272,6 +283,6 @@ class TMDbNormalizer:
         ]
 
     def _normalize_keywords(self, keywords: dict[str, Any]) -> list[str]:
-        """Normalize keywords"""
+        """Normalize keywords."""
         kw_list = keywords.get('keywords', keywords.get('results', []))
         return [k.get('name') for k in kw_list if k.get('name')]

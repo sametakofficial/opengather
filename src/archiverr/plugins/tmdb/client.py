@@ -124,26 +124,21 @@ class TMDbPlugin(OutputPlugin):
             else:
                 return PluginResult.error_result("No movie or show data", started_at=started_at)
 
-            # Add validation if result successful
+            # S39 §B2 — top-level ``validation`` field removed; live
+            # validation tests are out of scope for the metadata
+            # contract. Audit found the original implementation was
+            # essentially anonymous (no test surface) and tightly
+            # coupled to the legacy nested episode/season shape.
+            # If/when validation comes back, it lives in a dedicated
+            # plugin under the data stage, not piggybacked onto tmdb.
             if result and result.get('status', {}).get('success'):
-                # Session 17: Get ffprobe data (flat structure)
-                ffprobe_data = {}
-                if hasattr(job, 'plugins') and isinstance(job.plugins, dict):
-                    ffprobe_data = job.plugins.get('ffprobe', {})
-                elif hasattr(services, 'state'):
-                    ffprobe_data = services.state.get_plugin_data(job.id, 'ffprobe') or {}
-                result['validation'] = self._perform_validation(ffprobe_data, result)
-
-                # Emit task example - notify about found metadata
                 if result.get('movie'):
                     movie = result['movie']
-                    # Handle both dict titles (normalized) and string titles (raw)
                     title = movie.get('title', {})
                     if isinstance(title, dict):
                         movie_title = title.get('primary') or title.get('original') or 'Unknown'
                     else:
                         movie_title = title or 'Unknown'
-                    # Year can be in release.year (normalized) or release_date (raw)
                     release = movie.get('release', {})
                     if isinstance(release, dict):
                         movie_year = release.get('year', '')
@@ -152,12 +147,11 @@ class TMDbPlugin(OutputPlugin):
                     self.info(f"TMDb: {movie_title} ({movie_year})")
                 elif result.get('show'):
                     show = result['show']
-                    # Handle both dict names (normalized) and string names (raw)
-                    name = show.get('name', {})
-                    if isinstance(name, dict):
-                        show_name = name.get('primary') or name.get('original') or 'Unknown'
+                    title = show.get('title', {})
+                    if isinstance(title, dict):
+                        show_name = title.get('primary') or title.get('original') or 'Unknown'
                     else:
-                        show_name = name or 'Unknown'
+                        show_name = title or 'Unknown'
                     self.info(f"TMDb: {show_name}")
 
             # Convert dict result to PluginResult
@@ -175,49 +169,9 @@ class TMDbPlugin(OutputPlugin):
             self.error("Execution failed", error=str(e))
             return PluginResult.error_result(str(e), started_at=started_at)
 
-    def _perform_validation(self, ffprobe_data: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-        """
-        Perform validation tests (e.g., duration matching)
-        
-        Args:
-            ffprobe_data: FFProbe plugin result data
-            result: TMDb fetch result
-            
-        Returns:
-            {tests_passed, tests_total, details}
-        """
-        tests = {}
-        tests_passed = 0
-        tests_total = 0
-
-        # Duration validation (for movies and episodes)
-        container = ffprobe_data.get('container', {})
-        ffprobe_duration = container.get('duration', 0)
-
-        if ffprobe_duration > 0:
-            # Get runtime from result
-            runtime_minutes = None
-            if result.get('movie'):
-                runtime_minutes = result['movie'].get('runtime')
-            elif result.get('episode'):
-                runtime_minutes = result['episode'].get('runtime')
-
-            # Perform validation
-            validation_result = self._validate_duration(
-                ffprobe_duration,
-                runtime_minutes,
-                tolerance_seconds=600  # 10 minutes
-            )
-
-            tests['duration_match'] = validation_result.details
-            tests_total += 1
-            if validation_result.passed:
-                tests_passed += 1
-
-        return {
-            'tests_passed': tests_passed,
-            'tests_total': tests_total,
-            'details': tests
-        }
-
+    # S39 §B2: ``_perform_validation`` and ``_validate_duration`` REMOVED.
+    # The legacy duration-match test was anonymous (no caller test
+    # coverage) and tightly coupled to the deprecated nested
+    # ``episode``/``season`` shape. Reintroduce in a dedicated
+    # validation plugin if/when the contract is reopened.
     # _error_result() removed - using PluginResult.error_result() instead

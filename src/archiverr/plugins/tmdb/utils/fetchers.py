@@ -48,7 +48,7 @@ class TMDbMovieFetcher:
         # Normalize (THIS IS THE DEFAULT OUTPUT)
         normalized_movie = self.normalizer.normalize_movie(raw_movie_details, raw_extras)
 
-        # Build result - NORMALIZED IS DEFAULT
+        # S39 §B2 — flat shape: only ``show`` and ``movie`` ana keys.
         end_time = datetime.now()
         result = {
             'status': {
@@ -58,8 +58,6 @@ class TMDbMovieFetcher:
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
             'movie': normalized_movie,  # NORMALIZED by default
-            'episode': None,
-            'season': None,
             'show': None
         }
 
@@ -133,7 +131,7 @@ class TMDbMovieFetcher:
         return extras
 
     def _error_result(self, start_time: datetime) -> dict[str, Any]:
-        """Return error result"""
+        """Return error result (S39 §B2 — flat shape)."""
         now = datetime.now()
         return {
             'status': {
@@ -143,8 +141,6 @@ class TMDbMovieFetcher:
                 'duration_ms': int((now - start_time).total_seconds() * 1000)
             },
             'movie': None,
-            'episode': None,
-            'season': None,
             'show': None,
             'extras': {}
         }
@@ -190,30 +186,14 @@ class TMDbShowFetcher:
         # Fetch extras
         raw_extras = self._fetch_extras(show_id, season_num, episode_num)
 
-        # Normalize (THIS IS THE DEFAULT OUTPUT)
-        # Normalize show, episode, and season separately
-        normalized_show = self.normalizer.normalize_show(raw_show_details, None, None, raw_extras)
-        normalized_episode = self.normalizer.normalize_episode(raw_episode, raw_extras) if raw_episode else None
+        # S39 §B2 — flat shape: episode + season info baked into show.
+        normalized_show = self.normalizer.normalize_show(
+            raw_show_details,
+            season_data=raw_season,
+            episode_data=raw_episode,
+            extras=raw_extras,
+        )
 
-        # Normalize season (basic structure)
-        normalized_season = None
-        if raw_season:
-            normalized_season = {
-                'media_type': 'season',
-                'identifiers': {
-                    'tmdb_id': str(raw_season.get('id', ''))
-                },
-                'season_number': raw_season.get('season_number'),
-                'name': raw_season.get('name'),
-                'overview': raw_season.get('overview'),
-                'air_date': raw_season.get('air_date'),
-                'episode_count': len(raw_season.get('episodes', [])),
-                'images': {
-                    'poster': raw_season.get('poster_path')
-                }
-            }
-
-        # Build result - NORMALIZED IS DEFAULT
         end_time = datetime.now()
         result = {
             'status': {
@@ -222,9 +202,7 @@ class TMDbShowFetcher:
                 'finished_at': end_time.isoformat(),
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
-            'show': normalized_show,  # NORMALIZED by default
-            'episode': normalized_episode,  # NORMALIZED episode data
-            'season': normalized_season,  # NORMALIZED season data
+            'show': normalized_show,  # flat (episode_X / season_X fields baked in)
             'movie': None
         }
 
@@ -346,7 +324,7 @@ class TMDbShowFetcher:
         return extras
 
     def _error_result(self, start_time: datetime) -> dict[str, Any]:
-        """Return error result"""
+        """Return error result (S39 §B2 — flat shape)."""
         now = datetime.now()
         return {
             'status': {
@@ -356,8 +334,6 @@ class TMDbShowFetcher:
                 'duration_ms': int((now - start_time).total_seconds() * 1000)
             },
             'movie': None,
-            'episode': None,
-            'season': None,
             'show': None,
             'extras': {}
         }
