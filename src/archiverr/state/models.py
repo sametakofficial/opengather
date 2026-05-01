@@ -8,6 +8,25 @@ from enum import Enum
 from typing import Any
 
 
+def _stringify_int_keys(value: Any) -> Any:
+    """Recursively convert int dict keys to strings (S39 R15 §G1).
+
+    Mongo / BSON / JSON require string keys at every level. The data
+    envelope uses int job-indices as scope keys for in-memory
+    convenience, but they must be stringified at the persistence
+    boundary to avoid ``Invalid document`` write failures. Lists and
+    leaf scalars pass through unchanged.
+    """
+    if isinstance(value, dict):
+        return {
+            (str(k) if isinstance(k, int) else k): _stringify_int_keys(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_stringify_int_keys(v) for v in value]
+    return value
+
+
 class StateEnum(Enum):
     """Unified state enum for Run and Job states."""
     PENDING = "pending"
@@ -176,7 +195,14 @@ class RunState:
             "config": self.config,
             "plugins": self.plugins,
             "persistence_mode": self.persistence_mode,
-            "data": self.data,
+            # S39 R15 §G1 fix: the data envelope uses int keys for job
+            # indices (so the resolver / proxy can index them
+            # naturally), but Mongo (and JSON) require string keys at
+            # the document boundary. Stringify only at the
+            # persistence edge — the in-memory shape stays int so
+            # ``DataResolver._split_scope`` can keep its
+            # ``int(head)`` parse path.
+            "data": _stringify_int_keys(self.data),
         }
 
     def start(self):
