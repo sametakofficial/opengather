@@ -1,0 +1,466 @@
+# Archiverr Plugin System — Functions, Modes, Runtime Surface (S38, 2026-05-01)
+#
+# Purpose: kullanıcı projeyi hatırlamak için yazılan görsel/anlatımlı özet.
+# Her iddia kod referansı ile (file:line) doğrulanmış.
+# Canlı runtime JSON örneği: datasets/15-runtime-state-example.json
+
+# ============================================================================
+# 1. PLUGIN MODE'LARI — per_run vs per_job
+# ============================================================================
+plugin_modes:
+  per_run:
+    purpose: |
+      Workflow'dan muaf, run başında bir kez çalışan plugin'ler.
+      Tipik: dosya sistemi tarama, dış servis senkronizasyonu, init/cleanup.
+    lifecycle: run başında 1 kez (orchestrator.py:129)
+    stage: yok (workflow dışı)
+    sequencing: registry insertion order — requires/provides ETKİN DEĞİL (per_run_executor.py:46-97)
+    target_id: services.run_id (explicit)
+    storage_slot: runs.plugins.<name>     # Mongo: runs document, embedded
+    entry_point: execute_run(services) -> dict
+    examples:
+      - scanner    # dosya sistemi tarayıcı, job factory
+      - file-reader  # .txt input okuyucu, job factory
+    capabilities:
+      - services.create_job() çağırarak job yaratabilir (tipik kullanım)
+      - update_plugin(target_id=services.run_id, ...) ile veri yazabilir
+      - services.events.has_fired(name) ile event okuyabilir (read-only)
+
+  per_job:
+    purpose: |
+      Her job için stage döngüsünde çalışan plugin'ler.
+      Tipik: parsing, metadata fetching, file probing, output rendering.
+    lifecycle: her job için PARSE → DATA → OUTPUT stage'lerinde
+    stage: zorunlu (PARSE | DATA | OUTPUT)
+    sequencing: requires/provides ile resolved (stage_executor.py:213-226)
+    target_id: services.current_job_id (otomatik)
+    storage_slot: jobs.plugins.<name>     # Mongo: jobs document, embedded
+    entry_point: execute(job, services) -> PluginResult
+    examples:
+      - renamer   # PARSE — filename'den show/movie çıkar
+      - tmdb      # DATA — TMDb API'den metadata
+      - omdb      # DATA — OMDb API'den metadata (paralel)
+      - tvmaze    # DATA — TVMaze API'den metadata
+      - tvdb      # DATA — TVDB API'den metadata
+      - ffprobe   # DATA — video container/streams
+      - tasker    # OUTPUT — Jinja2 template render
+    capabilities:
+      - update_plugin(data=...) ile kendi job'una veri yazar
+      - update_job(key, value) ile job state'i günceller (dot-path)
+      - services.create_job() teknik olarak çağırabilir (kullanılmıyor pratikte)
+      - services.events.has_fired(name) ile event okuyabilir
+
+  hardcoded_3stage_pipeline:
+    note: |
+      Per_job plugin'ler 3 sabit stage'de gruplanır: PARSE → DATA → OUTPUT.
+      Stage yeni eklenemez (orchestrator.py:58 STAGES = [PARSE, DATA, OUTPUT]).
+      Per_run plugin'ler her stage'den önce, RUN başında çalışır.
+
+# ============================================================================
+# 2. PluginServices API — plugin yazarının kullanabileceği TÜM fonksiyonlar
+# ============================================================================
+# Source: src/archiverr/core/services/plugin_services.py:1-260
+plugin_services_api:
+
+  mutating:
+    # services.update_plugin — plugin'in DATA yazma fonksiyonu
+    update_plugin:
+      signature: "(target_id: str = None, plugin_name: str = None, data: dict = None) -> None"
+      behavior: |
+        target_id otomatik resolve:
+          - per_job context'te: current_job_id
+          - per_run context'te: explicit services.run_id
+        target_id prefix'ine göre routing (plugin_data_manager.py:75-86):
+          - "run_<uuid>"     → run.plugins[name] = data
+          - "job_<uuid>_<n>" → job.plugins[name] = data
+        Her çağrıda Mongo'ya save_run veya save_plugin_doc edilir.
+      file: src/archiverr/core/services/plugin_services.py:109-133
+
+    # services.create_job — yeni job oluşturma (job factory pattern)
+    create_job:
+      signature: "(input_value: str, input_data: dict = None) -> str (job_id)"
+      behavior: |
+        Yeni job oluşturur ve run.jobs listesine ekler.
+        Her çağrıdan dönen job_id ileride update_plugin için kullanılabilir.
+        Tipik kullanım: per_run scanner/file-reader.
+        Teknik olarak per_job da çağırabilir (cross-job orchestration için).
+      file: src/archiverr/core/services/plugin_services.py:62-86
+
+    # services.update_job — job state mutating (dot-path)
+    update_job:
+      signature: "(job_id: str = None, key: str, value: Any) -> None"
+      behavior: |
+        Job state'inin spesifik bir alanını günceller.
+        key: dot-notation path (örn. "output.values", "input.data.virtual")
+        Plugin'lerin kendi job'una çıktı eklemek için kullanır.
+      file: src/archiverr/core/services/plugin_services.py:87-107
+
+  read_only:
+    get_plugin_data:
+      signature: "(target_id: str, plugin_name: str) -> dict | None"
+      behavior: belirli target için belirli plugin'in verisini çek
+      use_case: cross-plugin data lookup (örn. ffprobe → renamer parsed verisini okur)
+      file: plugin_services.py:135-146
+
+    get_run:
+      signature: "() -> RunState"
+      use_case: run.id, run.config, run.plugins okuma
+
+    get_config:
+      signature: "() -> dict"
+      use_case: frozen compiled config (plugin'in kendi config'i + manifest defaults + user override)
+
+    get_current_job:
+      signature: "() -> JobState | None"
+      use_case: per_job context'te current job'a erişim
+
+    get_all_jobs:
+      signature: "() -> list[JobState]"
+      use_case: cross-job inspection (tüm joblara bak)
+
+    get_current_plugins:
+      signature: "() -> dict[str, dict]"
+      use_case: current job'un tüm plugin verilerini al
+
+    get_all_plugins:
+      signature: "() -> dict[str, dict]"
+      use_case: cross-job tüm plugin verileri (target_id → plugin → data)
+
+  properties:
+    run_id: current run ID (str | None)
+    current_job_id: per_job context'te dolu, per_run'da None
+    current_plugin_name: current çalışan plugin adı
+    mode: "per_run" | "per_job"
+    run_safety: "{dry_run, hardlink, no_delete}" resolved flags
+
+  services:
+    events:
+      surface: read-only EventService (has_fired, history, snapshot)
+      restriction: emit/subscribe YOK — o sadece executor + lifecycle hook'larında
+      file: src/archiverr/core/services/event_service.py
+
+    provides:
+      surface: ProvidesService — capability complete/check
+      methods:
+        - "complete(name)"  # plugin kendi capability'sini tamamlandı işaretler
+        - "is_completed(name)"  # başka plugin'in capability tamamlandı mı kontrol
+      use_case: erken çıkış, conditional execution
+      file: src/archiverr/core/services/provides_service.py
+
+# ============================================================================
+# 3. update_plugin paradigması — TEK API, EMIT ZORUNLU DEĞİL
+# ============================================================================
+update_plugin_paradigm:
+  rule: |
+    Plugin yazarı veri yazmak için SADECE services.update_plugin(data=...) kullanır.
+    Ortada "emit" diye AYRI bir API YOKTUR.
+    Sistem target_id ile run/job ayrımını OTOMATİK halleder.
+
+  per_run_example:
+    plugin: scanner
+    code: |
+      services.update_plugin(
+          target_id=services.run_id,
+          plugin_name="scanner",
+          data={"count": 1, "targets": [...], "recursive": false, "allow_virtual_paths": true}
+      )
+    file: src/archiverr/plugins/scanner/client.py:74-83
+
+  per_job_example:
+    plugin: tmdb
+    code: |
+      services.update_plugin(data={"show": {...}, "episode": {...}, "season": null, "movie": null, "validation": {}})
+      # target_id ve plugin_name otomatik current_job_id ve "tmdb"
+    file: src/archiverr/plugins/tmdb/client.py:168-172
+
+  routing_logic:
+    code: |
+      # plugin_data_manager.py:75-86
+      is_run_target = target_id.startswith("run_") or (run and target_id == run.id)
+      if is_run_target:  self._update_run_plugin(...)   # → run.plugins[name]
+      else:              self._update_job_plugin(...)   # → job.plugins[name]
+
+# ============================================================================
+# 4. Plugin shape varyasyonları (anarşi gerçek hali)
+# ============================================================================
+# Source: canlı Mongo run 68b6ff32-...
+plugin_shape_variance:
+  scanner:
+    mode: per_run
+    shape: flat
+    example:
+      count: 1
+      targets: ["/tmp/Breaking.Bad..."]
+      recursive: false
+      allow_virtual_paths: true
+    category_subkey: NO
+
+  renamer:
+    mode: per_job
+    shape: nested-with-parsed-prefix
+    example:
+      parsed:
+        show: {name: "Breaking Bad", season: 1, episode: 1}
+        movie: null
+      category: show
+    category_subkey: PARTIAL (parsed.X.Y altında)
+
+  tmdb:
+    mode: per_job
+    shape: top-level-categorized
+    example:
+      show: {media_type, identifiers, title: {primary, original, localized}, ...}
+      episode: {title, season_number, episode_number, ...}
+      season: null
+      movie: null
+      validation: {}
+    category_subkey: YES (kök seviyede show/movie/episode/season)
+
+  omdb:
+    mode: per_job
+    shape: top-level-categorized
+    example: {movie, show, validation}
+    category_subkey: YES
+
+  tvmaze:
+    mode: per_job
+    shape: top-level-categorized
+    example: {show, episode, season, movie}
+    category_subkey: YES
+
+  tvdb:
+    mode: per_job
+    shape: top-level-categorized
+    example: {movie, show}
+    category_subkey: YES
+
+  ffprobe:
+    mode: per_job
+    shape: domain-specific (metadata)
+    example:
+      format: {format_long_name, duration, ...}
+      streams: {video: [...], audio: [...]}
+    category_subkey: NO (kategori "format" değil — kendi domain'i)
+
+  tasker:
+    mode: per_job
+    shape: output-rendering
+    example:
+      tasks:
+        print_header: {name, type, success, rendered}
+        print_tmdb: {rendered: "TMDb Show: Breaking Bad..."}
+      output_values: []
+    category_subkey: NO (output domain)
+
+  observation: |
+    Metadata plugin'leri (tmdb, omdb, tvmaze, tvdb) doğal olarak
+    AYNI convention'a yakınsamış: kök seviyede kategori sub-key
+    (movie, show, episode, season). renamer farklı (parsed.X),
+    per_run/ffprobe/tasker kendi domain'inde.
+
+    Bu "anarşi içinde gönüllü uyum" örneği — kullanıcı vizyonu doğru.
+
+# ============================================================================
+# 5. Persistence — Mongo'da nereye yazılır
+# ============================================================================
+# Source: datasets/06-mongodb.yml + state/plugin_data_manager.py
+persistence_layout:
+  runs_collection:
+    document_per: run
+    embedded:
+      - status (run-level summary)
+      - config (compiled config tree, manifest_merge çıktısı dahil)
+      - plugins (per_run plugin output: scanner, file-reader)
+      - persistence_mode
+
+  jobs_collection:
+    document_per: job (her job ayrı doc)
+    embedded:
+      - input (value, data)
+      - output (values, data)
+      - status (job-level + per-plugin status)
+      - plugins (per_job plugin output: renamer, tmdb, omdb, ffprobe, tasker)
+
+  plugins_collection:
+    document_per: per (run_id, job_id, plugin_name) tuple
+    purpose: cross-job query için flat document
+    fields: [run_id, job_id, job_index, plugin_name, data, created_at]
+    note: data alanı job.plugins.<name>'in kopyası; updates idempotent
+
+  plugin_executions_collection:
+    document_per: plugin execution
+    purpose: recovery surface (state, started_at, finished_at, error)
+    note: per_run plugin executions ŞU AN yazılmıyor (slim contract)
+
+# ============================================================================
+# 6. State dump (otomatik, her run sonu)
+# ============================================================================
+# Source: src/archiverr/state/state_dumper.py
+state_dump:
+  trigger: orchestrator finalize_run sonu
+  destination: output/run_<run_id>_state.json
+  format: tek büyük JSON
+  structure:
+    dump_type: str
+    timestamp: str
+    run: { id, status, config, plugins, persistence_mode }
+    jobs: { "<job_id>": JobState }   # dict, key=job_id
+    plugins: { "<target_id>": { "<plugin_name>": <data> } }   # flat target_id index
+  example_file: datasets/15-runtime-state-example.json   # canlı dump, 77KB
+
+# ============================================================================
+# 7. Render-time Jinja context
+# ============================================================================
+# Source: src/archiverr/state/template_context.py:21-100
+# Source: datasets/04-template-context.yml
+render_context:
+  built_per: job (her tasker render'ı için ayrı context)
+  builder: TemplateContextBuilder.build_job_context(job, run, all_jobs, events)
+  # S39 R15 §C1: top-level shape changed.
+  shape:
+    run:    { id, status: {success, total_jobs, completed, failed}, config }
+    job:    { index, id, input, output, status, plugins }
+    jobs:   "dict keyed by job.id (was list before §C1)"
+    config: run.config (compiled, frozen)
+    options: run.config.options
+    events: event_bus_snapshot
+    data:    "Phase D resolver namespace (run.data envelope; {} when empty)"
+    job_id:  "alias for job.id"
+    job_index: "alias for job.index"
+  removed_in_s39_c1:
+    plugin: |
+      The synthetic ``plugin.<name>.{data,status}`` injection was REMOVED.
+      Templates must use ``jobs[job_id].plugins.<name>`` /
+      ``job.plugins.<name>`` for direct descent, or the ``data.*``
+      resolver namespace for priority-based lookups.
+  canonical_template_paths:
+    current_job_shortcut: "{{ job.plugins.<name>.<field> }}"
+    cross_job_full_path:  "{{ jobs[job_id].plugins.<name>.<field> }}"
+    resolver_priority:    "{{ data.<jobindex>.<category>.<dotted.path> }}"
+    per_run_resolver:     "{{ data.run.<category>.<dotted.path> }}"
+
+# ============================================================================
+# 8. Manifest schema (zorunlu + opsiyonel field'lar)
+# ============================================================================
+# Source: datasets/02-manifest.yml + core/plugins/manifest_normalizer.py
+manifest_schema:
+  required:
+    - name (str)
+    - version (str)
+    - stage (input | parse | data | output)   # per_run plugin'lerde "input"
+    - run_mode (per_run | per_job)
+    - class_name (str)
+    - entry_point (str — module:Class)
+
+  optional:
+    - description (str)
+    - requires (list[str])  # "plugin.<name>.<field>:success" veya "events.<name>:fired"
+    - provides (list[str])  # capability — "http.request", "fs.write:/path", "job.create"
+    - trigger_rule (all_success | one_success | all_done | all_fail | none_fail)
+    - config_schema (Pydantic-style)
+    - fs_lock (str)         # exclusive resource path
+    - categories (list[str])  # ⚠️ DEPRECATED — sadece UI summary için, S39 §A1+§A2'da işaretlendi
+    - emits (dict[str, list[str]])  # NEW S39 §A1 — opt-in data namespace contribution
+
+  emits_field:
+    status: IMPLEMENTED (S39 §A1+§A2+§A3)
+    purpose: |
+      Plugin yazarının data namespace'e katkısını manifest'te deklare etmesi.
+      DataResolver (state/data_resolver.py) bu deklarasyonu data_priority
+      config'i ile eşleştirir; longest-prefix priority resolution sağlar.
+    shape: "dict[str, list[str]]"      # gruplandırılmış: {category: [<dotted.path>, ...]}
+    example:
+      tmdb:
+        emits:
+          show:
+            - title.primary
+            - identifiers.tmdb_id
+            - episode_title          # S39 §B1: episode flat under show
+          movie:
+            - title.primary
+            - release.year
+    consumed_by:
+      - state/data_resolver.py  (DataResolver — resolve at render time)
+      - state/plugin_data_manager.py  (_recompute_data_envelope — eager mode)
+      - core/plugins/registry.py  (validate_data_priority — startup WARN)
+      - core/render/template_dependency_validator.py  (parse-time WARN
+        when a config template references plugin not in requires)
+    opt_out:
+      method: "leave emits unset (None / missing)"
+      effect: |
+        Plugin still works; data.* resolver simply skips it. Direct
+        access via jobs[job_id].plugins.<name> still works. This is
+        the right choice for plugins whose output shape doesn't fit
+        the show/movie convention (ffprobe, scanner counts, etc.).
+    note: bu bir DEKLARASYON, AYRI API DEĞİL. Plugin yine update_plugin(data=...) kullanır.
+
+# ============================================================================
+# 9. Şu an YOK olan ama tartışılan özellikler
+# ============================================================================
+not_implemented:
+  data_priority_resolver:
+    status: IMPLEMENTED (S39 §D1-§D5)
+    spec: |
+      DataResolver longest-prefix match across data_priority entries,
+      DataResolverProxy (Jinja-friendly chain) renders missing leaves
+      as "" via parity with ChainableUndefined. Eager
+      _recompute_data_envelope on every update_plugin so run.data
+      mirrors the priority view; persisted under runs.data in Mongo.
+    layer: render-time + persistence (proxy for live render; envelope for Mongo)
+    files:
+      - state/data_resolver.py            (D1 — resolver + proxy)
+      - state/models.py                    (D2 — RunState.data field)
+      - state/plugin_data_manager.py       (D3 — recompute + lock + save_run fix)
+      - core/plugins/registry.py           (D4 — data_priority + emits_map props)
+      - core/orchestrator.py               (D4 — _configure_data_resolver wiring)
+      - config.yml + datasets/01-config.yml (D5 — operator block + schema)
+
+  post_run_hook:
+    status: YOK
+    use_case: |
+      Run sonu summarize plugin (örn. "tüm joblar bittikten sonra rapor üret").
+      Şu an per_run plugin'ler RUN BAŞINDA çalışıyor (orchestrator.py:129).
+    workaround: per_job + manifest.requires=[plugin.tasker.complete:success]
+
+  per_run_event_subscription:
+    status: YOK
+    use_case: "Yeni job geldiğinde tetiklen" gibi watch-loop plugin'ler.
+    note: events şu an plugin'ler için read-only; subscribe sadece executor + lifecycle.
+
+  per_run_requires_resolution:
+    status: YOK (kullanılmıyor)
+    note: |
+      per_run_executor.py:46-97 plugin'leri registry insertion order'da çalıştırıyor.
+      manifest.requires field'ı per_run plugin'leri için ETKİSİZ.
+      Per_job plugin'ler için stage_executor sequencing yapıyor (gerçek dependency resolution).
+
+# ============================================================================
+# 10. Architecture Rules (CLAUDE.md ZORUNLU)
+# ============================================================================
+architecture_rules:
+  plugin_agnostic_core:
+    rule: src/archiverr/core/ asla plugin adı (scanner, renamer, tmdb, ...) içeremez (string literal yasak)
+    enforcement: tests/test_plugin_agnostic.py
+
+  manifest_driven:
+    rule: Plugin'ler manifest.yml ile deklare; core generic resolution
+
+  3_stage_pipeline:
+    rule: per_run → PARSE → DATA → OUTPUT (sıra sabit, stage eklenemez)
+
+  no_silent_failures:
+    rule: Hiçbir bare except:pass; tüm exception'lar Debugger'a logged
+
+  no_delete_policy:
+    rule: os.remove/rmdir/rmtree YASAK; "mkdir -p .deleted && mv target .deleted/" pattern
+
+# ============================================================================
+# Cross-references
+# ============================================================================
+related_datasets:
+  - 02-manifest.yml          # manifest schema
+  - 03-run-state.yml         # run/job state shape
+  - 04-template-context.yml  # render-time Jinja context
+  - 06-mongodb.yml           # persistence schema
+  - 08-services.yml          # PluginServices contract
+  - 15-runtime-state-example.json  # CANLI tek büyük JSON dump
