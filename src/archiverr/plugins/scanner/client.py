@@ -28,10 +28,16 @@ class ScannerPlugin(InputPlugin):
 
     def execute_run(self, services: Any) -> dict[str, Any]:
         """Execute scanner - discovers files and creates jobs."""
-        targets = self.config.get('targets', [])
-        recursive = self.config.get('recursive', True)
-        allow_virtual = self.config.get('allow_virtual_paths', False)
-        extensions = self.config.get('extensions', DEFAULT_EXTENSIONS)
+        # S39 R15 §H4b: read live (template-rendered) config via services
+        # so config authors can use ``${env:...}``, ``${.field}`` and
+        # Jinja markers in scanner.targets / scanner.extensions etc. The
+        # frozen ``self.config`` (set at registry load time) is the
+        # fallback when services hasn't wired a render engine.
+        runtime_config = self._get_effective_config(services)
+        targets = runtime_config.get('targets', [])
+        recursive = runtime_config.get('recursive', True)
+        allow_virtual = runtime_config.get('allow_virtual_paths', False)
+        extensions = runtime_config.get('extensions', DEFAULT_EXTENSIONS)
 
         self.debug("Starting scan", targets=len(targets), recursive=recursive)
 
@@ -86,6 +92,24 @@ class ScannerPlugin(InputPlugin):
             'success': True,
             'count': created_jobs
         }
+
+    def _get_effective_config(self, services: Any) -> dict[str, Any]:
+        """Return rendered runtime config with frozen-config fallback.
+
+        Tries ``services.get_runtime_config()`` first (S39 R15 §H3 — live
+        Jinja-rendered view). Falls back to the frozen plugin config
+        passed at construction when services hasn't wired a render
+        engine (test fixtures / stub paths). Either branch returns a
+        dict; we never raise on missing config.
+        """
+        if hasattr(services, "get_runtime_config"):
+            try:
+                rendered = services.get_runtime_config()
+                if isinstance(rendered, dict) and rendered:
+                    return rendered
+            except Exception as exc:  # noqa: BLE001 — fall back, don't crash
+                self.debug("get_runtime_config fallback", error=str(exc))
+        return self.config or {}
 
     def _create_job_for_file(self, services: Any, file_path: Path) -> None:
         """Create a job for a filesystem file."""

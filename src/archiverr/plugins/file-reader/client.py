@@ -32,8 +32,13 @@ class FileReaderPlugin(InputPlugin):
             so per_run_executor's ``result.get('count', 0)`` summary
             reflects reality — Session 38 A10).
         """
-        targets = self.config.get('targets', [])
-        allow_virtual = self.config.get('allow_virtual_paths', False)
+        # S39 R15 §H4c: read live (template-rendered) config via services
+        # so config authors can use ``${env:...}`` and Jinja markers in
+        # file-reader.targets etc. Frozen ``self.config`` is the
+        # fallback when the engine isn't wired.
+        runtime_config = self._get_effective_config(services)
+        targets = runtime_config.get('targets', [])
+        allow_virtual = runtime_config.get('allow_virtual_paths', False)
 
         self.debug("Reading targets", targets=len(targets), allow_virtual=allow_virtual)
 
@@ -97,6 +102,22 @@ class FileReaderPlugin(InputPlugin):
         )
 
         return {'count': count}
+
+    def _get_effective_config(self, services: Any) -> dict[str, Any]:
+        """Return rendered runtime config with frozen-config fallback.
+
+        Mirror of scanner._get_effective_config (S39 R15 §H4b/§H4c). Tries
+        ``services.get_runtime_config()`` first; falls back to the frozen
+        plugin config when services hasn't wired a render engine.
+        """
+        if hasattr(services, "get_runtime_config"):
+            try:
+                rendered = services.get_runtime_config()
+                if isinstance(rendered, dict) and rendered:
+                    return rendered
+            except Exception as exc:  # noqa: BLE001 — fall back, don't crash
+                self.debug("get_runtime_config fallback", error=str(exc))
+        return self.config or {}
 
     def execute(self) -> list[dict[str, Any]]:
         """Per_run plugins use ``execute_run(services)``; this stub exists
