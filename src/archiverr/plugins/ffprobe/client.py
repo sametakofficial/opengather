@@ -160,8 +160,10 @@ class FFProbePlugin(OutputPlugin):
             }
 
             # Update plugin state via services (Session 17: snake_case API)
-            if hasattr(services, 'update_plugin'):
-                services.update_plugin(data=result_data)
+            if services.jobid:
+                services.update_state({
+                    "jobs": {services.jobid: {"plugins": {self.name: result_data}}}
+                })
 
             return PluginResult.success_result(data=result_data, started_at=started_at)
 

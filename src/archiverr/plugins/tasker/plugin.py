@@ -82,19 +82,23 @@ class TaskerPlugin(OutputPlugin):
                 if result.get('type') == 'save' and result.get('destination'):
                     output_values.append(result['destination'])
 
-        # Write to job.output via services (Session 12 pattern)
-        if output_values:
-            services.update_job(key="output.values", value=output_values)
-
-        if task_results:
-            # Store task results in output.data under 'tasks' key
-            services.update_job(key="output.data", value={"tasks": task_results})
-
-        # Also store in plugin data
-        services.update_plugin(data={
-            "tasks": task_results,
-            "output_values": output_values
-        })
+        job_patch: dict[str, Any] = {
+            "plugins": {
+                self.name: {
+                    "tasks": task_results,
+                    "output_values": output_values,
+                }
+            }
+        }
+        if output_values or task_results:
+            output_block: dict[str, Any] = {}
+            if output_values:
+                output_block["values"] = output_values
+            if task_results:
+                output_block["data"] = {"tasks": task_results}
+            job_patch["output"] = output_block
+        if services.jobid:
+            services.update_state({"jobs": {services.jobid: job_patch}})
 
         return SDKPluginResult(
             success=True,

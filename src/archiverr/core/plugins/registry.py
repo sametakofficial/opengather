@@ -433,18 +433,33 @@ class PluginRegistry:
             }
         return out
 
+    @property
+    def run_modes(self) -> dict[str, str]:
+        """``{plugin_name: run_mode}`` from manifests (S40 auto-route)."""
+        if not self._loaded:
+            self.discover_and_load()
+        out: dict[str, str] = {}
+        for name, manifest in self._all_manifests.items():
+            if not isinstance(manifest, dict):
+                continue
+            mode = manifest.get("run_mode")
+            if mode in ("per_run", "per_job"):
+                out[name] = mode
+        return out
+
     def validate_data_priority(self) -> list[str]:
-        """Sanity-check ``data_priority`` against loaded plugins (S39 §D4).
+        """Sanity-check ``data_priority`` against loaded plugins (S39 §D4 / S40).
 
         Returns a list of human-readable WARN strings when:
         * a plugin in a priority list isn't registered (typo / disabled);
         * a plugin in a priority list doesn't declare ``emits`` for the
           path's category root, so it can never satisfy the lookup.
 
-        The orchestrator logs these via the debugger; the load itself
-        proceeds — operators can still run with imperfect priority
-        tables (the resolver simply skips non-emitting plugins).
+        Category-only keys (``show``, ``movie``) are canonical in S40.
+        Legacy ``data.<jobindex>.*`` / ``data.run.*`` keys still work.
         """
+        from archiverr.state.data_resolver import DataResolver
+
         warnings: list[str] = []
         priority = self.data_priority
         if not priority:
@@ -454,13 +469,10 @@ class PluginRegistry:
         for key, plugin_list in priority.items():
             if not isinstance(plugin_list, list):
                 continue
-            stripped = key
-            if stripped.startswith("data."):
-                stripped = stripped[len("data."):]
-            if "." not in stripped:
-                continue
-            _scope, _, category_path = stripped.partition(".")
+            category_path = DataResolver.normalize_priority_key(key)
             cat_root = category_path.split(".", 1)[0] if category_path else ""
+            if not cat_root:
+                continue
             for plugin_name in plugin_list:
                 if plugin_name not in known:
                     warnings.append(
@@ -469,7 +481,7 @@ class PluginRegistry:
                     )
                     continue
                 plugin_emits = emits.get(plugin_name) or {}
-                if cat_root and cat_root not in plugin_emits:
+                if cat_root not in plugin_emits:
                     warnings.append(
                         f"data_priority[{key!r}] lists '{plugin_name}' "
                         f"but {plugin_name}.manifest.emits has no '{cat_root}' "

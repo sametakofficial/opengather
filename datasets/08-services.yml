@@ -60,6 +60,9 @@ execution_modes:
       - plugins
     api:
       - "create_job(input_value, input_data)"
+      - "read_state(path=None)"
+      - "update_state(patch, mode='merge')"
+      - "jobid  # None in per_run"
   per_job:
     stage: parse | data | output
     access:
@@ -71,8 +74,11 @@ execution_modes:
       - plugins
     api:
       - "create_job(input_value, input_data)"
-      - "update_job(job_id, key, value)"
-      - "update_plugin(plugin_name, data)"
+      - "read_state(path=None)"
+      - "update_state(patch, mode='merge')"
+      - "jobid"
+      # S40 deprecated stubs (S41 hard delete):
+      # update_job, update_plugin, get_* getters, current_*, run_id, mode
 
 plugin_contracts:
   per_run: "execute_run(services) -> dict"

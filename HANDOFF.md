@@ -1,3 +1,33 @@
+# Handoff - Session 40 (Single-state API)
+
+**Date:** August 15, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 40)
+
+Locked decisions, then implemented Phase A–C:
+
+- `services.jobid` is the only orchestrator global (string job id).
+- `create_job` stays a separate method (identity is a core invariant).
+- `data_priority` is category-only (`show: [tmdb, omdb]`). Scope comes
+  from `manifest.run_mode`. Plugin-name keys are forbidden.
+- Plugin surface is `read_state` / `update_state` (RFC 7396 merge).
+- Old getters / `update_plugin` / `update_job` / `current_*` /
+  `run_id` / `mode` are deprecated stubs (warn-once). Hard delete in S41.
+- All 9 plugins write through `update_state`.
+
+Test baseline after S40 A–C: **737 passed / 22 skipped / 0 fails**.
+
+### Not done (next)
+
+- Phase D: `${jobid}` interpolator runtime-deferred verify
+- Phase E: `JobState.output` demolish + finalize aggregate
+- Phase F: `${alias:NAME}` verify
+- OMDb/TVMaze/TVDB flat-shape alignment
+- CI, real TMDb smoke
+
+---
+
 # Handoff - Session 39 (Data Resolver Namespace + Render Refactor)
 
 **Date:** May 02, 2026

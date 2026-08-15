@@ -128,7 +128,10 @@ class OMDbPlugin(OutputPlugin):
         # Mirror normalized payload onto plugin.omdb.data so downstream Jinja
         # templates can reach `{{ plugin.omdb.data.movie.title.primary }}`
         # consistently with tmdb (Session 38 A1 fix per audit §1).
-        services.update_plugin(data=result_data)
+        if services.jobid:
+            services.update_state({
+                "jobs": {services.jobid: {"plugins": {self.name: result_data}}}
+            })
         return PluginResult.success_result(data=result_data, started_at=started_at)
 
     def _perform_validation(self, job: Any, omdb_data: dict[str, Any]) -> dict[str, Any]:

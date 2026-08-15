@@ -1,7 +1,7 @@
 # Active Context
 
-**Last Updated:** May 02, 2026  
-**Focus:** Post-Session 39 stabilization: Data Resolver Namespace + Render Refactor are implemented; preserve plugin-agnostic core while cleaning remaining S39 carry-over risks.
+**Last Updated:** August 15, 2026  
+**Focus:** Session 40 A–C landed: single-state API (`read_state`/`update_state`/`create_job` + `services.jobid`), category-only `data_priority`.
 
 ## Current State
 

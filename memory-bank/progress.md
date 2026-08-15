@@ -1,6 +1,6 @@
 # Progress
 
-**Last Updated:** May 02, 2026
+**Last Updated:** August 15, 2026
 
 Bu dosya ayrıntılı oturum günlüğü değil, kısa durum özeti içindir.
 
@@ -19,10 +19,9 @@ Bu dosya ayrıntılı oturum günlüğü değil, kısa durum özeti içindir.
 
 ## Current Focus
 
-- Session 39 sonrası Data Resolver Namespace + Render Refactor doğruluğunu korumak
-- S39 carry-over risklerini ve kokuları küçük, izole adımlarla temizlemek
-- Memory Bank'i ana giriş noktası yapmak
-- Operasyonel doğrulama ve geliştirici dokümantasyonunu iyileştirmek
+- Session 40 A–C landed (single-state API + category-only priority)
+- Remaining S40: interpolator `${jobid}`, alias verify, JobState.output demolish
+- S39 carry-over: OMDb/TVMaze/TVDB flat shape, CI, TMDb smoke
 
 ## Session 39 Milestone
 

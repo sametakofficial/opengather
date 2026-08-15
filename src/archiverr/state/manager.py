@@ -4,8 +4,10 @@ from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
 from .context import ExecutionContext
+from .data_resolver import _walk_dotted
 from .event_emitter import StateEventEmitter
 from .job_manager import JobManager
+from .merge import merge_patch
 from .models import JobState, RunState
 from .persistence_delegate import PersistenceDelegate
 from .plugin_data_manager import PluginDataManager
@@ -212,16 +214,156 @@ class GlobalStateManager:
         self,
         data_priority: dict[str, list[str]],
         emits_map: dict[str, dict[str, list[str]]],
+        run_modes: dict[str, str] | None = None,
     ) -> None:
-        """Configure the data namespace resolver (S39 R15 §D3).
+        """Configure the data namespace resolver (S39 R15 §D3 / S40).
 
         Called by the orchestrator after the registry has loaded
-        plugins (so ``emits_map`` is known) and the run config is
-        merged (so ``data_priority`` is known). Subsequent
-        ``update_plugin`` calls will recompute ``run.data``
-        accordingly.
+        plugins (so ``emits_map`` and ``run_modes`` are known) and
+        the run config is merged (so ``data_priority`` is known).
+        Subsequent plugin writes recompute ``run.data``.
         """
-        self._plugin_manager.set_resolver_config(data_priority, emits_map)
+        self._plugin_manager.set_resolver_config(
+            data_priority, emits_map, run_modes=run_modes,
+        )
+
+    def read_state(self, path: str | None = None) -> Any:
+        """Return the run snapshot, optionally projected by dotted path."""
+        snapshot = self._snapshot()
+        if not path:
+            return snapshot
+        return _walk_dotted(snapshot, path)
+
+    def apply_state_patch(self, patch: dict[str, Any], mode: str = "merge") -> None:
+        """Apply a JSON patch to the live run (S40).
+
+        ``mode='merge'`` is RFC 7396. ``mode='replace'`` overwrites
+        named subtrees. Identity fields (run id, job id/index) are
+        ignored. ``data`` is recomputed from emits/priority, not
+        written by the patch.
+        """
+        if not self._run:
+            raise RuntimeError("No active run")
+        if not isinstance(patch, dict):
+            raise TypeError("update_state patch must be a dict")
+        if mode not in ("merge", "replace"):
+            raise ValueError(f"update_state mode must be 'merge' or 'replace', got {mode!r}")
+
+        replace = mode == "replace"
+        touched_jobs: list[JobState] = []
+
+        plugins_patch = patch.get("plugins")
+        if isinstance(plugins_patch, dict):
+            self._apply_plugin_map(self._run.plugins, plugins_patch, replace)
+            run_slot = self._run.id
+            self._context._all_plugins.setdefault(run_slot, {})
+            self._context._all_plugins[run_slot] = dict(self._run.plugins)
+
+        jobs_patch = patch.get("jobs")
+        if isinstance(jobs_patch, dict):
+            for job_id, job_patch in jobs_patch.items():
+                if job_patch is None:
+                    continue
+                job = self.get_job_by_id(job_id)
+                if not job:
+                    raise ValueError(
+                        f"Job {job_id} not found; use create_job to create jobs"
+                    )
+                if not isinstance(job_patch, dict):
+                    continue
+                self._apply_job_patch(job, job_patch, replace)
+                touched_jobs.append(job)
+                plugins_patch = job_patch.get("plugins")
+                if isinstance(plugins_patch, dict) and self._run:
+                    for pname, pdata in plugins_patch.items():
+                        if pdata is None:
+                            continue
+                        self._persistence_delegate.save_plugin({
+                            "job_id": job.id,
+                            "plugin_name": pname,
+                            "data": job.plugins.get(pname, pdata),
+                            "run_id": job.run_id,
+                            "job_index": job.index,
+                        })
+
+        for job in touched_jobs:
+            self._persistence_delegate.save_job(job)
+
+        self._plugin_manager._recompute_data_envelope(self._run)
+        self._persistence_delegate.save_run(self._run)
+
+    def _snapshot(self) -> dict[str, Any]:
+        if not self._run:
+            raise RuntimeError("No active run")
+        jobs: dict[str, Any] = {}
+        for job in self.get_all_jobs():
+            jobs[job.id] = {
+                "id": job.id,
+                "index": job.index,
+                "input": job.input.to_dict(),
+                "output": job.output.to_dict(),
+                "status": job.status.to_dict(),
+                "plugins": job.plugins,
+            }
+        return {
+            "id": self._run.id,
+            "status": self._run.status.to_dict(),
+            "config": self._run.config,
+            "plugins": self._run.plugins,
+            "jobs": jobs,
+            "data": self._run.data,
+        }
+
+    def _apply_plugin_map(
+        self,
+        target: dict[str, Any],
+        patch: dict[str, Any],
+        replace: bool,
+    ) -> None:
+        for name, payload in patch.items():
+            if payload is None:
+                target.pop(name, None)
+            elif replace or name not in target or not isinstance(payload, dict):
+                target[name] = payload
+            elif isinstance(target.get(name), dict) and isinstance(payload, dict):
+                target[name] = merge_patch(target[name], payload)
+            else:
+                target[name] = payload
+
+    def _apply_job_patch(
+        self,
+        job: JobState,
+        job_patch: dict[str, Any],
+        replace: bool,
+    ) -> None:
+        plugins_patch = job_patch.get("plugins")
+        if isinstance(plugins_patch, dict):
+            self._apply_plugin_map(job.plugins, plugins_patch, replace)
+            self._context._all_plugins.setdefault(job.id, {})
+            self._context._all_plugins[job.id] = dict(job.plugins)
+            if self._context._current_job and self._context._current_job.id == job.id:
+                self._context._current_plugins = job.plugins
+
+        output_patch = job_patch.get("output")
+        if isinstance(output_patch, dict):
+            if "values" in output_patch:
+                job.output.values = list(output_patch["values"] or [])
+            if "data" in output_patch:
+                data = output_patch["data"]
+                if replace or not isinstance(data, dict) or not isinstance(job.output.data, dict):
+                    job.output.data = data if isinstance(data, dict) else {}
+                else:
+                    job.output.data = merge_patch(job.output.data, data)
+
+        input_patch = job_patch.get("input")
+        if isinstance(input_patch, dict):
+            if "value" in input_patch and input_patch["value"] is not None:
+                job.input.value = input_patch["value"]
+            if "data" in input_patch and isinstance(input_patch["data"], dict):
+                if replace:
+                    job.input.data = dict(input_patch["data"])
+                else:
+                    job.input.data = merge_patch(job.input.data, input_patch["data"])
 
     def get_job(self, index: int) -> JobState | None:
         """Get job by index. Delegates to JobManager."""

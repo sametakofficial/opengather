@@ -91,15 +91,15 @@ class FileReaderPlugin(InputPlugin):
 
         # Session 38 A9 fix: previously file-reader skipped update_plugin,
         # leaving plugin.file-reader.data empty downstream. Mirroring scanner.
-        services.update_plugin(
-            target_id=services.run_id,
-            plugin_name="file-reader",
-            data={
-                "count": count,
-                "targets": targets,
-                "allow_virtual_paths": allow_virtual,
-            },
-        )
+        services.update_state({
+            "plugins": {
+                self.name: {
+                    "count": count,
+                    "targets": targets,
+                    "allow_virtual_paths": allow_virtual,
+                }
+            }
+        })
 
         return {'count': count}
 

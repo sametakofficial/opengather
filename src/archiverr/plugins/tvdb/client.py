@@ -67,7 +67,10 @@ class TVDbPlugin(OutputPlugin):
                 # Mirror normalized payload onto plugin.tvdb.data so downstream
                 # Jinja templates can reach `{{ plugin.tvdb.data.movie.* }}`
                 # consistently with tmdb (Session 38 A2 fix per audit §1).
-                services.update_plugin(data=data)
+                if services.jobid:
+                    services.update_state({
+                        "jobs": {services.jobid: {"plugins": {self.name: data}}}
+                    })
                 return PluginResult.success_result(data=data, started_at=started_at)
 
             elif show_data and show_data.get('name'):
@@ -83,7 +86,10 @@ class TVDbPlugin(OutputPlugin):
 
                 # Convert dict result to PluginResult
                 data = {k: v for k, v in result.items() if k != 'status'}
-                services.update_plugin(data=data)
+                if services.jobid:
+                    services.update_state({
+                        "jobs": {services.jobid: {"plugins": {self.name: data}}}
+                    })
                 return PluginResult.success_result(data=data, started_at=started_at)
 
             else:

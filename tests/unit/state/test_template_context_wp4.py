@@ -68,7 +68,7 @@ class TestTemplateContextBuilderShape:
         assert set(ctx.keys()) == {
             "run", "job", "jobs",
             "config", "options", "events",
-            "data", "job_id", "job_index",
+            "data", "job_id", "jobid", "job_index",
         }
 
     def test_no_legacy_plugin_namespace(self):

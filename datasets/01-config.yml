@@ -9,14 +9,11 @@ config:
     hardlink: bool
     persistence_mode: full | degraded | off
   data_priority:
-    # S39 R15 §D5 — operator-supplied priority map for the
-    # ``data.<jobindex>.<category>.<dotted.path>`` resolver namespace.
-    # Shape: dict[priority_key, list[plugin_name]].
-    # Longest-prefix match wins; first non-None hit per (scope, path)
-    # populates ``run.data``. See state/data_resolver.py.
-    "data.<jobindex>.<category>": [<plugin>, <plugin>, ...]
-    "data.<jobindex>.<category>.<dotted.path>": [<plugin>, ...]
-    "data.run.<category>": [<plugin>, ...]
+    # S40 — category-only keys. Scope is auto-routed from
+    # manifest.run_mode (per_run → run slot, per_job → each job).
+    # Legacy ``data.<jobindex>.*`` / ``data.run.*`` keys still parse.
+    <category>: [<plugin>, <plugin>, ...]
+    <category>.<dotted.path>: [<plugin>, ...]
   <plugin_name>:
     enabled: bool
     aliases:
@@ -24,12 +21,13 @@ config:
     <plugin_specific_config>: any
 
 data_priority_contract:
-  scope_segment:
-    "<jobindex>": substituted by the active job's index at lookup time
-    "run":        per_run plugin scope (run.plugins.<plugin>)
-    numeric:      direct, e.g. "data.0.show" reads job index 0 only
+  keys: category_only
+  scope_routing: manifest.run_mode
   resolution_order: longest_prefix_first
   match_semantics: first_non_none_hit_in_priority_list
+  forbidden:
+    - plugin names as category keys (e.g. scanner: [scanner])
+    - new data.<jobindex> / data.run sentinels in operator config
   emits_required:
     - plugins listed in a priority entry MUST declare matching
       ``manifest.emits`` for the category root, otherwise registry

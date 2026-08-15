@@ -61,6 +61,7 @@ class PluginDataManager:
         # _recompute_data_envelope is a no-op until configured).
         self._data_priority: dict[str, list[str]] = {}
         self._emits_map: dict[str, dict[str, list[str]]] = {}
+        self._run_modes: dict[str, str] = {}
         self._envelope_lock = threading.Lock()
 
     def _noop_log(self, level: str, component: str, message: str, **kwargs):
@@ -78,16 +79,19 @@ class PluginDataManager:
         self,
         data_priority: dict[str, list[str]],
         emits_map: dict[str, dict[str, list[str]]],
+        run_modes: dict[str, str] | None = None,
     ) -> None:
         """Configure the data envelope recomputation inputs.
 
         Called once per run by ``GlobalStateManager.configure_resolver``
         after the registry has loaded plugins (and therefore knows the
-        ``emits`` block from each manifest) and after the orchestrator
-        has the merged config (and therefore the ``data_priority``).
+        ``emits`` block and ``run_mode`` from each manifest) and after
+        the orchestrator has the merged config (and therefore the
+        ``data_priority``).
         """
         self._data_priority = dict(data_priority or {})
         self._emits_map = dict(emits_map or {})
+        self._run_modes = dict(run_modes or {})
 
     # -- Public update_plugin -------------------------------------------
 
@@ -216,26 +220,18 @@ class PluginDataManager:
             return
 
         with self._envelope_lock:
-            resolver = DataResolver(self._data_priority)
+            resolver = DataResolver(
+                self._data_priority, run_modes=self._run_modes,
+            )
             new_envelope: dict[str | int, Any] = {}
 
             for priority_key, _plugin_list in self._data_priority.items():
-                stripped = priority_key
-                if stripped.startswith("data."):
-                    stripped = stripped[len("data."):]
-                if not stripped:
-                    continue
-
-                if "." in stripped:
-                    scope_segment, category_path = stripped.split(".", 1)
-                else:
-                    scope_segment, category_path = stripped, ""
+                category_path = DataResolver.normalize_priority_key(priority_key)
                 if not category_path:
                     continue
 
                 cat_root = category_path.split(".", 1)[0]
 
-                # Collect emit paths from candidate plugins under cat_root.
                 paths: set[str] = set()
                 for plugin_name in _plugin_list:
                     emits = self._emits_map.get(plugin_name) or {}
@@ -244,38 +240,19 @@ class PluginDataManager:
                     if cat_root not in emits:
                         continue
                     for emit_path in emits[cat_root]:
-                        # Compose category-relative dotted path.
                         full = f"{cat_root}.{emit_path}" if emit_path else cat_root
                         paths.add(full)
 
-                # Determine which scopes to walk.
-                scopes: list[str | int] = []
-                if scope_segment == "<jobindex>":
-                    scopes = [j.index for j in self._context._jobs.values()]
-                elif scope_segment == "run":
-                    scopes = ["run"]
-                else:
-                    # Direct numeric form — treat as concrete scope.
-                    try:
-                        scopes = [int(scope_segment)]
-                    except ValueError:
-                        continue
-
+                scopes = self._scopes_for_plugins(_plugin_list)
                 lookup = self._build_plugin_data_lookup(run)
                 for scope in scopes:
                     for path in paths:
-                        full_path = (
-                            f"data.<jobindex>.{path}"
-                            if scope_segment == "<jobindex>"
-                            else f"data.{scope_segment}.{path}"
-                        )
                         active_idx = scope if isinstance(scope, int) else None
                         value = resolver.resolve(
-                            full_path, lookup, active_job_index=active_idx,
+                            path, lookup, active_job_index=active_idx,
                         )
                         if value is None:
                             continue
-                        # Write into new_envelope under [scope][...path].
                         scope_bucket = new_envelope.setdefault(scope, {})
                         cursor = scope_bucket
                         segs = path.split(".")
@@ -286,6 +263,24 @@ class PluginDataManager:
                                 cursor = cursor.setdefault(seg, {})
 
             run.data = new_envelope
+
+    def _scopes_for_plugins(self, plugin_list: list[str]) -> list[str | int]:
+        """Walk run and/or job scopes from candidate plugin run_modes."""
+        want_run = False
+        want_jobs = False
+        for name in plugin_list:
+            mode = self._run_modes.get(name)
+            if mode == "per_run":
+                want_run = True
+            else:
+                # Missing run_mode defaults to per_job (S40 auto-route).
+                want_jobs = True
+        scopes: list[str | int] = []
+        if want_run:
+            scopes.append("run")
+        if want_jobs:
+            scopes.extend(j.index for j in self._context._jobs.values())
+        return scopes
 
     def _build_plugin_data_lookup(self, run: 'RunState'):
         """Return ``(scope, plugin_name) -> dict | None`` callable.

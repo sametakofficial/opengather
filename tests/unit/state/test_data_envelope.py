@@ -92,8 +92,9 @@ class TestRecomputeEnvelope:
         run = RunState(id="run-1")
 
         mgr.set_resolver_config(
-            data_priority={"data.run.scanner": ["scanner"]},
+            data_priority={"scanner": ["scanner"]},
             emits_map={"scanner": {"scanner": ["count", "targets"]}},
+            run_modes={"scanner": "per_run"},
         )
         mgr._update_run_plugin(
             "run-1", "scanner",

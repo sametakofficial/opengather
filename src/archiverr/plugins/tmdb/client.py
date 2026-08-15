@@ -159,9 +159,11 @@ class TMDbPlugin(OutputPlugin):
             data = {k: v for k, v in result.items() if k != 'status'}
 
             # Update plugin state via services (Session 17: snake_case API)
-            if hasattr(services, 'update_plugin'):
-                services.update_plugin(data=data)
-                self.debug("TMDb data updated", data_keys=list(data.keys()))
+            if services.jobid:
+                services.update_state({
+                    "jobs": {services.jobid: {"plugins": {self.name: data}}}
+                })
+            self.debug("TMDb data updated", data_keys=list(data.keys()))
 
             return PluginResult.success_result(data=data, started_at=started_at)
 

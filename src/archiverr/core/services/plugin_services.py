@@ -1,14 +1,18 @@
 """
 Plugin Services - Core plugin communication API.
 
-Methods:
+S40 surface:
 - create_job(input_value, input_data) -> job_id
-- update_job(job_id, key, value)
-- update_plugin(target_id, plugin_name, data)
-- get_plugin_data(target_id, plugin_name)
+- read_state(path=None)
+- update_state(patch, mode='merge'|'replace')
+- services.jobid
+
+Deprecated (warn-once, S41 hard delete):
+- update_job, update_plugin, get_* getters, current_* / run_id / mode
 """
 
-from typing import TYPE_CHECKING, Any
+import warnings
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from archiverr.core.render import ConfigRenderEngine
@@ -67,6 +71,43 @@ class PluginServices:
         self._run_safety = run_safety
         self._render_engine = render_engine
         self._event_service = None
+        self._deprecation_warned: set[str] = set()
+
+    @property
+    def jobid(self) -> str | None:
+        """Orchestrator-injected current job id. None for per_run plugins."""
+        return self._current_job_id
+
+    def _warn_deprecated(self, name: str, replacement: str) -> None:
+        if name in self._deprecation_warned:
+            return
+        self._deprecation_warned.add(name)
+        warnings.warn(
+            f"services.{name} is deprecated (S40); use {replacement}. "
+            "Hard-deleted in S41.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def read_state(self, path: str | None = None) -> Any:
+        """Read the run snapshot. Optional dotted path projection."""
+        return self._state.read_state(path)
+
+    def update_state(
+        self,
+        patch: dict[str, Any],
+        mode: Literal["merge", "replace"] = "merge",
+    ) -> None:
+        """RFC 7396 merge (default) or subtree replace into the run snapshot."""
+        self._state.apply_state_patch(patch, mode=mode)
+        self._logger.debug(
+            "plugin_services",
+            "update_state",
+            mode=mode,
+            keys=list(patch.keys()) if isinstance(patch, dict) else [],
+            jobid=self._current_job_id,
+            plugin=self._current_plugin_name,
+        )
 
     def create_job(self, input_value: str, input_data: dict[str, Any] = None) -> str:
         """
@@ -94,14 +135,8 @@ class PluginServices:
         return job_id
 
     def update_job(self, job_id: str = None, key: str = None, value: Any = None) -> None:
-        """
-        Update job state.
-        
-        Args:
-            job_id: Target job ID (uses current context if None)
-            key: Dot-notation path (e.g., "output.values")
-            value: New value
-        """
+        """Deprecated S40 stub. Use ``update_state``."""
+        self._warn_deprecated("update_job", "services.update_state")
         target_job_id = job_id or self._current_job_id
         if not target_job_id:
             raise ValueError("No job ID specified and no current job context")
@@ -116,14 +151,8 @@ class PluginServices:
         )
 
     def update_plugin(self, target_id: str = None, plugin_name: str = None, data: dict[str, Any] = None) -> None:
-        """
-        Update plugin data.
-        
-        Args:
-            target_id: "job_xxx" or "run_xxx" (uses current context if None)
-            plugin_name: Plugin name (uses current context if None)
-            data: Plugin data
-        """
+        """Deprecated S40 stub. Use ``update_state``."""
+        self._warn_deprecated("update_plugin", "services.update_state")
         tid = target_id or self._current_job_id
         pname = plugin_name or self._current_plugin_name
 
@@ -142,24 +171,18 @@ class PluginServices:
         )
 
     def get_plugin_data(self, target_id: str, plugin_name: str) -> dict[str, Any] | None:
-        """
-        Get plugin data.
-        
-        Args:
-            target_id: "job_xxx" or "run_xxx"
-            plugin_name: Plugin name
-            
-        Returns:
-            Plugin data dict or None
-        """
+        """Deprecated S40 stub. Use ``read_state``."""
+        self._warn_deprecated("get_plugin_data", "services.read_state")
         return self._state.get_plugin_data(target_id, plugin_name)
 
     def get_run(self):
-        """Get run state (read-only for all plugins)."""
+        """Deprecated S40 stub. Use ``read_state``."""
+        self._warn_deprecated("get_run", "services.read_state")
         return self._state.run
 
     def get_config(self) -> dict[str, Any]:
-        """Get frozen config (read-only for all plugins)."""
+        """Deprecated S40 stub. Use ``read_state('config')`` or get_runtime_config."""
+        self._warn_deprecated("get_config", "services.read_state")
         return self._config
 
     def get_runtime_config(self, plugin_name: str | None = None) -> dict[str, Any]:
@@ -220,9 +243,11 @@ class PluginServices:
 
         current_job = self._state.job if hasattr(self._state, 'job') else None
         if current_job is not None:
-            return TemplateContextBuilder().build_job_context(
+            ctx = TemplateContextBuilder().build_job_context(
                 current_job, run=run, all_jobs=all_jobs, events=events,
             )
+            ctx["jobid"] = getattr(current_job, "id", None)
+            return ctx
 
         # per_run scope — no active job. Mirror the top-level shape but
         # OMIT ``job_id`` / ``job_index`` so ChainableUndefined renders
@@ -253,27 +278,23 @@ class PluginServices:
         }
 
     def get_current_job(self):
-        """
-        Get current job.
-        """
+        """Deprecated S40 stub. Use ``read_state`` + ``services.jobid``."""
+        self._warn_deprecated("get_current_job", "services.read_state")
         return self._state.job
 
     def get_all_jobs(self):
-        """
-        Get all jobs (read-only).
-        """
+        """Deprecated S40 stub. Use ``read_state('jobs')``."""
+        self._warn_deprecated("get_all_jobs", "services.read_state")
         return self._state.jobs
 
     def get_current_plugins(self) -> dict[str, Any]:
-        """
-        Get current job's plugins.
-        """
+        """Deprecated S40 stub. Use ``read_state``."""
+        self._warn_deprecated("get_current_plugins", "services.read_state")
         return self._state.plugin
 
     def get_all_plugins(self):
-        """
-        Get all jobs' plugins (read-only).
-        """
+        """Deprecated S40 stub. Use ``read_state``."""
+        self._warn_deprecated("get_all_plugins", "services.read_state")
         return self._state.plugins
 
     @property
@@ -291,22 +312,26 @@ class PluginServices:
 
     @property
     def mode(self) -> str:
-        """Get plugin mode (per_run or per_job)."""
+        """Deprecated S40 stub. Plugin reads ``self.manifest.run_mode``."""
+        self._warn_deprecated("mode", "self.manifest.run_mode")
         return self._mode
 
     @property
     def current_job_id(self) -> str | None:
-        """Get current job ID."""
+        """Deprecated S40 stub. Use ``services.jobid``."""
+        self._warn_deprecated("current_job_id", "services.jobid")
         return self._current_job_id
 
     @property
     def current_plugin_name(self) -> str | None:
-        """Get current plugin name."""
+        """Deprecated S40 stub. Plugin uses ``self.name``."""
+        self._warn_deprecated("current_plugin_name", "self.name")
         return self._current_plugin_name
 
     @property
     def run_id(self) -> str | None:
-        """Get current run ID."""
+        """Deprecated S40 stub. Use ``read_state('id')``."""
+        self._warn_deprecated("run_id", "services.read_state('id')")
         run = self._state.run
         return run.id if run else None
 

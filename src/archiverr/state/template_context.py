@@ -84,6 +84,7 @@ class TemplateContextBuilder:
             "events": events or {},
             "data": run_data,
             "job_id": getattr(job, 'id', None),
+            "jobid": getattr(job, 'id', None),
             "job_index": getattr(job, 'index', 0),
         }
 

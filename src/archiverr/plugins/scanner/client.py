@@ -77,16 +77,16 @@ class ScannerPlugin(InputPlugin):
 
         self.info("Scan complete", jobs_created=created_jobs)
 
-        services.update_plugin(
-            target_id=services.run_id,
-            plugin_name="scanner",
-            data={
-                "count": created_jobs,
-                "targets": targets,
-                "recursive": recursive,
-                "allow_virtual_paths": allow_virtual
+        services.update_state({
+            "plugins": {
+                self.name: {
+                    "count": created_jobs,
+                    "targets": targets,
+                    "recursive": recursive,
+                    "allow_virtual_paths": allow_virtual,
+                }
             }
-        )
+        })
 
         return {
             'success': True,

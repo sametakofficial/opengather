@@ -420,6 +420,7 @@ class Orchestrator:
         try:
             data_priority = self._plugin_registry.data_priority
             emits_map = self._plugin_registry.emits_map
+            run_modes = self._plugin_registry.run_modes
         except Exception as exc:  # noqa: BLE001 — registry contract
             self._log(
                 "debug",
@@ -428,7 +429,9 @@ class Orchestrator:
             return
 
         if hasattr(self._state, "configure_resolver"):
-            self._state.configure_resolver(data_priority, emits_map)
+            self._state.configure_resolver(
+                data_priority, emits_map, run_modes=run_modes,
+            )
         else:
             self._log("debug", "state has no configure_resolver; skipping wiring")
             return

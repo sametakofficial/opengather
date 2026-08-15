@@ -14,6 +14,7 @@ class TVMazePlugin(OutputPlugin):
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
+        self.name = "tvmaze"
         self.include_raw = config.get('include-raw', False)  # Default: no raw data
 
         # Initialize components
@@ -61,8 +62,10 @@ class TVMazePlugin(OutputPlugin):
             # Mirror normalized payload onto plugin.tvmaze.data so downstream
             # Jinja templates can reach `{{ plugin.tvmaze.data.show.* }}`
             # consistently with tmdb (Session 38 A3 fix per audit §1).
-            if result.success and result.data:
-                services.update_plugin(data=result.data)
+            if result.success and result.data and services.jobid:
+                services.update_state({
+                    "jobs": {services.jobid: {"plugins": {self.name: result.data}}}
+                })
             return result
         except Exception as e:
             self.error("Execution failed", error=str(e))

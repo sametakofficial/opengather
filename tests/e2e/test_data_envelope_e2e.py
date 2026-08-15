@@ -128,8 +128,9 @@ class TestEndToEnd:
         state, _ = _make_state()
         state.start_run({})
         state.configure_resolver(
-            data_priority={"data.run.scanner": ["scanner"]},
+            data_priority={"scanner": ["scanner"]},
             emits_map={"scanner": {"scanner": ["count", "targets"]}},
+            run_modes={"scanner": "per_run"},
         )
         # Per-run plugin update — note the run_<id> target convention.
         run_id = state.run.id

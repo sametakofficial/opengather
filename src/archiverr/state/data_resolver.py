@@ -69,11 +69,16 @@ class DataResolver:
     multi-job run without thread-local state.
     """
 
-    def __init__(self, priority: dict[str, list[str]] | None = None):
+    def __init__(
+        self,
+        priority: dict[str, list[str]] | None = None,
+        run_modes: dict[str, str] | None = None,
+    ):
         # We keep a normalised view: every priority key has its
         # dotted segments split once, which makes longest-prefix
         # matching cheap and avoids re-splitting on every lookup.
         self._priority_raw = dict(priority or {})
+        self._run_modes = dict(run_modes or {})
 
     @property
     def priority(self) -> dict[str, list[str]]:
@@ -112,6 +117,17 @@ class DataResolver:
             return None
 
         scope, category_path = self._split_scope(norm_path, active_job_index)
+        if category_path == "" and scope is None:
+            return None
+        if scope is None and category_path:
+            # Category-only lookup: pick scope from candidates' run_mode.
+            candidates = self._candidates_for_path(category_path, active_job_index)
+            if not candidates:
+                return None
+            return self._first_hit(
+                candidates, category_path, plugin_data_for, active_job_index,
+            )
+
         if scope is None:
             return None
 
@@ -119,7 +135,42 @@ class DataResolver:
         if not candidates:
             return None
 
+        return self._first_hit_in_scope(
+            candidates, scope, category_path, plugin_data_for,
+        )
+
+    def _first_hit_in_scope(
+        self,
+        candidates: list[str],
+        scope: str | int,
+        category_path: str,
+        plugin_data_for: Callable[[str | int, str], Any],
+    ) -> Any:
         for plugin_name in candidates:
+            block = plugin_data_for(scope, plugin_name)
+            if not isinstance(block, dict):
+                continue
+            value = _walk_dotted(block, category_path)
+            if value is not None:
+                return value
+        return None
+
+    def _first_hit(
+        self,
+        candidates: list[str],
+        category_path: str,
+        plugin_data_for: Callable[[str | int, str], Any],
+        active_job_index: int | None,
+    ) -> Any:
+        """Resolve when the caller omitted the scope segment."""
+        for plugin_name in candidates:
+            mode = self._run_modes.get(plugin_name, "per_job")
+            if mode == "per_run":
+                scope: str | int = "run"
+            elif active_job_index is None:
+                continue
+            else:
+                scope = active_job_index
             block = plugin_data_for(scope, plugin_name)
             if not isinstance(block, dict):
                 continue
@@ -139,13 +190,33 @@ class DataResolver:
         return path
 
     @staticmethod
+    def normalize_priority_key(key: str) -> str:
+        """Strip ``data.`` and optional ``<jobindex>`` / ``run`` scope heads.
+
+        S40 category-only keys (``show``, ``movie``, ``show.episode_title``)
+        pass through. Legacy S39 keys stay accepted.
+        """
+        stripped = DataResolver._strip_data_prefix(key)
+        if not stripped:
+            return ""
+        head, _, rest = stripped.partition(".")
+        if head in ("<jobindex>", "run") and rest:
+            return rest
+        try:
+            int(head)
+        except ValueError:
+            return stripped
+        return rest
+
+    @staticmethod
     def _split_scope(
         norm_path: str,
         active_job_index: int | None,
     ) -> tuple[str | int | None, str]:
-        """Split ``<jobindex|run>.<rest>`` into ``(scope, rest)``.
+        """Split an optional ``<jobindex|run|int>.<rest>`` into ``(scope, rest)``.
 
-        Returns ``(None, "")`` for malformed paths.
+        Category-only paths (``show.title``) return ``(None, full_path)``
+        so ``resolve`` can auto-route from ``run_modes``.
         """
         parts = norm_path.split(".", 1)
         head = parts[0]
@@ -158,11 +229,10 @@ class DataResolver:
             if active_job_index is None:
                 return None, ""
             return active_job_index, rest
-        # Numeric job index
         try:
             return int(head), rest
         except ValueError:
-            return None, ""
+            return None, norm_path
 
     def _candidates_for_path(
         self,
@@ -178,36 +248,13 @@ class DataResolver:
         if not category_path:
             return []
 
-        # Build a normalised key set: strip "data." and the
-        # ``<jobindex>``/``run`` scope head so the surviving
-        # remainder lines up with category_path.
         scored: list[tuple[int, str, list[str]]] = []
         for key, plugins in self._priority_raw.items():
-            stripped = self._strip_data_prefix(key)
-            scope_head, key_rest = stripped.split(".", 1) if "." in stripped else (stripped, "")
-            # Job-scoped key matches numeric or sentinel job index.
-            if scope_head == "<jobindex>" and active_job_index is None:
-                continue
-            if scope_head == "run":
-                # Only matches when caller is asking for run scope —
-                # which we infer by category_path having no own
-                # leading scope segment. We've already stripped the
-                # scope before reaching here, so we need the caller's
-                # contract.
-                # The caller always asks via category_path AFTER scope
-                # stripping; therefore "run" priority keys only
-                # candidate-list when the lookup is run-scoped. Encode
-                # that by tagging the key shape:
-                scored.append((_segment_count(key_rest), key_rest, list(plugins or [])))
-                continue
-            if scope_head not in ("<jobindex>",):
-                # Not a job/run sentinel — skip; we only honour the
-                # canonical sentinel forms in the priority keys.
+            key_rest = self.normalize_priority_key(key)
+            if not key_rest:
                 continue
             scored.append((_segment_count(key_rest), key_rest, list(plugins or [])))
 
-        # Longest-prefix match: iterate keys whose category_path
-        # equals or is a prefix of the lookup path, longest first.
         scored.sort(key=lambda triple: triple[0], reverse=True)
         for _, key_rest, plugins in scored:
             if _is_prefix(key_rest, category_path):
