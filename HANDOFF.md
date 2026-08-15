@@ -12,6 +12,8 @@
   - live TMDb when `TMDB_API_KEY` is set: known ids
     (Breaking Bad `1396`, S01E01 episode_title `Pilot`)
 - Persistence stays `off` in the test (no pymongo required).
+- Live persist (this host): run `32198aed-91d2-4194-833a-15ec545e312d`
+  · 16/16 · PyMongo · API `127.0.0.1:8080`.
 - Panel proxy default is `:8080` (`ARCHIVERR_API` override). `:8000`
   on this host is Grok2API, not Archiverr.
 
@@ -19,7 +21,6 @@
 
 - Wire panel writes (save config, live WS log)
 - S44: nfo / subtitle plugins
-- Persist S42 to Mongo + open in panel when pymongo + API are up
 
 ---
 
