@@ -232,6 +232,7 @@ in S39 §C1. Use one of:
 | `{{ jobs[job_id].plugins.<name>.<field> }}`               | full canonical descent         |
 | `{{ data.<jobindex>.<category>.<path> }}`                 | resolver-priority lookup       |
 | `{{ data.run.<category>.<path> }}`                        | per_run plugin resolver        |
+| `{{ jobid }}` / `${jobid}`                                | orchestrator current job id    |
 
 `<jobindex>` in priority keys is a sentinel substituted at lookup
 time; in template paths you can use the literal sentinel

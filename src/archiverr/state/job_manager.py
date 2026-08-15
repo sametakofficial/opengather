@@ -121,6 +121,7 @@ class JobManager:
         if not job:
             raise ValueError(f"Job {index} not found")
 
+        self._aggregate_output(job)
         job.complete(success=job.status.success)
 
         # Update run stats
@@ -151,6 +152,30 @@ class JobManager:
             "executed_plugins": executed_plugins,
             "failed_plugins": failed_plugins
         })
+
+    @staticmethod
+    def _aggregate_output(job: 'JobState') -> None:
+        """Fill job.output from plugin slots if plugins did not write it.
+
+        S40 Phase E: plugins write their own slot. ``job.output`` stays
+        as a convenience surface so templates/events do not go empty.
+        """
+        values: list[str] = list(job.output.values or [])
+        tasks: dict[str, Any] = dict(job.output.data.get("tasks") or {})
+        for pdata in job.plugins.values():
+            if not isinstance(pdata, dict):
+                continue
+            extra = pdata.get("output_values")
+            if isinstance(extra, list):
+                for item in extra:
+                    if item not in values:
+                        values.append(item)
+            extra_tasks = pdata.get("tasks")
+            if isinstance(extra_tasks, dict):
+                tasks.update(extra_tasks)
+        job.output.values = values
+        if tasks:
+            job.output.data["tasks"] = tasks
 
     def set_current_job(self, job_id: str) -> None:
         """Set current job context for per_job plugin execution."""

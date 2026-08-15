@@ -132,10 +132,7 @@ class TVDbPlugin(OutputPlugin):
                 'finished_at': end_time.isoformat(),
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
-            'movie': normalized_movie,  # NORMALIZED by default
-            'show': None,
-            'season': None,
-            'episode': None
+            'movie': normalized_movie,
         }
 
         # Add RAW data ONLY if requested
@@ -249,14 +246,7 @@ class TVDbPlugin(OutputPlugin):
                 'finished_at': end_time.isoformat(),
                 'duration_ms': int((end_time - start_time).total_seconds() * 1000)
             },
-            'show': normalized_show,  # NORMALIZED by default
-            # season/episode require /series/{id}/episodes/default fetch +
-            # a normalize_episode() that doesn't exist yet. Documented as
-            # future-work; today they're explicit None so consumers can
-            # rely on the keys existing (Session 38 A5 audit note).
-            'season': None,
-            'episode': None,
-            'movie': None
+            'show': normalized_show,
         }
 
         # Add RAW data ONLY if requested

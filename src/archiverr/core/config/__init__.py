@@ -9,6 +9,7 @@ tree instead.
 from .interpolator import (
     InterpolationError,
     Interpolator,
+    apply_runtime_tokens,
     compile_config,
 )
 from .manifest_merge import apply_to_config, merge_plugin_layers
@@ -18,6 +19,7 @@ __all__ = [
     "Interpolator",
     "InterpolationError",
     "compile_config",
+    "apply_runtime_tokens",
     "ScopeFrame",
     "ScopeStack",
     "apply_to_config",

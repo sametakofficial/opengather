@@ -35,14 +35,8 @@ emits:
     - network.country
     - people.cast
     - people.crew
-  episode:
-    - title.primary
-    - title.original
-    - identifiers.tvmaze_id
-    - series.tvmaze_id
     - season_number
     - episode_number
-    - air_dates.first
-    - air_dates.year
-    - runtime
-    - overview
+    - episode_title
+    - episode_overview
+    - episode_air_date

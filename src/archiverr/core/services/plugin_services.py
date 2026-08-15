@@ -213,8 +213,15 @@ class PluginServices:
         if not isinstance(plugin_config, dict):
             return plugin_config
 
+        from archiverr.core.config.interpolator import apply_runtime_tokens
+        plugin_config = apply_runtime_tokens(
+            plugin_config, {"jobid": self._current_job_id},
+        )
+        if not isinstance(plugin_config, dict):
+            return plugin_config
+
         if self._render_engine is None:
-            # No engine wired (stub / test fixture) — return raw block.
+            # No engine wired (stub / test fixture) — return interpolated block.
             return plugin_config
 
         ctx = self._build_render_context()

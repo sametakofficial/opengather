@@ -112,12 +112,17 @@ class TVMazePlugin(OutputPlugin):
             if episode_info else None
         )
 
-        # Build result data
+        if normalized_episode:
+            normalized_show["episode_title"] = normalized_episode.get("title", {}).get("primary")
+            normalized_show["episode_overview"] = normalized_episode.get("overview")
+            normalized_show["season_number"] = normalized_episode.get("season_number")
+            normalized_show["episode_number"] = normalized_episode.get("episode_number")
+            normalized_show["episode_air_date"] = (
+                (normalized_episode.get("air_dates") or {}).get("first")
+            )
+
         data = {
-            'show': normalized_show,  # NORMALIZED by default
-            'episode': normalized_episode,
-            'season': None,  # TVMaze has no /season endpoint shape we normalize today
-            'movie': None,
+            "show": normalized_show,
         }
 
         # Add RAW data ONLY if requested

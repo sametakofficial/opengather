@@ -82,23 +82,19 @@ class TaskerPlugin(OutputPlugin):
                 if result.get('type') == 'save' and result.get('destination'):
                     output_values.append(result['destination'])
 
-        job_patch: dict[str, Any] = {
-            "plugins": {
-                self.name: {
-                    "tasks": task_results,
-                    "output_values": output_values,
-                }
-            }
-        }
-        if output_values or task_results:
-            output_block: dict[str, Any] = {}
-            if output_values:
-                output_block["values"] = output_values
-            if task_results:
-                output_block["data"] = {"tasks": task_results}
-            job_patch["output"] = output_block
         if services.jobid:
-            services.update_state({"jobs": {services.jobid: job_patch}})
+            services.update_state({
+                "jobs": {
+                    services.jobid: {
+                        "plugins": {
+                            self.name: {
+                                "tasks": task_results,
+                                "output_values": output_values,
+                            }
+                        }
+                    }
+                }
+            })
 
         return SDKPluginResult(
             success=True,

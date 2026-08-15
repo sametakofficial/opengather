@@ -153,7 +153,7 @@ class TestReservedNames:
     def test_all_reserved_names_present(self):
         expected = frozenset(
             {"run", "job", "jobs", "plugin", "plugins",
-             "config", "options", "provides", "events"}
+             "config", "options", "provides", "events", "jobid"}
         )
         assert expected == RESERVED_ALIAS_NAMES
 
@@ -255,3 +255,24 @@ class TestEmbeddedTokens:
         }
         out = compile_config(cfg)
         assert out["url"] == "http://srv:8080/"
+
+
+class TestDeferredJobid:
+    def test_jobid_left_intact_without_runtime(self):
+        cfg = {"echo": "${jobid}"}
+        out = compile_config(cfg)
+        assert out["echo"] == "${jobid}"
+
+    def test_jobid_resolved_with_runtime(self):
+        cfg = {"echo": "${jobid}"}
+        out = compile_config(cfg, runtime={"jobid": "job_abc_0"})
+        assert out["echo"] == "job_abc_0"
+
+    def test_jobid_embedded_in_string(self):
+        from archiverr.core.config.interpolator import apply_runtime_tokens
+        assert apply_runtime_tokens("jobs/${jobid}/x", {"jobid": "j1"}) == "jobs/j1/x"
+
+    def test_jobid_none_becomes_empty(self):
+        cfg = {"echo": "${jobid}"}
+        out = compile_config(cfg, runtime={"jobid": None})
+        assert out["echo"] == ""

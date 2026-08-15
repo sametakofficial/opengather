@@ -19,9 +19,9 @@ Bu dosya ayrıntılı oturum günlüğü değil, kısa durum özeti içindir.
 
 ## Current Focus
 
-- Session 40 A–C landed (single-state API + category-only priority)
-- Remaining S40: interpolator `${jobid}`, alias verify, JobState.output demolish
-- S39 carry-over: OMDb/TVMaze/TVDB flat shape, CI, TMDb smoke
+- Session 40 A–F landed (state API, jobid interpolator, output aggregate, TVMaze flat)
+- CI workflow + optional TMDb smoke
+- Later: S41 stub delete, web, new plugins, match quality
 
 ## Session 39 Milestone
 

@@ -5,26 +5,26 @@
 
 ## TL;DR (Session 40)
 
-Locked decisions, then implemented Phase A–C:
+A–C plus remaining contract work (D/E/F + CI + smoke):
 
 - `services.jobid` is the only orchestrator global (string job id).
 - `create_job` stays a separate method (identity is a core invariant).
-- `data_priority` is category-only (`show: [tmdb, omdb]`). Scope comes
-  from `manifest.run_mode`. Plugin-name keys are forbidden.
+- `data_priority` is category-only. Scope comes from `manifest.run_mode`.
 - Plugin surface is `read_state` / `update_state` (RFC 7396 merge).
-- Old getters / `update_plugin` / `update_job` / `current_*` /
-  `run_id` / `mode` are deprecated stubs (warn-once). Hard delete in S41.
-- All 9 plugins write through `update_state`.
+- `${jobid}` is compile-deferred; `get_runtime_config` / `apply_runtime_tokens`
+  resolve it. `${alias:NAME}` already worked (verified + reserved `jobid`).
+- Tasker writes only its plugin slot. `complete_job` aggregates
+  `job.output` from plugin `output_values` / `tasks`.
+- TVMaze episode keys bake into `show` (TMDb-style). OMDb dropped
+  `validation`; TVDB dropped unused `season`/`episode`/`movie` nulls.
+- CI workflow: `.github/workflows/ci.yml`. Live TMDb smoke is skip-unless-key.
 
-Test baseline after S40 A–C: **737 passed / 22 skipped / 0 fails**.
+### Still later (not blockers)
 
-### Not done (next)
-
-- Phase D: `${jobid}` interpolator runtime-deferred verify
-- Phase E: `JobState.output` demolish + finalize aggregate
-- Phase F: `${alias:NAME}` verify
-- OMDb/TVMaze/TVDB flat-shape alignment
-- CI, real TMDb smoke
+- S41: hard-delete deprecated stubs
+- OMDb/TVDB do not emit episode_title (they have no episode fetch today)
+- Web panel, subtitle/nfo/dublaj plugins
+- Real multi-file archive matching quality
 
 ---
 

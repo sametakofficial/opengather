@@ -11,6 +11,7 @@ syntax:
   relative_parent: ${..field}
   alias_lookup: ${alias:movie}
   env: ${env:TMDB_API_KEY}
+  runtime_jobid: ${jobid}
   default: ${config.plugin.tmdb.language:-en-US}
 
 scopes:
@@ -63,6 +64,7 @@ reserved_alias_names:
   - options
   - provides
   - events
+  - jobid
 
 config_sample:
   aliases:

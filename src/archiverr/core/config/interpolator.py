@@ -43,7 +43,12 @@ _TOKEN_RE = re.compile(r"\$\{([^}]*)\}")
 RESERVED_ALIAS_NAMES: frozenset[str] = frozenset({
     "run", "job", "jobs", "plugin", "plugins",
     "config", "options", "provides", "events",
+    "jobid",
 })
+
+# Tokens left intact at compile time and resolved when a runtime
+# extras map is supplied (S40 Phase D).
+DEFERRED_RUNTIME_TOKENS: frozenset[str] = frozenset({"jobid"})
 
 _MISSING = object()
 
@@ -56,15 +61,25 @@ def compile_config(
     config_tree: dict[str, Any],
     *,
     env: dict[str, str] | None = None,
+    runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a new config tree with all ``${...}`` tokens resolved.
 
     ``env`` lets callers inject a custom environment (tests); when
     ``None`` we read from ``os.environ`` at resolve time.
 
+    ``runtime`` supplies deferred tokens such as ``${jobid}``. When
+    omitted, those tokens stay as ``${jobid}`` for a later pass
+    (S40 Phase D).
+
     The input is not mutated.
     """
-    return Interpolator(env=env).compile(config_tree)
+    return Interpolator(env=env, runtime=runtime).compile(config_tree)
+
+
+def apply_runtime_tokens(value: Any, runtime: dict[str, Any]) -> Any:
+    """Resolve leftover ``${jobid}`` tokens in an already-compiled tree."""
+    return Interpolator(runtime=runtime)._apply_runtime(value)
 
 
 class Interpolator:
@@ -75,8 +90,14 @@ class Interpolator:
     argument through every recursion.
     """
 
-    def __init__(self, *, env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        env: dict[str, str] | None = None,
+        runtime: dict[str, Any] | None = None,
+    ) -> None:
         self._env = env if env is not None else os.environ
+        self._runtime = runtime
         self._root: dict[str, Any] | None = None
         self._in_flight: list[tuple[str, ...]] = []
         self._in_flight_aliases: set[str] = set()
@@ -100,6 +121,35 @@ class Interpolator:
             self._in_flight_aliases.clear()
 
         return compiled
+
+    def _apply_runtime(self, node: Any) -> Any:
+        if isinstance(node, dict):
+            return {k: self._apply_runtime(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [self._apply_runtime(v) for v in node]
+        if isinstance(node, str) and "${" in node:
+            return self._replace_deferred(node)
+        return node
+
+    def _replace_deferred(self, text: str) -> Any:
+        runtime = self._runtime or {}
+
+        def _value(name: str) -> Any:
+            raw = runtime.get(name)
+            return "" if raw is None else raw
+
+        match = _TOKEN_RE.fullmatch(text)
+        if match is not None and match.group(1).strip() in DEFERRED_RUNTIME_TOKENS:
+            return _value(match.group(1).strip())
+
+        def substitute(m: re.Match[str]) -> str:
+            body = m.group(1).strip()
+            if body in DEFERRED_RUNTIME_TOKENS:
+                val = _value(body)
+                return "" if val is None else str(val)
+            return m.group(0)
+
+        return _TOKEN_RE.sub(substitute, text)
 
     def _walk(self, node: Any, *, path: tuple[str, ...], stack: ScopeStack) -> Any:
         """Recurse into ``node`` in place (mappings / lists) and resolve
@@ -195,6 +245,12 @@ class Interpolator:
         path: tuple[str, ...],
         stack: ScopeStack,
     ) -> Any:
+        if body in DEFERRED_RUNTIME_TOKENS:
+            if self._runtime is None:
+                return f"${{{body}}}"
+            value = self._runtime.get(body)
+            return "" if value is None else value
+
         if ":" in body:
             head, _, tail = body.partition(":")
             head = head.strip()

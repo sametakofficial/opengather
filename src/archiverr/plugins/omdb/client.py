@@ -82,9 +82,6 @@ class OMDbPlugin(OutputPlugin):
                             'movie': data  # Complete raw response
                         }
 
-                    # Add validation
-                    result_data['validation'] = self._perform_validation(job, data)
-
                     self.info("Movie found", title=data.get('Title'), imdb_rating=data.get('imdbRating'))
                     self.debug("Movie normalized", imdb_id=data.get('imdbID'), title=normalized_movie['title']['primary'], include_raw=self.include_raw)
                 else:
