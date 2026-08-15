@@ -1,3 +1,28 @@
+# Handoff - Session 42 (16-file dry-run proof)
+
+**Date:** August 15, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 42)
+
+- 16 real files (empty `.mkv` containers) through the locked
+  PARSE → DATA pipeline. Scanner stats the paths; names are enough.
+- `tests/e2e/test_s42_real_archive.py`
+  - parse always: 16/16 category + title + S/E or year
+  - live TMDb when `TMDB_API_KEY` is set: known ids
+    (Breaking Bad `1396`, S01E01 episode_title `Pilot`)
+- Persistence stays `off` in the test (no pymongo required).
+- Panel proxy default is `:8080` (`ARCHIVERR_API` override). `:8000`
+  on this host is Grok2API, not Archiverr.
+
+### Still later
+
+- Wire panel writes (save config, live WS log)
+- S44: nfo / subtitle plugins
+- Persist S42 to Mongo + open in panel when pymongo + API are up
+
+---
+
 # Handoff - Session 41 (stub delete + web shell)
 
 **Date:** August 15, 2026
@@ -18,7 +43,7 @@
 
 ### Still later
 
-- S42: real 10–20 file dry-run proof
+- S42: done — see session 42 block above
 - Wire panel writes (save config, live WS log)
 - S44: nfo / subtitle plugins
 

@@ -9,13 +9,16 @@ npm install
 npm run dev
 ```
 
-http://127.0.0.1:5173  →  proxies `/api` to `http://127.0.0.1:8000`
+http://127.0.0.1:5173  →  proxies `/api` to `http://127.0.0.1:8080`
 
-Start the API from the repo root, e.g.
+`:8000` is often another service on this host. Start Archiverr on 8080:
 
 ```
-uvicorn archiverr.api.main:app --reload --app-dir src
+cd /home/samet/Workspace/archiver
+.venv/bin/python -m archiverr serve --host 127.0.0.1 --port 8080
 ```
+
+Override the proxy with `ARCHIVERR_API=http://127.0.0.1:PORT npm run dev`.
 
 (or whatever command you already use).
 
