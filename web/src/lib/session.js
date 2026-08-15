@@ -14,6 +14,7 @@ export function emptySession() {
     jobs: [],
     jobsTotal: 0,
     plugins: [],
+    configLive: null,
     errors: {},
   };
 }
@@ -26,12 +27,13 @@ export async function loadBootstrap() {
     return session;
   }
 
-  const [health, status, version, runs, plugins] = await Promise.allSettled([
+  const [health, status, version, runs, plugins, config] = await Promise.allSettled([
     api.getHealth(),
     api.getStatus(),
     api.getVersion(),
     api.listRuns(1, 20),
     api.listPlugins(),
+    api.getConfig(),
   ]);
 
   take(session, "health", health);
@@ -49,6 +51,12 @@ export async function loadBootstrap() {
     session.plugins = plugins.value.items || [];
   } else {
     session.errors.plugins = String(plugins.reason);
+  }
+
+  if (config.status === "fulfilled") {
+    session.configLive = config.value;
+  } else {
+    session.errors.config = String(config.reason);
   }
 
   const reachable =

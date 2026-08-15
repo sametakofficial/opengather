@@ -101,6 +101,7 @@ def _doc_to_run_response(doc: dict) -> RunResponse:
         jobs=doc.get("jobs", doc.get("match_ids", [])),
         config=doc.get("config", doc.get("config_snapshot", {})),
         options=doc.get("options", {}),
+        data=doc.get("data") or {},
         created_at=created_at,
         completed_at=completed_at,
         persistence=persistence,

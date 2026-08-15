@@ -1,3 +1,30 @@
+# Handoff - Session 45 (playground API)
+
+**Date:** August 15, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 45)
+
+Vision-aligned API only. Core orchestrator / plugin surface unchanged.
+
+- `RunResponse.data` = persisted `runs.data` envelope (priority merge).
+- `GET /api/v1/config` = masked live `config.yml`. `writable: false`.
+  Secrets stay `${ENV}`. No PUT.
+- `POST /api/v1/render` = Jinja against a persisted run/job. Same
+  `ConfigRenderEngine` + `TemplateContextBuilder` as tasker. Does not
+  invoke plugins or write files.
+- Panel: All tab prefers `run.data`; config screen reads live YAML;
+  playground calls `/render`.
+- Not added (no event persistence / product write surface):
+  WebSocket log, PUT config.yml, plugin invoke.
+
+### Still later
+
+- Push branch (ahead of origin)
+- Live log if EventBus is ever persisted
+
+---
+
 # Handoff - Session 44 (nfo + subtitle plugins)
 
 **Date:** August 15, 2026
@@ -21,7 +48,7 @@
 
 ### Still later
 
-- Wire panel writes (save config, live WS log) — needs new API
+- PUT config.yml / WS log — still not in product
 - Push `dev/communication-refactoring` (ahead of origin)
 
 ---

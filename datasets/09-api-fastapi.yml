@@ -18,6 +18,7 @@ RunResponse:
     - job_id
   config: {}
   options: {}
+  data: {}   # S45 — priority envelope (runs.data); job-index keys as strings
   created_at: ISO8601
   completed_at: ISO8601
   persistence:
@@ -68,3 +69,12 @@ endpoints:
       Streaming/SSE not implemented; long-running runs are polled via
       /{run_id}/status. websocket_url field exists in /run/ schemas.py but is
       never set (phantom).
+
+  /api/v1/config:
+    method: GET
+    role: masked live config.yml (secrets stay ${ENV}). writable=false.
+  /api/v1/render:
+    method: POST
+    role: Jinja playground against a persisted run/job (same engine as tasker)
+    body: {template, run_id, job_id?, job_index?}
+    notes: does not invoke plugins, does not write files.

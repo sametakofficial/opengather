@@ -68,6 +68,7 @@ export function adaptRun(doc) {
     state,
     config: doc.config || {},
     options: doc.options || {},
+    data: doc.data || {},
     persistence: doc.persistence || null,
     raw: doc,
   };
@@ -191,13 +192,13 @@ export function extractGeneral(merged, job) {
   const movie = merged.movie || {};
   const show = merged.show || {};
   const entity = titleOf(movie) ? movie : titleOf(show) ? show : movie;
-  const ids = entity.ids || {};
+  const ids = entity.ids || entity.identifiers || {};
   const genres = entity.genres;
   return {
     title: titleOf(entity) || job?.title || "—",
     year: yearOf(entity) ?? job?.year ?? "—",
-    imdb: ids.imdb || entity.imdb_id || "—",
-    tmdb: ids.tmdb || entity.id || "—",
+    imdb: ids.imdb || ids.imdb_id || entity.imdb_id || "—",
+    tmdb: ids.tmdb || ids.tmdb_id || entity.id || "—",
     release: entity.release_date || entity.release?.date || entity.first_air_date || "—",
     cert: entity.certification || entity.rated || "—",
     runtime: formatRuntime(entity.runtime || entity.episode_runtime),
@@ -310,6 +311,14 @@ export function walkPaths(obj, prefix = "", out = [], depth = 0) {
   }
   for (const k of keys) walkPaths(obj[k], `${prefix}.${k}`, out, depth + 1);
   return out;
+}
+
+/** runs.data envelope for a job index (string keys from Mongo). */
+export function envelopeForJob(data, index) {
+  if (!data || typeof data !== "object") return null;
+  const block = data[index] ?? data[String(index)];
+  if (!block || typeof block !== "object") return null;
+  return block;
 }
 
 export function dump(value) {

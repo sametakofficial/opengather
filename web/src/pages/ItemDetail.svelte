@@ -5,6 +5,7 @@
     extractGeneral,
     mark,
     markClass,
+    envelopeForJob,
     mergePlugins,
     stageOf,
   } from "../lib/adapt.js";
@@ -20,9 +21,11 @@
   const selected = $derived(items.find((x) => x.id === selectedJobId) || items[0] || null);
   const pluginTabs = $derived(["all", ...Object.keys(selected?.plugins || {})]);
   const mergedPack = $derived(mergePlugins(selected?.plugins || {}));
-  const general = $derived(extractGeneral(mergedPack.merged, selected));
+  const envelope = $derived(envelopeForJob(snap.run?.data, selected?.index));
+  const allSource = $derived(envelope || mergedPack.merged);
+  const general = $derived(extractGeneral(allSource, selected));
   const inspected = $derived(
-    plugin === "all" ? mergedPack.merged : selected?.plugins?.[plugin] || {},
+    plugin === "all" ? allSource : selected?.plugins?.[plugin] || {},
   );
   const pipeline = $derived(Object.keys(selected?.plugins || {}));
 
@@ -180,11 +183,20 @@
         <aside class="insp">
           <div class="label">source</div>
           <div class="muted tiny">
-            {plugin === "all" ? "merged in ui · not run.data" : `job.plugins.${plugin}`}
+            {#if plugin === "all" && envelope}
+              run.data[{selected?.index ?? 0}] · core envelope
+            {:else if plugin === "all"}
+              merged in ui · run.data empty on this run
+            {:else}
+              job.plugins.{plugin}
+            {/if}
           </div>
           <div class="box">
-            merge order · tmdb &gt; omdb &gt; tvdb &gt; tvmaze<br />
-            this is a panel estimate. core envelope is not on RunResponse.
+            {#if envelope}
+              All tab is the priority-resolved envelope from GET /runs.
+            {:else}
+              fallback merge · tmdb &gt; omdb &gt; tvdb &gt; tvmaze
+            {/if}
           </div>
           <div class="label mt">pipeline keys</div>
           <div class="pipe">

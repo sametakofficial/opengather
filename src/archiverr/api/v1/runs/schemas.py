@@ -76,6 +76,10 @@ class RunResponse(BaseModel):
     jobs: list[str] = Field(default_factory=list, description="Job IDs")
     config: dict[str, Any] = Field(default_factory=dict)
     options: dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Priority-resolved envelope (runs.data). Keys are job-index strings.",
+    )
     created_at: datetime = Field(default_factory=datetime.now)
     completed_at: datetime | None = None
     persistence: PersistenceInfo | None = Field(default=None, description="Persistence visibility (S37)")

@@ -50,6 +50,15 @@ export const api = {
 
   listPlugins: () => request("/plugins"),
 
+  getConfig: () => request("/config"),
+
+  renderTemplate: ({ template, run_id, job_id, job_index } = {}) =>
+    request("/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ template, run_id, job_id, job_index }),
+    }),
+
   createRun: ({ dry_run = true, config } = {}, { signal } = {}) => {
     const body = { dry_run };
     if (config != null) body.config = config;

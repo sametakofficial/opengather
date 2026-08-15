@@ -33,7 +33,12 @@ Override the proxy with `ARCHIVERR_API=http://127.0.0.1:PORT npm run dev`.
 - `new run` is `POST /runs {dry_run:true}` and **blocks** until the
   orchestrator returns (5 minute abort).
 
+## S45 API the panel uses
+
+- `GET /api/v1/config` — masked live `config.yml` (read-only)
+- `POST /api/v1/render` — Jinja against a persisted run/job
+- `GET /api/v1/runs/{id}` now includes `data` (core envelope)
+
 ## Not in the API (screens stay honest)
 
-log stream · websocket · live `config.yml` write · plugin invoke ·
-Jinja render · items collection.
+log stream · websocket · `PUT /config` · plugin invoke · items collection.

@@ -3,34 +3,46 @@
 
   let { snap, selectedRunId } = $props();
 
-  const text = $derived(
+  const live = $derived(snap.configLive);
+  const runText = $derived(
     snap.run?.config && Object.keys(snap.run.config).length
       ? dump(snap.run.config)
       : "",
   );
+  const liveText = $derived(live?.text || (live?.config ? dump(live.config) : ""));
+  let tab = $state("live");
 </script>
 
 <div class="win">
   <div class="win-bar">
     <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-    <span class="url">archivarr://config · run {selectedRunId || "—"}</span>
+    <span class="url">archivarr://config · {tab === "live" ? "config.yml" : `run ${selectedRunId || "—"}`}</span>
     <span class="pill">read-only</span>
   </div>
   <div class="split">
     <aside class="tree">
       <div><b>source</b></div>
-      <div class="pad">GET /runs/{"{id}"} .config</div>
-      <div class="muted pad">live config.yml is not served</div>
+      <button class="btn mini" class:active={tab === "live"} onclick={() => (tab = "live")}>live config.yml</button>
+      <button class="btn mini" class:active={tab === "run"} onclick={() => (tab = "run")}>this run snapshot</button>
+      <div class="muted pad mt">GET /config · secrets stay ${"{ENV}"}</div>
       <div class="label mt">write</div>
       <div class="muted">PUT /config · not in API</div>
     </aside>
     <div class="ed">
-      <div class="edbar">▸ run.config snapshot · json</div>
-      {#if text}
-        <pre class="code">{text}</pre>
+      {#if tab === "live"}
+        <div class="edbar">▸ GET /config · {live?.path || "config.yml"} · writable={String(live?.writable ?? false)}</div>
+        {#if liveText}
+          <pre class="code">{liveText}</pre>
+        {:else}
+          <pre class="code">{snap.errors?.config || "config.yml not served"}</pre>
+        {/if}
       {:else}
-        <pre class="code">no config snapshot on this run.
-select a persisted run or trigger POST /runs.</pre>
+        <div class="edbar">▸ run.config snapshot · json</div>
+        {#if runText}
+          <pre class="code">{runText}</pre>
+        {:else}
+          <pre class="code">no config snapshot on this run.</pre>
+        {/if}
       {/if}
       <div class="edbar">save disabled · no config write endpoint</div>
     </div>
@@ -46,6 +58,9 @@ select a persisted run or trigger POST /runs.</pre>
     background: var(--paper-2);
     font-size: 11px;
     line-height: 1.8;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .pad { padding-left: 4px; }
   .mt { margin-top: 14px; }

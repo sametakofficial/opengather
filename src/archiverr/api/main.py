@@ -63,6 +63,8 @@ and git-like versioning for execution history.
 | `/api/v1/jobs` | Read jobs by run / by id |
 | `/api/v1/plugins` | Cross-job plugin output query |
 | `/api/v1/system` | Health, version, status |
+| `/api/v1/config` | Masked live config.yml (read-only) |
+| `/api/v1/render` | Jinja playground against a persisted run |
         """,
         version="1.0.0",
         lifespan=mongodb_lifespan,  # Industry best practice
