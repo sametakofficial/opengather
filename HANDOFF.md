@@ -1,3 +1,29 @@
+# Handoff - Session 41 (stub delete + web shell)
+
+**Date:** August 15, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 41)
+
+- Hard-deleted S40 PluginServices stubs: `update_job`, `update_plugin`,
+  getters, `current_*`, `run_id`, `mode`, `_warn_deprecated`.
+- Canonical plugin surface stays `create_job` / `read_state` /
+  `update_state` / `services.jobid`.
+- Tasker reads run/jobs from `services._state`, not deleted getters.
+- Vite + Svelte panel at `web/` implements wireframe v2 sitemap
+  (dashboard, library, item detail, runs, plugins, config, playground,
+  diagnostics). Reads existing FastAPI only. Daemon down → empty
+  shells + error text. No mock dataset. `?mock=1` skips the API on
+  purpose and still shows empty, not Aladdin.
+
+### Still later
+
+- S42: real 10–20 file dry-run proof
+- Wire panel writes (save config, live WS log)
+- S44: nfo / subtitle plugins
+
+---
+
 # Handoff - Session 40 (Single-state API)
 
 **Date:** August 15, 2026

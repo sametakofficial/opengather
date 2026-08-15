@@ -94,3 +94,8 @@ AGENT.md
 .windsurf
 .venv
 .env.example
+
+# Web panel
+web/node_modules/
+web/dist/
+web/.vite/

@@ -49,9 +49,9 @@ class TaskerPlugin(OutputPlugin):
 
         # Canonical template context comes from TemplateContextBuilder per
         # datasets/04-template-context.yml. Tasker does not mutate the
-        # render-time context.
-        run = services.get_run() if hasattr(services, "get_run") else None
-        all_jobs = list(services.get_all_jobs()) if hasattr(services, "get_all_jobs") else []
+        # render-time context. S41: do not call deleted services getters;
+        # read the orchestrator-owned state object when present.
+        run, all_jobs = self._run_and_jobs(services)
         events_snapshot = services.events.snapshot() if hasattr(services, "events") else {}
 
         context = TemplateContextBuilder().build_job_context(
@@ -123,6 +123,25 @@ class TaskerPlugin(OutputPlugin):
             from archiverr.core.render import ConfigRenderEngine
             return ConfigRenderEngine()
         return engine
+
+    @staticmethod
+    def _run_and_jobs(services: Any) -> tuple[Any, list[Any]]:
+        """Resolve run + jobs without the deleted S40 getters.
+
+        Real PluginServices expose ``_state``. Test fixtures often only
+        stub ``_state.run`` / ``_state.jobs``. Missing state is empty.
+        """
+        state = getattr(services, "_state", None)
+        if state is None:
+            return None, []
+        run = getattr(state, "run", None)
+        raw_jobs = getattr(state, "jobs", None)
+        if raw_jobs is None:
+            return run, []
+        try:
+            return run, list(raw_jobs)
+        except TypeError:
+            return run, []
 
     def _execute_task(
         self,

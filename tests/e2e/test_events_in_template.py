@@ -31,10 +31,13 @@ def _make_job(plugins=None):
 def _services_with_bus(bus, plugins_data=None):
     plugins_data = plugins_data or {}
     services = Mock()
-    services.get_run.return_value = None
-    services.get_all_jobs.return_value = []
+    services._state = Mock()
+    services._state.run = None
+    services._state.jobs = []
     services.run_safety = {"dry_run": True, "hardlink": False, "no_delete": True}
     services.events.snapshot.return_value = bus.get_history_dict()
+    services.jobid = None
+    services.update_state = Mock()
     services.state.get_job_plugin_names.return_value = list(plugins_data.keys())
     services.state.get_plugin_data.side_effect = (
         lambda job_id, name: plugins_data.get(name, {})

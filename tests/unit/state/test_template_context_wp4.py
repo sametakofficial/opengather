@@ -40,10 +40,14 @@ def _make_job(plugins, job_id="job-1", index=0):
 
 def _make_services(plugins_data, jobs=None):
     services = Mock()
-    services.get_run.return_value = None
-    services.get_all_jobs.return_value = list(jobs) if jobs else []
+    job_list = list(jobs) if jobs else []
+    services._state = Mock()
+    services._state.run = None
+    services._state.jobs = job_list
     services.run_safety = {"dry_run": True, "hardlink": False, "no_delete": True}
     services.events.snapshot.return_value = {}
+    services.jobid = None
+    services.update_state = Mock()
     services.state.get_job_plugin_names.return_value = list(plugins_data.keys())
     services.state.get_plugin_data.side_effect = (
         lambda job_id, name: plugins_data.get(name, {})
