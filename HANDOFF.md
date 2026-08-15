@@ -1,3 +1,31 @@
+# Handoff - Session 44 (nfo + subtitle plugins)
+
+**Date:** August 15, 2026
+**Branch:** `dev/communication-refactoring`
+
+## TL;DR (Session 44)
+
+- Two output-stage plugins, S40/S41 surface only:
+  `create_job` / `read_state` / `update_state` / `services.jobid`.
+- `nfo`: Kodi-style sidecar XML from `run.data` envelope, then any
+  plugin show/movie payload, then `renamer.parsed`. Writes via
+  `safe_write`. Dry-run plans, does not touch disk.
+- `subtitle`: discover sidecar tracks next to the media file
+  (`Movie.en.srt`). Optional `copy` + `output_dir` uses `safe_copy`.
+  No download, no container parse.
+- Core unchanged. No new HTTP endpoints. No WS. No config write API.
+- Tests: `tests/unit/plugins/test_nfo_*.py`,
+  `tests/unit/plugins/test_subtitle_plugin.py`,
+  `tests/e2e/test_s44_nfo_subtitle.py`.
+- `config.yml` enables both; `options.dry_run: true` still skips disk.
+
+### Still later
+
+- Wire panel writes (save config, live WS log) — needs new API
+- Push `dev/communication-refactoring` (ahead of origin)
+
+---
+
 # Handoff - Session 42 (16-file dry-run proof)
 
 **Date:** August 15, 2026
@@ -20,7 +48,7 @@
 ### Still later
 
 - Wire panel writes (save config, live WS log)
-- S44: nfo / subtitle plugins
+- S44: done — see session 44 block above
 
 ---
 
@@ -45,8 +73,8 @@
 ### Still later
 
 - S42: done — see session 42 block above
+- S44: done — see session 44 block above
 - Wire panel writes (save config, live WS log)
-- S44: nfo / subtitle plugins
 
 ---
 
@@ -477,6 +505,8 @@ Session 33: Deep 5-agent analysis, then execution across 4 phases. Fixed 2 CRITI
 | omdb | data | execute(job, services) | OutputPlugin | WORKING |
 | tvmaze | data | execute(job, services) | OutputPlugin | WORKING |
 | tasker | output | execute(job, services) | OutputPlugin | WORKING |
+| nfo | output | execute(job, services) | OutputPlugin | WORKING |
+| subtitle | output | execute(job, services) | OutputPlugin | WORKING |
 
 ## Next Session Should
 

@@ -31,6 +31,7 @@ KNOWN_PLUGINS: set[str] = {
     'tmdb', 'tvdb', 'tvmaze', 'omdb',
     'ffprobe',
     'tasker', 'rclone',
+    'nfo', 'subtitle',
 }
 
 

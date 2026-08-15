@@ -1,0 +1,34 @@
+name: subtitle
+version: 1.0.0
+description: Discovers sidecar subtitle files next to the media file
+run_mode: per_job
+stage: output
+class_name: SubtitlePlugin
+entry_point: client.py
+
+requires:
+  - plugin.renamer.parsed:success
+
+provides:
+  - fs.read
+  - output.subtitle
+
+trigger_rule: all_success
+
+categories:
+  - movie
+  - show
+
+config_schema:
+  extensions:
+    type: list
+    default: [srt, ass, ssa, sub, vtt]
+    description: Sidecar extensions to accept (no leading dot)
+  output_dir:
+    type: string
+    default: ""
+    description: Optional destination. Empty = discover only, do not copy.
+  copy:
+    type: boolean
+    default: false
+    description: When output_dir is set, copy/link tracks there via safe_copy

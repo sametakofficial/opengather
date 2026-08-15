@@ -26,6 +26,7 @@ from archiverr.state import GlobalStateManager
 KNOWN_PLUGIN_NAMES = {
     'scanner', 'file-reader', 'file-input', 'renamer',
     'tmdb', 'tvdb', 'tvmaze', 'omdb', 'ffprobe', 'tasker', 'rclone',
+    'nfo', 'subtitle',
 }
 
 # Pattern: dict literal mapping a known plugin name string to another string

@@ -1,0 +1,30 @@
+name: nfo
+version: 1.0.0
+description: Writes a Kodi-style .nfo sidecar next to the media file
+run_mode: per_job
+stage: output
+class_name: NfoPlugin
+entry_point: client.py
+
+requires:
+  - plugin.renamer.parsed:success
+
+provides:
+  - fs.write
+  - output.nfo
+
+trigger_rule: all_success
+
+categories:
+  - movie
+  - show
+
+config_schema:
+  output_dir:
+    type: string
+    default: ""
+    description: Destination directory. Empty = next to the source file.
+  overwrite:
+    type: boolean
+    default: false
+    description: Replace an existing .nfo

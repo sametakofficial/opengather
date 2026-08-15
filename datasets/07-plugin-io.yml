@@ -209,6 +209,37 @@ tvmaze:
       network:
         name: string
 
+nfo:
+  stage: output
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    category: movie | show
+    path: string
+    xml: string
+    dry_run: bool
+    planned: {op, target, dry_run, executed}
+  effects:
+    sidecar: "{stem}.nfo via safe_write (honours dry_run)"
+
+subtitle:
+  stage: output
+  run_mode: per_job
+  requires:
+    - plugin.renamer.parsed:success
+  data:
+    count: int
+    tracks:
+      - path: string
+        filename: string
+        extension: string
+        language: string
+        size_bytes: int
+    dry_run: bool
+    copied: list
+  # Discover-only by default. copy+output_dir uses safe_copy.
+
 tasker:
   stage: output
   run_mode: per_job

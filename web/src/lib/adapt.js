@@ -284,7 +284,7 @@ export function stageOf(name, manifests = []) {
   if (["scanner", "file-reader"].includes(name)) return "in";
   if (["renamer", "ffprobe"].includes(name)) return "parse";
   if (["tmdb", "omdb", "tvdb", "tvmaze"].includes(name)) return "data";
-  if (name === "tasker") return "output";
+  if (["tasker", "nfo", "subtitle"].includes(name)) return "output";
   return "";
 }
 

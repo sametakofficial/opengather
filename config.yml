@@ -63,6 +63,13 @@ tmdb:
     tv_season_images: true
     tv_videos: true
 
+nfo:
+  enabled: true
+  overwrite: false
+
+subtitle:
+  enabled: true
+
 tasker:
   enabled: true
   dry_run: true
