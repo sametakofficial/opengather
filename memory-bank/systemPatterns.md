@@ -6,19 +6,17 @@
 - Core MUST NEVER reference plugin names or implementations
 - Zero hardcoded plugin names in core (ZERO tolerance)
 - `test_plugin_agnostic.py` has static analysis guard that scans core source files
-- Plugins declare stage, provides, requires in `manifest.yml`
+- Session 39 baseline: plugin-agnostic guard remains 9/9 PASS after data resolver + render refactor
+- Plugins declare stage, run mode, provides, requires, and optional emits in `manifest.yml`
 - Core discovers via manifest files, resolves dependencies generically
 
-### 2. Expects System (Runtime Validation)
-```python
+### 2. Requires System (Runtime Validation)
+```yaml
 # Plugins declare what data they need
 requires:
   - plugin.renamer.parsed:success
-
-# Core checks at runtime before executing
-available_data = extract_available_data(result)
-ready = [p for p in group if resolver.check_expects(p, available_data)]
 ```
+Core checks required plugin state/data generically before execution. Plugin-specific validation stays inside plugins.
 
 ### 3. 3-Stage Pipeline
 ```
@@ -32,11 +30,15 @@ Each stage executes plugins in dependency-resolved groups. Parallel within group
 name: tmdb
 stage: data           # REQUIRED - no inference from plugin name
 run_mode: per_job     # REQUIRED - per_run or per_job
-provides:             # REQUIRED - what this plugin provides
+provides:             # Capabilities / locks provided by plugin
   - http.request
   - state.update
 requires:             # Dependencies on other plugin data
   - plugin.renamer.parsed:success
+emits:                # Optional data resolver declaration
+  show:
+    - title.primary
+    - identifiers.tmdb_id
 ```
 Discovery priority: manifest.yml > manifest.yaml > plugin.yml > plugin.yaml > plugin.json
 
@@ -48,16 +50,34 @@ GlobalStateManager
   -> PersistenceDelegate (MongoDB writes, error handling)
   -> StateEventEmitter (EventBus events)
   -> TemplateContextBuilder (Jinja2 context)
+  -> DataResolver (run.data envelope recomputation)
 ```
 
-### 6. Compact Response Pattern
+### 6. Data Resolver Namespace
+```
+data.<jobindex>.<category>.<dotted.path>
+```
+- Resolver priority comes from config `data_priority`.
+- Priority matching uses longest-prefix semantics.
+- Plugins opt in through manifest `emits`; undeclared plugin payload remains available through `job.plugins` / `jobs[...]` but not through the prioritized `data.*` namespace.
+- `RunState.data` is recomputed after plugin updates and persisted under `runs.data`.
+- Persistence boundary stringifies integer job-index keys for Mongo compatibility.
+
+### 7. Render Engine Boundary
+- Jinja2 rendering lives in `core/render/ConfigRenderEngine` with `ChainableUndefined`.
+- `tasker` no longer owns Jinja2; it receives already rendered runtime config through services and dispatches print/save actions.
+- Parse-time template dependency validator warns when templates reference plugins not declared in `manifest.requires`.
+- Synthetic `plugin.<name>.{data,status}` template namespace is removed.
+- Templates use `jobs[job_id].plugins.<name>`, `job.plugins.<name>`, `data.*`, and `run.*`.
+
+### 8. Compact Response Pattern
 Type-based structural simplification. Keep 1 example per type, discard redundant data.
 Result: 145 KB -> 9 KB (94% reduction). Used for AI analysis.
 
-### 7. No-Delete Policy
+### 9. No-Delete Policy
 NEVER use rm/rmdir. Always `mkdir -p .deleted && mv target .deleted/`
 
-### 8. Response Structure v4
+### 10. Response Structure v4
 ```
 response.globals.status        -> Run-level status
 response.matches[].globals     -> Job-level status

@@ -10,7 +10,7 @@ Archiverr is a plugin-based pipeline that:
 1. Scans media files (scanner/file-reader)
 2. Parses filenames to extract title/year/season/episode (renamer)
 3. Fetches metadata from 4 APIs simultaneously (tmdb/tvdb/tvmaze/omdb)
-4. Outputs results via configurable Jinja2 templates (tasker)
+4. Outputs results via core-rendered configurable Jinja2 templates (tasker dispatches print/save actions)
 
 ## User Flow
 

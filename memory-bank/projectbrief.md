@@ -2,7 +2,7 @@
 
 ## What Is Archiverr?
 
-Plugin-based media metadata enrichment system. Scans media files, fetches metadata from multiple APIs (TMDb, TVDb, TVMaze, OMDb), parses filenames, and outputs structured results via Jinja2 templates.
+Plugin-based media metadata enrichment system. Scans media files, fetches metadata from multiple APIs (TMDb, TVDb, TVMaze, OMDb), parses filenames, resolves prioritized metadata through the `data.*` namespace, and outputs structured results via core-rendered Jinja2 templates.
 
 ## Core Architecture Rule
 
